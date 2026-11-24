@@ -23,7 +23,10 @@ export type TipoModificacion =
   | 'ACLARATORIO'
   | 'SUSPENSION'
   | 'REANUDACION'
-  | 'TERMINACION_ANTICIPADA';
+  | 'TERMINACION_ANTICIPADA'
+  // Lo que no es ninguno de los anteriores, con descripción libre: por ejemplo,
+  // modificar los anexos técnicos (sesión de QA del 04/11, 138).
+  | 'OTRO';
 
 /**
  * Por qué se termina el contrato antes de tiempo.
@@ -69,6 +72,10 @@ export class ModificacionContrato {
   /** Por qué se modifica. Lo primero que un ente de control pregunta. */
   @Column({ type: 'text' })
   justificacion: string;
+
+  /** Qué se modifica, en el tipo «Otro» (138): «Modificación de los anexos técnicos». */
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  descripcion: string | null;
 
   /**
    * El objeto del contrato el dia en que se solicito la modificacion — RF-MOD-04.

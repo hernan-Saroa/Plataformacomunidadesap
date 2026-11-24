@@ -6,6 +6,7 @@ import { SkeletonTable } from '@esap-mfe/shared-ui/skeleton';
 import { contratacionService } from '../../services/contratacionService';
 import { ParametroAlerta } from '../../types';
 import { Modal } from '../shared/Modal';
+import { CLAVE_CUANTIA_COMITE } from '../configuracion/CuantiaDelComite';
 
 /** Cómo se llama cada plazo y cómo se lee su valor. */
 const PLAZO: Record<string, { nombre: string; valor: (n: number) => string }> = {
@@ -19,14 +20,18 @@ const PLAZO: Record<string, { nombre: string; valor: (n: number) => string }> = 
     nombre: 'Memorando del comité evaluador',
     valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} calendario`,
   },
-  hora_aviso: { nombre: 'Aviso diario', valor: (n) => `${n}:00, hora de Bogotá` },
-  // No es un plazo, pero es el mismo tipo de dato: un entero que gobierna una
-  // regla y que la Dirección ajusta sin desplegar (EFDS-1147).
-  cuantia_minima_comite: {
-    nombre: 'Cuantía para ir al Comité de Contratación',
-    valor: (n) => `más de ${n.toLocaleString('es-CO')} SMMLV`,
+  anticipacion_cronograma: {
+    nombre: 'Etapas del cronograma',
+    valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} antes`,
   },
+  hora_aviso: { nombre: 'Aviso diario', valor: (n) => `${n}:00, hora de Bogotá` },
 };
+
+/**
+ * La cuantía del comité se guarda en la misma tabla, pero no es una alerta:
+ * decide si la 3.7 se convoca. Se configura en Configuración → Comité.
+ */
+const esPlazoDeAlerta = (p: ParametroAlerta) => p.clave !== CLAVE_CUANTIA_COMITE;
 
 const nombreDe = (p: ParametroAlerta) => PLAZO[p.clave]?.nombre ?? p.clave;
 const valorDe = (p: ParametroAlerta) => PLAZO[p.clave]?.valor(p.valor) ?? String(p.valor);
@@ -53,7 +58,7 @@ export function ParametrosAlertas({ puedeEditar }: Props) {
 
   const cargar = async () => {
     try {
-      setParametros(await contratacionService.parametrosAlerta());
+      setParametros((await contratacionService.parametrosAlerta()).filter(esPlazoDeAlerta));
     } catch (err: any) {
       toast.error('No se pudieron cargar los plazos de las alertas', {
         id: 'plazos-alertas-carga',
@@ -133,7 +138,7 @@ export function ParametrosAlertas({ puedeEditar }: Props) {
           <EditorParametro
             parametro={editando}
             onListo={(lista) => {
-              setParametros(lista);
+              setParametros(lista.filter(esPlazoDeAlerta));
               setEditando(null);
             }}
           />
@@ -174,11 +179,7 @@ function EditorParametro({
     <div className="space-y-3">
       <label className="block">
         <span className="block text-xs font-bold text-slate-600 mb-1">
-          {parametro.clave === 'hora_aviso'
-            ? 'Hora'
-            : parametro.clave === 'cuantia_minima_comite'
-              ? 'SMMLV'
-              : 'Días'}
+          {parametro.clave === 'hora_aviso' ? 'Hora' : 'Días'}
         </span>
         <input
           value={texto}

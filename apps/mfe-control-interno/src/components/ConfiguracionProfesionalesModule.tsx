@@ -57,6 +57,7 @@ import {
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { useConfiguracionCapacidadesGlobales } from './services/useConfiguracionCapacidadesGlobales';
 import { ModalConfiguracionCapacidadesRoles } from './ModalConfiguracionCapacidadesRoles';
+import { rolesOciDe } from '../config/roles-ocig-operativos';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS (importados desde el hook)
@@ -141,7 +142,11 @@ export function ConfiguracionProfesionalesModule() {
         p.usuario.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
         p.usuario.email.toLowerCase().includes(busqueda.toLowerCase());
 
-      const cumpleFiltroRol = filtroRol === 'TODOS' || p.configuracion.rolOCI === filtroRol;
+      // Coincide con el rol principal o con uno adicional (EFDS-2452)
+      const cumpleFiltroRol = filtroRol === 'TODOS' || rolesOciDe({
+        rolOcig: p.configuracion.rolOCI,
+        rolesAdicionales: p.configuracion.rolesAdicionales,
+      }).includes(filtroRol);
 
       return cumpleBusqueda && cumpleFiltroRol;
     });
@@ -384,6 +389,65 @@ export function ConfiguracionProfesionalesModule() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// ROLES ADICIONALES (EFDS-2452)
+// ════════════════════════════════════════════════════════════════════════════
+
+function claseBadgeRol(rol?: string) {
+  return rol === 'Jefe OCI' ? 'bg-red-100 text-red-700' :
+    rol === 'Auditor' ? 'bg-cyan-100 text-cyan-700' :
+    rol === 'Aprobador Plan Anual' ? 'bg-orange-100 text-orange-700' :
+    'bg-gray-100 text-gray-700';
+}
+
+/**
+ * Un profesional puede tener otros roles además del principal, p. ej. el Jefe OCI
+ * que también audita: así aparece en el equipo auditor sin perder su rol de Jefe.
+ */
+function SelectorRolesAdicionales({
+  rolesDisponibles,
+  rolPrincipal,
+  seleccionados,
+  onChange,
+}: {
+  rolesDisponibles: readonly string[];
+  rolPrincipal?: string;
+  seleccionados: string[];
+  onChange: (roles: string[]) => void;
+}) {
+  const opciones = rolesDisponibles.filter((rol) => rol !== rolPrincipal);
+  if (opciones.length === 0) return null;
+  return (
+    <div>
+      <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+        Roles adicionales
+        <span className="ml-1 text-gray-400 normal-case font-normal">— Opcional</span>
+      </label>
+      <div className="flex flex-wrap gap-1.5">
+        {opciones.map((rol) => {
+          const activo = seleccionados.includes(rol);
+          return (
+            <button
+              key={rol}
+              type="button"
+              aria-pressed={activo}
+              onClick={() => onChange(activo ? seleccionados.filter((r) => r !== rol) : [...seleccionados, rol])}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${activo
+                ? 'text-white shadow-md'
+                : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50'
+                }`}
+              style={activo ? { backgroundColor: '#003DA5' } : {}}
+            >
+              {activo ? <Check className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+              {rol}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE: TARJETA DE PROFESIONAL
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -438,7 +502,15 @@ function TarjetaProfesional({
           {/* Rol OCI */}
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2">Rol en OCI</label>
-            <Select value={form.rolOCIG} onValueChange={(value) => setForm({ ...form, rolOCIG: value as any })}>
+            <Select
+              value={form.rolOCIG}
+              onValueChange={(value) => setForm({
+                ...form,
+                rolOCIG: value as any,
+                // El principal no se repite como adicional (EFDS-2452)
+                rolesAdicionales: (form.rolesAdicionales ?? []).filter((r) => r !== value),
+              })}
+            >
               <SelectTrigger className="w-full font-semibold">
                 <SelectValue />
               </SelectTrigger>
@@ -449,6 +521,14 @@ function TarjetaProfesional({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Roles adicionales: se agregan o quitan sin eliminar al profesional (EFDS-2452) */}
+          <SelectorRolesAdicionales
+            rolesDisponibles={rolesDisponibles}
+            rolPrincipal={form.rolOCIG}
+            seleccionados={form.rolesAdicionales ?? []}
+            onChange={(roles) => setForm({ ...form, rolesAdicionales: roles })}
+          />
 
           {/* Grid de capacidades */}
           <div className="grid grid-cols-2 gap-4">
@@ -514,14 +594,19 @@ function TarjetaProfesional({
               <div className="flex flex-wrap items-center gap-2">
                 {/* Rol OCI (principal en este módulo) */}
                 <span className="text-sm text-gray-600">{profesional.usuario.email}</span>
-                <span className={`px-3 py-1 rounded-lg text-xs font-bold ${
-                  profesional.configuracion.rolOCIG === 'Jefe OCI' ? 'bg-red-100 text-red-700' :
-                  profesional.configuracion.rolOCIG === 'Auditor' ? 'bg-cyan-100 text-cyan-700' :
-                  profesional.configuracion.rolOCIG === 'Aprobador Plan Anual' ? 'bg-orange-100 text-orange-700' :
-                  'bg-gray-100 text-gray-700'
-                }`}>
+                <span className={`px-3 py-1 rounded-lg text-xs font-bold ${claseBadgeRol(profesional.configuracion.rolOCIG)}`}>
                   {profesional.configuracion.rolOCIG || 'Sin rol OCI'}
                 </span>
+                {/* Roles adicionales (EFDS-2452) */}
+                {(profesional.configuracion.rolesAdicionales ?? []).map((rol) => (
+                  <span
+                    key={rol}
+                    className={`px-2 py-0.5 rounded-full text-xs font-semibold ${claseBadgeRol(rol)}`}
+                    title="Rol adicional"
+                  >
+                    + {rol}
+                  </span>
+                ))}
                 <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-semibold">
                   CC: {profesional.usuario.identificacion}
                 </span>
@@ -672,6 +757,7 @@ function ModalAgregarProfesional({
   
   // Estado para el rol, inicializado con el primer rol disponible si existe
   const [rolOCIG, setRolOCIG] = useState<string>(rolesDisponibles[0] || '');
+  const [rolesAdicionales, setRolesAdicionales] = useState<string[]>([]);
   const [capacidad, setCapacidad] = useState(1);
   const [horas, setHoras] = useState(160);
 
@@ -688,6 +774,7 @@ function ModalAgregarProfesional({
 
   const handleRolCambio = (nuevoRol: string) => {
     setRolOCIG(nuevoRol);
+    setRolesAdicionales((prev) => prev.filter((r) => r !== nuevoRol));
     const defaults = getCapacidadPorRol(nuevoRol);
     setCapacidad(defaults.capacidadMaximaAuditorias);
     setHoras(defaults.horasMensualesDisponibles);
@@ -720,6 +807,7 @@ function ModalAgregarProfesional({
       usuarioId: usuarioSeleccionado,
       idTercero: usuario.idTercero,
       rolOCI: rolOCIG as ConfiguracionOCIG['rolOCI'],
+      rolesAdicionales: rolesAdicionales.filter((r) => r !== rolOCIG),
       especialidades: especialidades.length > 0 ? especialidades : ['Control Interno'],
       capacidadMaximaAuditorias: capacidad,
       horasMensualesDisponibles: horas,
@@ -1029,6 +1117,14 @@ function ModalAgregarProfesional({
                     </div>
                   </div>
 
+                  {/* Roles adicionales (EFDS-2452) */}
+                  <SelectorRolesAdicionales
+                    rolesDisponibles={rolesDisponibles}
+                    rolPrincipal={rolOCIG}
+                    seleccionados={rolesAdicionales}
+                    onChange={setRolesAdicionales}
+                  />
+
                   {/* Especialidades */}
                   <div>
                     <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
@@ -1097,6 +1193,9 @@ function ModalAgregarProfesional({
                         <div className="font-bold text-gray-900">{selectedUser?.nombre}</div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">{rolOCIG}</span>
+                          {rolesAdicionales.map((rol) => (
+                            <span key={rol} className="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">+ {rol}</span>
+                          ))}
                           <span className="text-xs text-gray-400">·</span>
                           <span className="text-xs text-gray-500">{especialidades.length} especialidad(es)</span>
                         </div>

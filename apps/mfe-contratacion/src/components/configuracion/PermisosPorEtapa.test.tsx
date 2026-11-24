@@ -155,11 +155,11 @@ describe('PermisosPorEtapa', () => {
     expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
   });
   it('parte de un perfil por defecto copiando el alcance del rol que lo encarna', async () => {
-    // Los cinco perfiles de la Dirección (EFDS-1183): el abogado es el revisor.
+    // Los perfiles por defecto (137): el abogado revisor lo encarna su rol.
     const abogado: RolConAlcance = {
-      id: 'r-revisor',
-      codigo: 'REVISOR_CONTRATACION',
-      nombre: 'Revisor de Contratación',
+      id: 'r-abogado-revisor',
+      codigo: 'ABOGADO_REVISOR',
+      nombre: 'Abogado Revisor',
       descripcion: null,
       acciones: ['ver', 'aprobar'],
       transversales: [],
@@ -173,7 +173,7 @@ describe('PermisosPorEtapa', () => {
     render(<PermisosPorEtapa />);
     await waitFor(() => expect(casilla('Ver en la etapa 3').checked).toBe(true));
 
-    await usuario.click(screen.getByRole('button', { name: 'Abogado' }));
+    await usuario.click(screen.getByRole('button', { name: 'Abogado revisor' }));
 
     expect(casilla('Ver en todo el módulo').checked).toBe(true);
     // Área Legal no tiene «Aprobar» en la plataforma: esa casilla no se copia.
@@ -188,6 +188,60 @@ describe('PermisosPorEtapa', () => {
     render(<PermisosPorEtapa />);
     await waitFor(() => expect(casilla('Ver en la etapa 3').checked).toBe(true));
 
-    expect(screen.queryByRole('button', { name: 'Abogado' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Abogado revisor' })).toBeNull();
+  });
+});
+
+/** Roles y personas: qué hace cada rol predeterminado y quién lo tiene. */
+describe('PermisosPorEtapa · roles y personas', () => {
+  const ESTRUCTURADOR: RolConAlcance = {
+    id: 'r-abogado',
+    codigo: 'ABOGADO_ESTRUCTURADOR',
+    nombre: 'Abogado estructurador',
+    descripcion: null,
+    acciones: ['ver', 'editar'],
+    transversales: [],
+    alcances: [{ accion: 'editar', lugar: 'E7', confirmado: true }],
+    personas: [{ id: 'u-1', nombre: 'Andrés Rojas', correo: 'andres@esap.edu.co' }],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    servicio.alcanceRoles.mockResolvedValue([LEGAL, ESTRUCTURADOR]);
+    servicio.catalogoActividades.mockResolvedValue(CATALOGO);
+  });
+
+  it('explica cada rol predeterminado y dice quién lo tiene', async () => {
+    const usuario = userEvent.setup();
+    render(<PermisosPorEtapa />);
+    await waitFor(() => expect(casilla('Ver en la etapa 3')).toBeTruthy());
+
+    await usuario.click(screen.getByRole('button', { name: 'Roles y personas' }));
+
+    const tarjeta = screen.getByRole('heading', { name: 'Abogado estructurador' }).closest('article')!;
+    expect(tarjeta.textContent).toMatch(/Lleva el proceso/);
+    expect(tarjeta.textContent).toMatch(/Andrés Rojas/);
+    // Un rol predeterminado que esta instalación no tiene se dice, no se esconde.
+    const consulta = screen.getByRole('heading', { name: 'Consulta' }).closest('article')!;
+    expect(consulta.textContent).toMatch(/no existe o está inactivo/);
+    // Los roles que no son predeterminados van aparte, también con su gente.
+    expect(screen.getByRole('heading', { name: 'Área Legal' })).toBeTruthy();
+    expect(screen.getAllByText('Nadie tiene este rol todavía.').length).toBe(1);
+  });
+
+  it('busca por persona y abre la matriz del rol', async () => {
+    const usuario = userEvent.setup();
+    render(<PermisosPorEtapa />);
+    await waitFor(() => expect(casilla('Ver en la etapa 3')).toBeTruthy());
+    await usuario.click(screen.getByRole('button', { name: 'Roles y personas' }));
+
+    await usuario.type(screen.getByPlaceholderText('Buscar un rol o una persona'), 'rojas');
+    expect(screen.queryByRole('heading', { name: 'Área Legal' })).toBeNull();
+
+    await usuario.click(screen.getByRole('button', { name: 'Ver sus permisos por etapa' }));
+
+    expect(casilla('Editar en la etapa 7').checked).toBe(true);
+    expect(screen.getByText('ABOGADO_ESTRUCTURADOR')).toBeTruthy();
+    expect(screen.getByText('Andrés Rojas')).toBeTruthy();
   });
 });

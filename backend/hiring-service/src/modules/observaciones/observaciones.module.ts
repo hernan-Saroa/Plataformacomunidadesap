@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { ObservacionesService } from './observaciones.service';
 import { ObservacionesController } from './observaciones.controller';
+import { ObservacionesDefinitivoController } from './observaciones-definitivo.controller';
 import { PublicacionModule } from '../publicacion/publicacion.module';
 import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
@@ -13,6 +14,7 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
+import { AperturaProceso } from '../../entities/apertura-proceso.entity';
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { Expediente } from '../../entities/expediente.entity';
       Trazabilidad,
       Documento,
       Expediente,
+      AperturaProceso,
     ]),
     // De la publicación salen la fecha de vencimiento contra la que se decide
     // si una observación llegó en término, y la comprobación de que hay pliego
@@ -32,7 +35,7 @@ import { Expediente } from '../../entities/expediente.entity';
     PublicacionModule,
     CierreActividadModule,
   ],
-  controllers: [ObservacionesController],
+  controllers: [ObservacionesController, ObservacionesDefinitivoController],
   providers: [ObservacionesService],
   exports: [ObservacionesService],
 })

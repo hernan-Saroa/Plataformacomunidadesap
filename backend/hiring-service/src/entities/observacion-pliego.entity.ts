@@ -7,6 +7,9 @@ import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
  * que el gestor las transcribe con su soporte. Lo que la entidad debe poder
  * demostrar es que las recibió y que las respondió.
  */
+/** El pliego al que se le presenta la observación (138). */
+export type PliegoObservado = 'PROYECTO' | 'DEFINITIVO';
+
 @Entity('observaciones_pliego', { schema: 'hiring' })
 export class ObservacionPliego {
   @PrimaryGeneratedColumn('uuid')
@@ -14,6 +17,13 @@ export class ObservacionPliego {
 
   @Column({ name: 'proceso_id', type: 'uuid' })
   procesoId: string;
+
+  /**
+   * Sobre qué pliego se observa (138): el proyecto (5.6) o el definitivo
+   * (5.12.1, sesión de QA del 04/11). Las dos actividades se llevan igual.
+   */
+  @Column({ name: 'pliego', type: 'varchar', length: 12, default: 'PROYECTO' })
+  pliego: PliegoObservado;
 
   /**
    * La publicación observada, no solo el proceso: si esa publicación se anula y

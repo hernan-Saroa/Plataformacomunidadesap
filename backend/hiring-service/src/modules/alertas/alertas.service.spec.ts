@@ -204,6 +204,39 @@ describe('AlertasService · notificar', () => {
     expect(resultado.notificadas).toBe(1);
   });
 
+  it('las pólizas y la liquidación van a quien edita la 9.2, no al supervisor (136)', async () => {
+    // El supervisor no entra a la aplicación: lo suyo lo lleva el gestor de
+    // archivo y supervisión. Una alerta por cuenta.
+    const fetchSimulado = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchSimulado as never;
+
+    const query = jest.fn().mockResolvedValue([]);
+    const cuentasQuePueden = jest.fn().mockResolvedValue(['u-archivo-1', 'u-archivo-2']);
+    const srv = new AlertasService({ query } as never, undefined, { cuentasQuePueden } as never);
+    jest.spyOn(srv, 'listar').mockResolvedValue([
+      {
+        tipo: 'AMPARO',
+        procesoId: 'p1',
+        radicado: 'CTO-2026-0017',
+        contrato: 'CON-17',
+        descripcion: 'Amparo de CUMPLIMIENTO',
+        vence: '2026-11-05',
+        diasRestantes: 7,
+        estado: 'POR_VENCER',
+        responsable: 'Supervisora del contrato',
+        responsableEmail: null,
+        responsableId: null,
+      },
+    ] as never);
+
+    const resultado = await srv.notificar(30, ACCESO as never);
+
+    expect(cuentasQuePueden).toHaveBeenCalledWith('editar', '9.2');
+    expect(resultado.notificadas).toBe(2);
+    const destinatarios = cuerpoDe(fetchSimulado).notifications.map((n: any) => n.id_usuario_destinatario);
+    expect(destinatarios.sort()).toEqual(['u-archivo-1', 'u-archivo-2']);
+  });
+
   it('si notifications-service está caído, las alertas se siguen viendo', async () => {
     // Best-effort a propósito: se pierde el aviso, no la alerta.
     global.fetch = jest.fn().mockRejectedValue(new Error('caído')) as never;

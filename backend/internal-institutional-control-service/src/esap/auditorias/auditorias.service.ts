@@ -22,6 +22,7 @@ import { AuditoriaKanbanDto, PersonaDto, ObjetivoDto } from './dto/auditoria-kan
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 import { ConfiguracionesProfesionalesOCIGService } from '../configuraciones/configuraciones-profesionales-ocig.service';
+import { ROL_OCIG_JEFE, variantesRolOcigOperativo } from '../configuraciones/roles-ocig-operativos.constants';
 
 const COLOMBIA_TIME_ZONE = 'America/Bogota';
 
@@ -1767,6 +1768,8 @@ export class AuditoriasService {
         .map((e) => String(e.personaId)),
     };
     const impresoAntes = this.datosImpresosPrograma(auditoria);
+    // Para avisar al responsable del área solo cuando se le asigna o cambia (EFDS-2325)
+    const correoResponsableAntes = (auditoria.responsableAreaEmail || '').trim().toLowerCase();
 
     // Validar fechas si se actualizan
     if (updateDto.fechaInicio || updateDto.fechaFin || updateDto.fechaFinPlaneacion || updateDto.fechaFinEjecucion) {
@@ -1794,11 +1797,16 @@ export class AuditoriasService {
         }
       }
       
+      // Igual que al crear: una Especial puede no tener Planeación (EFDS-1923)
+      const esEspecialSinPlaneacion =
+        this.resolveTipoKanban(updateDto.tipoKanban ?? auditoria.tipoKanban, updateDto.tipo ?? auditoria.tipo) === TipoKanban.ESPECIAL &&
+        !fechaFinPlaneacion;
+
       if (fechaFinEjecucion) {
-        if (!fechaFinPlaneacion) {
+        if (!fechaFinPlaneacion && !esEspecialSinPlaneacion) {
           throw new BadRequestException('Debe especificar la fecha de fin de Planeación antes de la fecha de fin de Ejecución');
         }
-        if (fechaFinEjecucion <= fechaFinPlaneacion) {
+        if (fechaFinPlaneacion && fechaFinEjecucion <= fechaFinPlaneacion) {
           throw new BadRequestException('La fecha de fin de Ejecución debe ser posterior al fin de Planeación');
         }
       }
@@ -2218,6 +2226,12 @@ export class AuditoriasService {
       } catch (notifError) {
         console.error('[AuditoriasService.update] Error al notificar a los auditores:', notifError);
       }
+    }
+
+    // El responsable del área auditada que se asigna o cambia se entera de su designación (EFDS-2325)
+    const correoResponsable = (saved.responsableAreaEmail || '').trim();
+    if (correoResponsable && correoResponsable.toLowerCase() !== correoResponsableAntes) {
+      await this.notificarResponsableAreaDesignado(auditoriaActualizada || saved);
     }
 
     // ✅ Registrar evento de actualización en el historial si hay cambios importantes
@@ -4621,6 +4635,8 @@ export class AuditoriasService {
         email: p.email || '',
         cargo: p.rolOcig || 'Auditor',
         rolCode: p.rolOcig || '',
+        // El equipo auditor se filtra por cualquiera de sus roles, no solo el principal (EFDS-2452)
+        rolesAdicionales: p.rolesAdicionales || [],
         especialidad: p.especialidades?.join(', ') || 'General',
         especialidades: p.especialidades || [],
         puedeSerLider: p.puedeSerLider || false,
@@ -4748,6 +4764,48 @@ export class AuditoriasService {
   }
 
   /**
+   * Avisa al responsable del área auditada que fue designado para atender la
+   * auditoría (EFDS-2325). Al crear la auditoría ya se le avisa; esto cubre la
+   * asignación o el cambio posterior, para que se prepare antes de que inicie.
+   * Va por campana y por correo, y no detiene la edición si el aviso falla.
+   */
+  private async notificarResponsableAreaDesignado(auditoria: Auditoria): Promise<void> {
+    const inicio = auditoria.fechaInicio
+      ? this.serializeDate(auditoria.fechaInicio).split('-').reverse().join('/')
+      : null;
+    try {
+      const enviada = await this.notificacionesService.notificarAuditadoPortal({
+        responsableAreaEmail: auditoria.responsableAreaEmail || '',
+        responsableAreaNombre: auditoria.responsableAreaNombre,
+        auditoriaId: auditoria.id,
+        auditoriaCodigo: auditoria.codigo,
+        auditoriaNombre: auditoria.nombre,
+        tipoNotificacion: 'EVT-AUD-001',
+        titulo: `Fue designado responsable del área auditada: ${auditoria.codigo}`,
+        mensaje:
+          `Estimado/a ${auditoria.responsableAreaNombre || 'Responsable'}, ` +
+          `la Oficina de Control Interno lo designó como responsable del área auditada en la auditoría ` +
+          `"${auditoria.nombre}" (${auditoria.codigo})` +
+          (inicio ? `, programada para iniciar el ${inicio}` : '') +
+          `. Acceda al portal transaccional — Control Interno de Gestión — para conocer el alcance, los plazos y prepararse para el inicio.`,
+        metadata: {
+          nombreAuditoria: auditoria.nombre,
+          responsable: auditoria.responsableAreaNombre,
+          motivo: 'responsable_designado',
+        },
+      });
+      if (!enviada) {
+        console.warn(
+          `[AuditoriasService] Sin usuario activo para el responsable del área "${auditoria.responsableAreaEmail}" ` +
+          `(${auditoria.codigo}); no se envió el aviso de designación.`,
+        );
+      }
+    } catch (error) {
+      console.error(`[AuditoriasService] Error al avisar al responsable del área (${auditoria.codigo}):`, error.message);
+    }
+  }
+
+  /**
    * Avisa a cada auditor que quedó vinculado a la auditoría (EFDS-873).
    *
    * Va por campana y por correo: el auditor necesita enterarse aunque no esté
@@ -4855,6 +4913,53 @@ export class AuditoriasService {
     } catch (error) {
       console.error(`[AuditoriasService.crearNotificacionesAuditoriaEditada] ❌ Error:`, error.message);
     }
+  }
+
+  /**
+   * Datos del formato EM-FO-003 que la pantalla del auditor no puede consultar por sí misma
+   * (EFDS-2455): quién firma como Jefe de la OCI, según Configuración de Profesionales OCI
+   * (cuya consulta pide un permiso de configuración), y el nivel del proceso auditado, que
+   * es el tipo del proceso auditable con el mismo nombre.
+   */
+  async datosInformePreliminar(id: string): Promise<{ jefeOci: string | null; nivelProceso: string | null }> {
+    if (!this.isValidUUID(id)) throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+
+    let jefeOci: string | null = null;
+    try {
+      const filas = await this.auditoriaRepository.query(
+        `SELECT TRIM(p.nom_largo) AS nombre
+         FROM control_interno.configuracion_profesionales_ocig c
+         INNER JOIN auth.personas p ON p.id_person::text = c.id_tercero::text
+         WHERE c.activo = true
+           AND c.rol_ocig = ANY($1::text[])
+           AND COALESCE(TRIM(p.nom_largo), '') <> ''
+         ORDER BY c.fecha_asignacion DESC, c.updated_at DESC
+         LIMIT 1`,
+        [variantesRolOcigOperativo(ROL_OCIG_JEFE)],
+      );
+      jefeOci = filas?.[0]?.nombre || null;
+    } catch (error) {
+      console.error('[AuditoriasService.datosInformePreliminar] Jefe OCI:', (error as Error).message);
+    }
+
+    let nivelProceso: string | null = null;
+    const normalizar = (s: unknown) =>
+      String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const proceso = normalizar(auditoria.procesoAuditado || auditoria.nombre);
+    if (proceso) {
+      try {
+        const procesos: { nombre: string; tipo: string }[] = await this.auditoriaRepository.query(
+          `SELECT nombre, tipo FROM control_interno.proceso_auditable WHERE activo = true`,
+        );
+        nivelProceso = procesos.find((p) => normalizar(p.nombre) === proceso)?.tipo || null;
+      } catch (error) {
+        console.error('[AuditoriasService.datosInformePreliminar] Nivel del proceso:', (error as Error).message);
+      }
+    }
+
+    return { jefeOci, nivelProceso };
   }
 
   public async obtenerJefesControlInterno(): Promise<string[]> {

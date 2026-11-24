@@ -126,6 +126,9 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
   // La ganadora se decide en el definitivo (EFDS-1157).
   const [ganadoraDefinitivo, setGanadoraDefinitivo] = useState('');
   const [valorDefinitivo, setValorDefinitivo] = useState('');
+  /** Sesión de QA del 04/11: anexos opcionales y por qué cambia frente al preliminar. */
+  const [anexosDefinitivo, setAnexosDefinitivo] = useState<File[]>([]);
+  const [cambiosDefinitivo, setCambiosDefinitivo] = useState('');
   const [enlaceDefinitivo, setEnlaceDefinitivo] = useState('');
   const [evidenciaDefinitivo, setEvidenciaDefinitivo] = useState<File | null>(null);
 
@@ -235,13 +238,22 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
     }
 
     await conGuardado(async () => {
-      await contratacionService.generarInformeDefinitivo(procesoId, documentoDefinitivo, motivo, {
-        oferenteId: ganadoraDefinitivo || undefined,
-        valorEvaluado: aNumero(valorDefinitivo),
-      });
+      await contratacionService.generarInformeDefinitivo(
+        procesoId,
+        documentoDefinitivo,
+        motivo,
+        {
+          oferenteId: ganadoraDefinitivo || undefined,
+          valorEvaluado: aNumero(valorDefinitivo),
+          justificacionCambios: cambiosDefinitivo,
+        },
+        anexosDefinitivo,
+      );
       setDocumentoDefinitivo(null);
       setGanadoraDefinitivo('');
       setValorDefinitivo('');
+      setAnexosDefinitivo([]);
+      setCambiosDefinitivo('');
     }, motivo ? 'Informe definitivo actualizado' : 'Informe definitivo generado');
   };
 
@@ -641,6 +653,37 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
                 onChange={(e) => setDocumentoDefinitivo(e.target.files?.[0] ?? null)}
               />
             </label>
+            <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
+              <UploadCloud size={15} className="text-slate-400" />
+              <span>
+                {anexosDefinitivo.length
+                  ? anexosDefinitivo.map((a) => a.name).join(', ')
+                  : 'Documentos adicionales (opcional, hasta 10)'}
+              </span>
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                aria-label="Documentos adicionales del informe definitivo"
+                onChange={(e) => setAnexosDefinitivo(Array.from(e.target.files ?? []).slice(0, 10))}
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11.5px] text-slate-600">
+                Justificación de los cambios frente al informe preliminar
+              </span>
+              <textarea
+                rows={2}
+                className={campo}
+                aria-label="Justificación de los cambios frente al informe preliminar"
+                placeholder="Si cambió el proponente ganador o el valor evaluado: por ejemplo, una oferta se descartó por falta de garantías"
+                value={cambiosDefinitivo}
+                onChange={(e) => setCambiosDefinitivo(e.target.value)}
+              />
+              <span className="text-[11px] text-slate-500">
+                Queda en el historial del proceso con la fecha y el usuario.
+              </span>
+            </label>
             <Boton
               icono={<FileText className="w-3.5 h-3.5" />}
               onClick={generarDefinitivo}
@@ -1024,6 +1067,31 @@ function ResumenDefinitivo({ informe }: { informe: InformeDefinitivo }) {
           Sin cambios respecto del informe trasladado.
         </p>
       )}
+
+      {informe.justificacionCambios ? (
+        <p className="text-[11.5px] text-slate-700 m-0 whitespace-pre-line break-words">
+          <span className="font-bold">Por qué cambia frente al preliminar:</span>{' '}
+          {informe.justificacionCambios}
+        </p>
+      ) : null}
+
+      {informe.anexos?.length ? (
+        <div>
+          <p className="text-[11.5px] font-bold text-slate-600 m-0">Documentos adicionales</p>
+          <ul className="list-none p-0 m-0 mt-1 space-y-0.5">
+            {informe.anexos.map((a) => (
+              <li key={a.id}>
+                <a
+                  className="text-[11.5px] text-blue-700 inline-flex items-center gap-1"
+                  href={contratacionService.urlDescarga(a.archivoUrl)}
+                >
+                  <Download size={12} /> {a.nombre}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {cambios.subsanacionesAceptadas.length > 0 && (
         <div>

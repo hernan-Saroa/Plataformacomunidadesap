@@ -11,6 +11,13 @@ export interface AvisoCampana {
   datos_adicionales?: Record<string, unknown>;
 }
 
+/**
+ * Código del módulo en la configuración de notificaciones (EFDS-2406). La
+ * consola central se suma a la configuración propia de las actividades: ambas
+ * tienen que permitir el aviso para que salga.
+ */
+export const MODULO_NOTIFICACIONES = 'contratacion';
+
 /** Un archivo que viaja en el correo, como lo pide notifications-service. */
 export interface AdjuntoCorreo {
   filename: string;
@@ -83,7 +90,7 @@ export class Campana {
   ): Promise<{ enviados: number; repetidos: number; correos?: number; error?: string }> {
     if (!avisos.length) return { enviados: 0, repetidos: 0 };
 
-    const nuevos = await this.sinAvisarYa(avisos);
+    const nuevos = (await this.sinAvisarYa(avisos)).map((a) => ({ ...a, modulo: MODULO_NOTIFICACIONES }));
     const repetidos = avisos.length - nuevos.length;
     if (!nuevos.length) return { enviados: 0, repetidos };
 
@@ -147,6 +154,9 @@ export class Campana {
             subject: `Contratación · ${aviso.titulo}`,
             text: `${aviso.mensaje}\n\nEste aviso también está en la campana de la plataforma.`,
             html: htmlDelAviso(aviso),
+            // El correo es el mismo evento que la campana: la configuración los decide juntos.
+            modulo: MODULO_NOTIFICACIONES,
+            evento: aviso.tipo_notificacion,
           }),
         });
         if (respuesta.ok) enviados++;
@@ -169,6 +179,7 @@ export class Campana {
   async aCorreosExternos(
     correos: string[],
     aviso: Pick<AvisoCampana, 'titulo' | 'mensaje'>,
+    evento?: string,
   ): Promise<number> {
     const unicos = [...new Set(correos.map((c) => c.trim().toLowerCase()).filter(Boolean))];
     const url = process.env.NOTIFICATIONS_SERVICE_URL || 'http://notifications-service:3009';
@@ -183,6 +194,7 @@ export class Campana {
             subject: `ESAP · ${aviso.titulo}`,
             text: aviso.mensaje,
             html: htmlDelAviso(aviso, { externo: true }),
+            ...(evento ? { modulo: MODULO_NOTIFICACIONES, evento } : {}),
           }),
         });
         if (respuesta.ok) enviados++;
@@ -205,6 +217,7 @@ export class Campana {
     para: string,
     aviso: Pick<AvisoCampana, 'titulo' | 'mensaje'>,
     adjuntos: AdjuntoCorreo[],
+    evento?: string,
   ): Promise<boolean> {
     const url = process.env.NOTIFICATIONS_SERVICE_URL || 'http://notifications-service:3009';
     try {
@@ -217,6 +230,7 @@ export class Campana {
           text: aviso.mensaje,
           html: htmlDelAviso(aviso),
           attachments: adjuntos,
+          ...(evento ? { modulo: MODULO_NOTIFICACIONES, evento } : {}),
         }),
       });
       if (!respuesta.ok) this.logger.warn(`El correo a ${para} no salió: ${respuesta.status}`);

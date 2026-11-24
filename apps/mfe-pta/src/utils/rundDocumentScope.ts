@@ -1,6 +1,9 @@
+import { RUND_CARPETAS } from './rundCarpetas';
+
+/** Denominación de cada carpeta según el archivo de codificación documental del GGP (ver rundCarpetas.ts). */
 export const RUND_BLOCK_LABELS: Record<string, string> = {
-  IDENTIDAD: 'Identidad', CONTACTO: 'Contacto', FORMACION: 'Formación Académica',
-  VINCULACION: 'Vinculación', ACADEMICO: 'Académico', TRANSVERSAL: 'Transversal',
+  CONTACTO: 'Contacto',
+  ...Object.fromEntries(RUND_CARPETAS.map(item => [item.bloque, item.codigo === 'T' ? item.nombre : `${item.codigo} ${item.nombre}`])),
 };
 
 const supportBlocks: Record<string, string> = {
@@ -10,6 +13,10 @@ const supportBlocks: Record<string, string> = {
   diploma_maestria: 'FORMACION', acta_grado_maestria: 'FORMACION',
   diploma_doctorado: 'FORMACION', acta_grado_doctorado: 'FORMACION',
   certificado_posdoctoral: 'FORMACION', convalidacion_men: 'FORMACION', hoja_vida_pro: 'FORMACION',
+  diploma_bachiller: 'FORMACION', tarjeta_profesional: 'IDENTIDAD', hoja_vida: 'IDENTIDAD',
+  experiencia_docente: 'EXPERIENCIA_DOCENTE', experiencia_laboral: 'EXPERIENCIA_LABORAL', experiencia_investigativa: 'ACADEMICO',
+  productividad_academica: 'PRODUCTIVIDAD_ACADEMICA', dominio_segunda_lengua: 'SEGUNDA_LENGUA', formacion_no_formal: 'FORMACION_NO_FORMAL',
+  estudio_hoja_vida: 'ESTUDIO_HOJA_VIDA', documento_no_valido: 'DOCUMENTOS_NO_VALIDOS',
   contrato: 'VINCULACION', acto_administrativo_vinculacion: 'VINCULACION',
   resolucion_convocatoria: 'VINCULACION', acto_administrativo_dedicacion: 'VINCULACION',
   acto_administrativo_situacion: 'VINCULACION', acto_adscripcion_territorial: 'VINCULACION',

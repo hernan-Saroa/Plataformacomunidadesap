@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
 
-import { Accion } from '../../auth/alcance';
+import { Accion, PERMISO_DE_ACCION, etapaDe } from '../../auth/alcance';
 import { AlcanceService } from '../../auth/alcance.service';
 import { HiringAccess } from '../../auth/hiring-access';
 import { accionQueHace } from '../../auth/la-hace';
@@ -19,7 +19,6 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import {
   AprobacionGuardada,
   LaHaceGuardada,
-  asignacionPara,
   asignacionQueRige,
   filasDeVersion,
   versionActiva,
@@ -49,10 +48,26 @@ export interface Candidato {
   procesosEnElPuesto: number;
 }
 
-/** Donde se avalan las cuentas de cobro: quien la aprueba es el supervisor (121). */
-const NUMERAL_AVAL = '9.4';
-
 const ACCION_NOMBRE: Record<string, string> = { editar: 'editar', aprobar: 'aprobar', decidir: 'decidir' };
+
+/** Un permiso por etapa que pide el puesto y su rol no tiene (143). */
+export interface PermisoQueFalta {
+  accion: Exclude<Accion, 'ver'>;
+  numeral: string;
+  nombreActividad: string;
+}
+
+/** Cómo está el rol del puesto frente a lo que el puesto hace (143). */
+export interface PermisosDelRol {
+  /** Lo que se puede completar desde aquí: alcances de Permisos por etapa. */
+  faltan: PermisoQueFalta[];
+  /**
+   * Las acciones que el rol no tiene en la administración de roles de la
+   * plataforma. Eso no es del módulo: se da allá, y mientras tanto los
+   * alcances de esa acción no valen.
+   */
+  sinPermisoGeneral: Exclude<Accion, 'ver'>[];
+}
 
 /**
  * Los puestos del proceso (migración 109).
@@ -83,15 +98,27 @@ export class PuestosService {
       order: { orden: 'ASC', nombre: 'ASC' },
     });
     const usos = await this.usos();
-    return puestos.map((p) => ({
-      ...p,
-      usos: usos.filter((u) => u.puestoId === p.id),
-    }));
+    const roles = await this.nombresDeRoles(puestos.map((p) => p.rolId).filter((r): r is string => !!r));
+    const lista = [];
+    for (const p of puestos) {
+      const suyos = usos.filter((u) => u.puestoId === p.id);
+      lista.push({
+        ...p,
+        usos: suyos,
+        rol: p.rolId ? { id: p.rolId, nombre: roles.get(p.rolId) ?? 'Rol inactivo' } : null,
+        permisosDelRol: p.rolId && roles.has(p.rolId) ? await this.permisosDelRol(p.rolId, suyos) : null,
+      });
+    }
+    return lista;
   }
 
-  async crear(dto: { nombre: string; descripcion?: string | null; obligatorio?: boolean; orden?: number }, acceso: HiringAccess) {
+  async crear(
+    dto: { nombre: string; descripcion?: string | null; obligatorio?: boolean; orden?: number; rolId?: string | null },
+    acceso: HiringAccess,
+  ) {
     const nombre = this.nombreValido(dto.nombre);
     await this.exigirNombreLibre(nombre);
+    const rolId = dto.rolId ? await this.exigirRol(dto.rolId) : null;
     const repo = this.dataSource.getRepository(PuestoProceso);
     return repo.save(
       repo.create({
@@ -99,6 +126,7 @@ export class PuestosService {
         descripcion: dto.descripcion?.trim() || null,
         obligatorio: !!dto.obligatorio,
         orden: dto.orden ?? 100,
+        rolId,
         activo: true,
         createdBy: acceso.userName,
         updatedBy: acceso.userName,
@@ -108,7 +136,7 @@ export class PuestosService {
 
   async actualizar(
     id: string,
-    dto: { nombre?: string; descripcion?: string | null; obligatorio?: boolean; orden?: number },
+    dto: { nombre?: string; descripcion?: string | null; obligatorio?: boolean; orden?: number; rolId?: string | null },
     acceso: HiringAccess,
   ) {
     const repo = this.dataSource.getRepository(PuestoProceso);
@@ -122,8 +150,52 @@ export class PuestosService {
     if (dto.descripcion !== undefined) puesto.descripcion = dto.descripcion?.trim() || null;
     if (dto.obligatorio !== undefined) puesto.obligatorio = dto.obligatorio;
     if (dto.orden !== undefined) puesto.orden = dto.orden;
+    if (dto.rolId !== undefined) puesto.rolId = dto.rolId ? await this.exigirRol(dto.rolId) : null;
     puesto.updatedBy = acceso.userName;
     return repo.save(puesto);
+  }
+
+  /**
+   * Le da al rol del puesto los permisos por etapa que le faltan para hacer lo
+   * que el puesto hace (143).
+   *
+   * Solo agrega, punto por punto: nunca quita ni ensancha a la etapa, para no
+   * dar más de lo que el puesto pide. Lo que dependa del permiso general de la
+   * plataforma (`contratacion.aprobar`, etc.) no se toca —no es del módulo—: se
+   * devuelve en `pendientes` para que se dé en la administración de roles.
+   */
+  async completarPermisos(id: string, acceso: HiringAccess) {
+    const puesto = await this.exigirPuesto(id);
+    if (!puesto.rolId) {
+      throw new BadRequestException(`El puesto ${puesto.nombre} no tiene rol: elige uno antes de completar sus permisos`);
+    }
+    const rolId = await this.exigirRol(puesto.rolId);
+    const suyos = (await this.usos()).filter((u) => u.puestoId === id);
+    const { faltan, sinPermisoGeneral } = await this.permisosDelRol(rolId, suyos);
+    const sePueden = faltan.filter((f) => !sinPermisoGeneral.includes(f.accion));
+
+    if (sePueden.length) {
+      await this.dataSource.transaction(async (em) => {
+        for (const f of sePueden) {
+          await em.query(
+            `INSERT INTO hiring.alcances_permiso (rol_id, accion, etapa, numeral, tramite, confirmado, created_by)
+             SELECT $1::uuid, $2, NULL, $3, NULL, true, $4
+              WHERE NOT EXISTS (
+                SELECT 1 FROM hiring.alcances_permiso
+                 WHERE rol_id = $1::uuid AND accion = $2 AND numeral = $3 AND activo AND tramite IS NULL)`,
+            [rolId, f.accion, f.numeral, acceso.userName],
+          );
+        }
+      });
+      // Sin esto el cambio tardaría hasta un minuto en verse en este servidor.
+      this.alcance.limpiarCache();
+    }
+
+    return {
+      rol: (await this.nombresDeRoles([rolId])).get(rolId) ?? null,
+      agregados: sePueden.map((f) => `${ACCION_NOMBRE[f.accion]} la ${f.numeral}`),
+      pendientes: sinPermisoGeneral.map((a) => ACCION_NOMBRE[a]),
+    };
   }
 
   /**
@@ -251,7 +323,9 @@ export class PuestosService {
         problemas.push({
           puestoId: p.id,
           numeral: null,
-          mensaje: `Nadie puede ocupar el puesto ${p.nombre}: ninguna cuenta tiene a la vez ${this.permisosQuePide(suyos)}. Dalo en Permisos por etapa o quita alguna de esas actividades del puesto`,
+          mensaje: p.rolId
+            ? `Nadie puede ocupar el puesto ${p.nombre}: ninguna cuenta tiene a la vez permiso para ${this.permisosQuePide(suyos)}. Usa «Completar permisos» en el puesto o quita alguna de esas actividades`
+            : `Nadie puede ocupar el puesto ${p.nombre}: ninguna cuenta tiene a la vez permiso para ${this.permisosQuePide(suyos)}. Elige el rol del puesto y usa «Completar permisos», o dáselo a un mismo rol en Permisos por etapa`,
         });
       }
     }
@@ -270,7 +344,6 @@ export class PuestosService {
       .getRepository(AsignacionPuesto)
       .find({ where: { procesoId }, order: { asignadoAt: 'DESC' } });
     const usos = await this.usos(proceso.modalidad ?? null, undefined, await versionDelProceso(this.dataSource.manager, procesoId));
-    const delSupervisor = await this.puestoDelSupervisor(procesoId);
 
     const lista = [];
     for (const p of puestos) {
@@ -285,8 +358,6 @@ export class PuestosService {
         nombre: p.nombre,
         descripcion: p.descripcion,
         obligatorio: p.obligatorio,
-        /** Dónde se ocupa, si no es aquí: el del supervisor lo llena la 8.2. */
-        seOcupaEn: delSupervisor?.id === p.id ? '8.2' : null,
         usos: suyos.map((u) => ({ numeral: u.numeral, nombreActividad: u.nombreActividad, como: u.como })),
         ocupante: ocupa
           ? {
@@ -371,7 +442,6 @@ export class PuestosService {
       const proceso = await this.exigirProceso(em, procesoId, true);
       await this.exigirQuePuedaAsignar(em, procesoId, acceso);
       const puesto = await this.exigirPuesto(puestoId, em);
-      await this.exigirQueNoSeaElDelSupervisor(em, procesoId, puestoId);
 
       const usos = (await this.usos(proceso.modalidad ?? null, em, await versionDelProceso(em, procesoId))).filter(
         (u) => u.puestoId === puestoId,
@@ -379,7 +449,7 @@ export class PuestosService {
       const candidatos = await this.idsCandidatos(usos);
       if (!candidatos.includes(usuarioId)) {
         throw new BadRequestException(
-          `Esa persona no puede ocupar el puesto ${puesto.nombre}: le falta poder ${this.permisosQuePide(usos)}`,
+          `Esa persona no puede ocupar el puesto ${puesto.nombre}: le falta permiso para ${this.permisosQuePide(usos)}. Dáselo a su rol en Permisos por etapa o elige a otra persona`,
         );
       }
 
@@ -453,7 +523,6 @@ export class PuestosService {
       await this.exigirProceso(em, procesoId, true);
       await this.exigirQuePuedaAsignar(em, procesoId, acceso);
       const puesto = await this.exigirPuesto(puestoId, em);
-      await this.exigirQueNoSeaElDelSupervisor(em, procesoId, puestoId);
       const repo = em.getRepository(AsignacionPuesto);
       const actual = await repo.findOne({ where: { procesoId, puestoId, estado: 'VIGENTE' } });
       if (!actual) throw new NotFoundException(`Nadie ocupa el puesto ${puesto.nombre} en este proceso`);
@@ -471,162 +540,6 @@ export class PuestosService {
       });
     });
     return this.delProceso(procesoId, acceso);
-  }
-
-  // ------------------------------------------------------ el supervisor --
-
-  /**
-   * El puesto del supervisor en este proceso: el que avala las cuentas de
-   * cobro de la 9.4 según el flujo con que corre (migración 121).
-   *
-   * No hay un puesto «Supervisor» escrito en el código: la Dirección dice en
-   * la ficha de la 9.4 qué puesto la aprueba, y ese es el que la 8.2 llena con
-   * el acto de designación. Sin puesto en la 9.4, el aval queda en manos de
-   * quien tenga el permiso, como cualquier actividad sin regla.
-   */
-  async puestoDelSupervisor(procesoId: string, em?: EntityManager): Promise<PuestoProceso | null> {
-    const manager = em ?? this.dataSource.manager;
-    const [proceso] = await manager.query(`SELECT modalidad FROM hiring.procesos WHERE id::text = $1`, [procesoId]);
-    const { aprobacion } = await asignacionPara(manager, NUMERAL_AVAL, proceso?.modalidad ?? null, procesoId);
-
-    let ids: string[] = [];
-    if (aprobacion.tipo === 'ESCALON') ids = aprobacion.puestos ?? [];
-    if (aprobacion.tipo === 'CADENA') {
-      const [cadena] = await manager.query(`SELECT escalones FROM hiring.cadenas_aprobacion WHERE id::text = $1`, [
-        aprobacion.cadenaId,
-      ]);
-      ids = ((cadena?.escalones ?? []) as { puestos?: string[] }[]).flatMap((e) => e.puestos ?? []);
-    }
-    if (!ids.length) return null;
-
-    const puestos = await manager.getRepository(PuestoProceso).find({ where: { id: In(ids), activo: true } });
-    // El primero en el orden de la ficha: con dos puestos, avala el que se nombró primero.
-    return ids.map((id) => puestos.find((p) => p.id === id)).find(Boolean) ?? null;
-  }
-
-  /** Quién ocupa hoy el puesto del supervisor en el proceso. */
-  async ocupanteDelSupervisor(procesoId: string, em?: EntityManager): Promise<AsignacionPuesto | null> {
-    const manager = em ?? this.dataSource.manager;
-    const puesto = await this.puestoDelSupervisor(procesoId, manager);
-    if (!puesto) return null;
-    return manager
-      .getRepository(AsignacionPuesto)
-      .findOne({ where: { procesoId, puestoId: puesto.id, estado: 'VIGENTE' } });
-  }
-
-  /**
-   * Si quien pregunta es el supervisor del proceso.
-   *
-   * Por la cuenta que ocupa el puesto, no por la persona del directorio: la
-   * 8.2 guardaba el `id_person` y aquí se comparaba con el `id_user` de la
-   * sesión, así que nunca coincidían y solo el super admin podía avalar.
-   *
-   * Sin puesto configurado en la 9.4 responde que sí: decide el permiso, que
-   * ya exigió el guard. El super admin pasa siempre: es la llave de soporte.
-   */
-  async esElSupervisor(procesoId: string, acceso: HiringAccess, em?: EntityManager): Promise<boolean> {
-    if (acceso.roles?.includes('SUPER_ADMIN')) return true;
-    const manager = em ?? this.dataSource.manager;
-    if (!(await this.puestoDelSupervisor(procesoId, manager))) return true;
-    const ocupa = await this.ocupanteDelSupervisor(procesoId, manager);
-    return !!ocupa && this.esDe(ocupa, acceso);
-  }
-
-  /**
-   * Quiénes se pueden designar como supervisor: los candidatos del puesto, o
-   * sin puesto, quien pueda avalar la 9.4.
-   */
-  async candidatosASupervisor(procesoId: string, termino = ''): Promise<Candidato[]> {
-    const puesto = await this.puestoDelSupervisor(procesoId);
-    if (puesto) return this.candidatos(procesoId, puesto.id, termino);
-    return this.cuentas(await this.alcance.cuentasQuePueden('aprobar', NUMERAL_AVAL), termino, null);
-  }
-
-  /**
-   * La cuenta que se designa en la 8.2, si puede serlo. Dentro de la
-   * transacción de la designación.
-   */
-  async exigirCandidatoASupervisor(em: EntityManager, procesoId: string, usuarioId: string): Promise<Candidato> {
-    const puesto = await this.puestoDelSupervisor(procesoId, em);
-    const proceso = await this.exigirProceso(em, procesoId);
-    const usos = puesto
-      ? (await this.usos(proceso.modalidad ?? null, em, await versionDelProceso(em, procesoId))).filter(
-          (u) => u.puestoId === puesto.id,
-        )
-      : [];
-    const ids = puesto ? await this.idsCandidatos(usos) : await this.alcance.cuentasQuePueden('aprobar', NUMERAL_AVAL);
-    if (!ids.includes(usuarioId)) {
-      throw new BadRequestException(
-        puesto
-          ? `Esa persona no puede ocupar el puesto ${puesto.nombre}: le falta poder ${this.permisosQuePide(usos)}`
-          : `Esa persona no puede avalar las cuentas de cobro: le falta el permiso de aprobar la ${NUMERAL_AVAL}`,
-      );
-    }
-    const [cuenta] = await this.cuentas([usuarioId], '', puesto?.id ?? null);
-    if (!cuenta) throw new NotFoundException('Esa cuenta no existe o está inactiva');
-    return cuenta;
-  }
-
-  /**
-   * Pone en el puesto del supervisor a quien designó la 8.2, relevando a quien
-   * estuviera. Sin puesto configurado no hay nada que ocupar.
-   *
-   * No pide el permiso de repartir puestos: lo que autoriza es el acto de
-   * designación, que ya exigió `decidir` en la 8.2.
-   */
-  async ocuparPorDesignacion(
-    em: EntityManager,
-    procesoId: string,
-    cuenta: Candidato,
-    motivo: string,
-    acceso: HiringAccess,
-  ): Promise<string | null> {
-    const puesto = await this.puestoDelSupervisor(procesoId, em);
-    if (!puesto) return null;
-
-    await this.liberarPorDesignacion(em, procesoId, motivo, acceso);
-    const repo = em.getRepository(AsignacionPuesto);
-    const nueva = await repo.save(
-      repo.create({
-        procesoId,
-        puestoId: puesto.id,
-        usuarioId: cuenta.usuarioId,
-        usuarioNombre: cuenta.usuarioNombre,
-        personaId: cuenta.personaId ?? null,
-        nombre: cuenta.nombre,
-        estado: 'VIGENTE',
-        asignadoPor: acceso.userName,
-      }),
-    );
-    await this.traza(em, procesoId, nueva.id, 'DESIGNAR', acceso, {
-      puesto: puesto.nombre,
-      puestoId: puesto.id,
-      designado: cuenta.nombre,
-      origen: '8.2',
-      numerales: [NUMERAL_AVAL],
-    });
-    return puesto.id;
-  }
-
-  /** Deja vacío el puesto del supervisor: se relevó en la 8.2 o se reasigna. */
-  async liberarPorDesignacion(em: EntityManager, procesoId: string, motivo: string, acceso: HiringAccess) {
-    const ocupa = await this.ocupanteDelSupervisor(procesoId, em);
-    if (!ocupa) return;
-    ocupa.estado = 'RELEVADO';
-    ocupa.relevadoAt = new Date();
-    ocupa.relevadoPor = acceso.userName;
-    ocupa.motivoRelevo = motivo;
-    await em.getRepository(AsignacionPuesto).save(ocupa);
-  }
-
-  /** El puesto del supervisor no se toca desde la 3.3: lo llena el acto de la 8.2. */
-  private async exigirQueNoSeaElDelSupervisor(em: EntityManager, procesoId: string, puestoId: string) {
-    const supervisor = await this.puestoDelSupervisor(procesoId, em);
-    if (supervisor?.id === puestoId) {
-      throw new ConflictException(
-        `El puesto ${supervisor.nombre} se ocupa con la designación de la 8.2: ahí se carga el acto que lo nombra`,
-      );
-    }
   }
 
   /** Los procesos en los que quien pregunta ocupa algún puesto. */
@@ -688,6 +601,61 @@ export class PuestosService {
     return [...new Set(faltan)];
   }
 
+  /**
+   * Lo que el rol no tiene de lo que piden esos usos. Lo cubre un alcance del
+   * punto, de su etapa o de todo el módulo, igual que en `cuentasQuePueden`.
+   */
+  async permisosDelRol(rolId: string, usos: UsoDePuesto[]): Promise<PermisosDelRol> {
+    const pedidos = [...new Map(usos.map((u) => [`${u.accion}|${u.numeral}`, u])).values()];
+    if (!pedidos.length) return { faltan: [], sinPermisoGeneral: [] };
+    const alcances: { accion: string; etapa: number | null; numeral: string | null; tramite: string | null }[] =
+      await this.dataSource.query(
+        `SELECT accion, etapa, numeral, tramite FROM hiring.alcances_permiso WHERE rol_id::text = $1 AND activo`,
+        [rolId],
+      );
+    const generales: { code: string }[] = await this.dataSource.query(
+      `SELECT DISTINCT p.code
+         FROM auth.role_permissions rp
+         JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
+        WHERE rp.id_rol::text = $1 AND rp.is_active = true`,
+      [rolId],
+    );
+    const tiene = (accion: string, numeral: string) =>
+      alcances.some(
+        (a) =>
+          a.accion === accion &&
+          (a.numeral === numeral ||
+            (a.etapa !== null && Number(a.etapa) === etapaDe(numeral)) ||
+            (a.etapa === null && a.numeral === null && a.tramite === null)),
+      );
+    const faltan = pedidos
+      .filter((u) => !tiene(u.accion, u.numeral))
+      .map((u) => ({ accion: u.accion, numeral: u.numeral, nombreActividad: u.nombreActividad }))
+      .sort((a, b) => a.numeral.localeCompare(b.numeral, 'es', { numeric: true }));
+    const sinPermisoGeneral = [...new Set(pedidos.map((u) => u.accion))].filter(
+      (a) => !generales.some((g) => g.code === PERMISO_DE_ACCION[a]),
+    );
+    return { faltan, sinPermisoGeneral };
+  }
+
+  private async nombresDeRoles(ids: string[]): Promise<Map<string, string>> {
+    if (!ids.length) return new Map();
+    const filas: { id: string; nombre: string }[] = await this.dataSource.query(
+      `SELECT id::text AS id, name AS nombre FROM auth.role WHERE id::text = ANY($1::text[]) AND is_active = true`,
+      [[...new Set(ids)]],
+    );
+    return new Map(filas.map((f) => [f.id, f.nombre]));
+  }
+
+  private async exigirRol(rolId: string): Promise<string> {
+    const [rol] = await this.dataSource.query(
+      `SELECT id::text AS id FROM auth.role WHERE id::text = $1 AND is_active = true`,
+      [rolId],
+    );
+    if (!rol) throw new NotFoundException('Ese rol no existe o está inactivo');
+    return rol.id;
+  }
+
   private permisosQuePide(usos: UsoDePuesto[]): string {
     return [...new Set(usos.map((u) => `${ACCION_NOMBRE[u.accion]} la ${u.numeral}`))].join(', ');
   }
@@ -719,7 +687,7 @@ export class PuestosService {
     const consulta = em.getRepository(Proceso).createQueryBuilder('p').where('p.id = :procesoId', { procesoId });
     if (bloquear) consulta.setLock('pessimistic_write');
     const proceso = await consulta.getOne();
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

@@ -21,7 +21,7 @@ import {
 } from '../shared/PiezasPanel';
 import { momento } from '../shared/fechas';
 import { useFirma } from '../shared/useFirma';
-import { DocumentoVisible, VisorDocumento } from '../shared/VisorDocumento';
+import { DocumentoVisible, VisorDocumento, sePuedeVer } from '../shared/VisorDocumento';
 import { ActaDeLaSesion } from './ActaDeLaSesion';
 
 interface Props {
@@ -184,6 +184,16 @@ export function PanelSegundaSesion({ procesoId, onCambio }: Props) {
         la directora, y después por el Comité de Contratación. La resolución de apertura (5.7) va
         cuando el comité lo apruebe.
       </Ayuda>
+
+      {/* Sesión de QA del 04/11: la cuantía decide la segunda sesión con la
+          misma regla que la primera (3.7). */}
+      {estado.sinComite ? (
+        <Aviso tono="aviso" titulo="Sin segunda sesión del comité por la cuantía">
+          En la 3.7 el proceso no pasó por el Comité de Contratación porque su valor no supera el
+          umbral. Con la misma regla no se pide la segunda sesión ni su acta: la apertura va cuando
+          el abogado revisor y la directora aprueben el pliego definitivo.
+        </Aviso>
+      ) : null}
 
       {/* ------------------------------------------------------- el CDP ---- */}
       {estado.cdp.cumplido ? (
@@ -522,6 +532,7 @@ function FilaDocumento({
 
         {vigente?.descargaUrl && (
           <>
+            {sePuedeVer(vigente.mimeType, vigente.nombre) && (
             <button
               type="button"
               onClick={() =>
@@ -536,6 +547,7 @@ function FilaDocumento({
             >
               <Eye className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
+            )}
             <a
               href={contratacionService.urlDescarga(vigente.descargaUrl)}
               target="_blank"

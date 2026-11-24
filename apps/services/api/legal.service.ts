@@ -1339,13 +1339,68 @@ export interface CreateRiesgoData {
 export interface RiesgoHistorialAPI {
     id: string;
     riesgoId: string;
-    tipoEvento: 'CREACION' | 'ACTUALIZACION' | 'CAMBIO_ETAPA' | 'CAMBIO_ZONA' | 'ARCHIVADO' | 'CONTROL_AGREGADO' | 'CONTROL_MODIFICADO' | 'TRATAMIENTO_AGREGADO';
+    tipoEvento: 'CREACION' | 'ACTUALIZACION' | 'CAMBIO_ETAPA' | 'CAMBIO_ZONA' | 'ARCHIVADO' | 'CONTROL_AGREGADO' | 'CONTROL_MODIFICADO' | 'TRATAMIENTO_AGREGADO' | 'SEGUIMIENTO_CONTROL' | 'SEGUIMIENTO_VENCIDO';
     descripcion: string;
     campoModificado: string | null;
     valorAnterior: string | null;
     valorNuevo: string | null;
     usuario: string;
     createdAt: string;
+}
+
+// ---- Seguimiento cuatrimestral de controles (EFDS-2416) ----
+export type ResultadoSeguimientoControl = 'APLICADO' | 'APLICADO_PARCIALMENTE' | 'NO_APLICADO';
+export type EstadoCorteSeguimiento = 'PENDIENTE' | 'REGISTRADO' | 'VENCIDO';
+
+export interface EvidenciaSeguimientoAPI {
+    nombre: string;
+    archivo: string;
+    url: string;
+    tipo: string;
+    tamano: number;
+}
+
+export interface SeguimientoControlAPI {
+    id: string;
+    riesgoId: string;
+    controlId: string;
+    vigencia: number;
+    cuatrimestre: number;
+    cuatrimestreLabel: string;
+    fechaEjecucion: string;
+    comentarios: string;
+    resultado: ResultadoSeguimientoControl;
+    efectividad: number;
+    evidencias: EvidenciaSeguimientoAPI[];
+    responsable: string;
+    createdAt: string;
+    updatedAt: string;
+    editable: boolean;
+}
+
+export interface CorteSeguimientoAPI {
+    cuatrimestre: number;
+    label: string;
+    inicio: string;
+    fin: string;
+    estado: EstadoCorteSeguimiento;
+    puedeRegistrar: boolean;
+    seguimiento: SeguimientoControlAPI | null;
+}
+
+export interface ControlSeguimientoAPI {
+    controlId: string;
+    descripcion: string;
+    efectividad: number;
+    cortes: CorteSeguimientoAPI[];
+}
+
+export interface RiesgoSeguimientosAPI {
+    vigencia: number;
+    hoy: string;
+    config: { maxMb: number; extensiones: string[] };
+    controles: ControlSeguimientoAPI[];
+    historial: SeguimientoControlAPI[];
 }
 
 class RiesgosService {
@@ -1412,6 +1467,30 @@ class RiesgosService {
 
     async getHistorial(riesgoId: string): Promise<RiesgoHistorialAPI[]> {
         return apiClient.get<RiesgoHistorialAPI[]>(`${SERVICE_PREFIX}/riesgos/${riesgoId}/historial`);
+    }
+
+    async getSeguimientos(riesgoId: string): Promise<RiesgoSeguimientosAPI> {
+        return apiClient.get<RiesgoSeguimientosAPI>(`${SERVICE_PREFIX}/riesgos/${riesgoId}/seguimientos`);
+    }
+
+    async crearSeguimiento(riesgoId: string, controlId: string, formData: FormData): Promise<SeguimientoControlAPI> {
+        return apiClient.post<SeguimientoControlAPI>(
+            `${SERVICE_PREFIX}/riesgos/${riesgoId}/controles/${encodeURIComponent(controlId)}/seguimientos`,
+            formData,
+        );
+    }
+
+    async actualizarSeguimiento(riesgoId: string, seguimientoId: string, formData: FormData): Promise<SeguimientoControlAPI> {
+        return apiClient.patch<SeguimientoControlAPI>(
+            `${SERVICE_PREFIX}/riesgos/${riesgoId}/seguimientos/${seguimientoId}`,
+            formData,
+        );
+    }
+
+    getEvidenciaSeguimientoUrl(archivo: string, nombre: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/files/download/${archivo}?name=${encodeURIComponent(nombre)}`;
     }
 }
 

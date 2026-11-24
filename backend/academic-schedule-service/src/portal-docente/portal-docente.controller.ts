@@ -1,4 +1,4 @@
-import { Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { PERMISO_PORTAL_TOMAR, PERMISO_PORTAL_VER } from '../auth/programacion-permissions.js';
@@ -8,6 +8,7 @@ import { tokenDe } from '../acceso/token.js';
 import { EscrituraEn } from '../acceso/escritura.decorator.js';
 import { tomaDeFranjasHabilitada } from './flujo-docente.js';
 import { VistaService } from '../vista/vista.service.js';
+import { HorarioDocenteService, type FranjaDefinible } from './horario-docente.service.js';
 
 /**
  * Portal del docente — EFDS-1938.
@@ -22,6 +23,7 @@ export class PortalDocenteController {
     private readonly portal: PortalDocenteService,
     private readonly permisos: ProgramacionPermissionsService,
     private readonly vista: VistaService,
+    private readonly horario: HorarioDocenteService,
   ) {}
 
   private roles(req: Request): string[] {
@@ -90,6 +92,39 @@ export class PortalDocenteController {
     await this.exigir(req, PERMISO_PORTAL_VER);
     const docente = await this.portal.resolverDocente(this.idUser(req));
     return { success: true, data: await this.portal.acumulado(docente.documento, tokenDe(req)) };
+  }
+
+  /**
+   * GET /portal-docente/grupos-virtuales — grupos virtuales asignados al docente, con su
+   * horario, las horas requeridas y programadas, y si puede cambiarlo ahora (063).
+   */
+  @Get('grupos-virtuales')
+  async gruposVirtuales(@Req() req: Request) {
+    await this.exigir(req, PERMISO_PORTAL_VER);
+    const yo = await this.portal.resolverDocente(this.idUser(req));
+    return { success: true, data: await this.horario.grupos(yo.idPerson) };
+  }
+
+  /** POST /portal-docente/grupos-virtuales/:idGrupo/franjas { diaSemana, horaInicio, horaFin } */
+  @Post('grupos-virtuales/:idGrupo/franjas')
+  @EscrituraEn({ grupo: { param: 'idGrupo' } })
+  async definirFranja(@Req() req: Request, @Param('idGrupo', ParseUUIDPipe) idGrupo: string, @Body() body: FranjaDefinible) {
+    await this.exigir(req, PERMISO_PORTAL_VER);
+    const yo = await this.portal.resolverDocente(this.idUser(req));
+    return { success: true, data: await this.horario.crearFranja(yo.idPerson, idGrupo, body, tokenDe(req)) };
+  }
+
+  /** DELETE /portal-docente/grupos-virtuales/:idGrupo/franjas/:idFranja — quita una sesión que definió. */
+  @Delete('grupos-virtuales/:idGrupo/franjas/:idFranja')
+  @EscrituraEn({ grupo: { param: 'idGrupo' } })
+  async quitarFranja(
+    @Req() req: Request,
+    @Param('idGrupo', ParseUUIDPipe) idGrupo: string,
+    @Param('idFranja', ParseUUIDPipe) idFranja: string,
+  ) {
+    await this.exigir(req, PERMISO_PORTAL_VER);
+    const yo = await this.portal.resolverDocente(this.idUser(req));
+    return { success: true, data: await this.horario.eliminarFranja(yo.idPerson, idGrupo, idFranja) };
   }
 
   /** POST /portal-docente/tomar/:idFranja — toma una franja (transacción + lock). */

@@ -3457,6 +3457,8 @@ export class GraduationCertificatesService {
       },
       body: JSON.stringify({
         to: graduateEmail,
+        modulo: 'graduates-certificates',
+        evento: 'titulos_decision_al_graduado',
         subject,
         text,
         html,
@@ -3685,6 +3687,8 @@ export class GraduationCertificatesService {
       },
       body: JSON.stringify({
         to: registeredEmail,
+        modulo: 'graduates-certificates',
+        evento: 'titulos_aviso_al_graduado',
         subject,
         text,
         html,
@@ -6500,6 +6504,8 @@ export class GraduationCertificatesService {
       },
       body: JSON.stringify({
         to: email,
+        modulo: 'graduates-certificates',
+        evento: 'titulos_solicitud_en_revision',
         subject,
         text,
         html,
@@ -6602,6 +6608,8 @@ export class GraduationCertificatesService {
       },
       body: JSON.stringify({
         to: email,
+        modulo: 'graduates-certificates',
+        evento: 'titulos_solicitud_rechazada',
         subject,
         text,
         html,

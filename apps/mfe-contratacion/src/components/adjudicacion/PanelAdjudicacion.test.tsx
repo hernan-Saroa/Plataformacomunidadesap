@@ -494,7 +494,22 @@ describe('PanelAdjudicacion · etapa 7', () => {
     expect((contratacionService.generarInformeDefinitivo as any).mock.calls[0][3]).toEqual({
       oferenteId: 'of-1',
       valorEvaluado: 39_500_000,
+      justificacionCambios: '',
     });
+  });
+
+  it('el informe definitivo admite anexos y la justificación de los cambios (QA del 04/11, EFDS-1159)', async () => {
+    servicio.informeDefinitivo.mockResolvedValue(
+      definitivo({ informe: null, puedeGenerar: true, actualizarPideMotivo: false }),
+    );
+    servicio.adjudicacion.mockResolvedValue(
+      adjudicacion({ informeDefinitivoPublicado: false, puedeAdjudicar: false, ganadoraPropuesta: null }),
+    );
+    render(<PanelAdjudicacion procesoId="p-1" />);
+    await screen.findByRole('button', { name: /Generar informe definitivo/i });
+
+    expect(screen.getByLabelText('Documentos adicionales del informe definitivo')).toHaveAttribute('multiple');
+    expect(screen.getByLabelText('Justificación de los cambios frente al informe preliminar')).toBeInTheDocument();
   });
 });
 

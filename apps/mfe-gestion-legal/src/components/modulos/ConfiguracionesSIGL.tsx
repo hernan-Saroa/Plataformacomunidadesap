@@ -29,6 +29,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { authService } from '../../../../services/api/authService';
+import { textoEstadoGuardado, contarPlanesDeEnte } from '../config/entesControlPM';
 import { rolesService } from '../../../../services/api/roles.service';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
@@ -291,6 +292,45 @@ export function ConfiguracionesSIGL() {
   } = useConfiguracionesSIGL();
 
   const [moduloActivo, setModuloActivo] = useState<string>('defensa-judicial');
+
+  // Ente de control pendiente de confirmar para eliminarlo (null = diálogo cerrado).
+  const [enteAEliminar, setEnteAEliminar] = useState<EnteControlPM | null>(null);
+  const [verificandoEnte, setVerificandoEnte] = useState(false);
+
+  // Un ente con planes de mejoramiento asociados solo puede inactivarse. Se consultan los
+  // planes activos y los archivados; si no se puede verificar, no se ofrece eliminar
+  // (el backend también lo rechaza).
+  const solicitarEliminarEnte = async (ente: EnteControlPM) => {
+    setVerificandoEnte(true);
+    try {
+      const [planes, archivados] = await Promise.all([
+        legalService.getPlanesMejoramiento(),
+        legalService.getPlanesMejoramientoArchivados(),
+      ]);
+      const asociados = contarPlanesDeEnte([...planes, ...archivados], ente.id);
+      if (asociados > 0) {
+        toast.error(`No se puede eliminar "${ente.nombre}"`, {
+          description: `Tiene ${asociados} plan(es) de mejoramiento asociado(s). Solo puede inactivarse.`,
+          duration: 6000,
+        });
+        return;
+      }
+      setEnteAEliminar(ente);
+    } catch (error) {
+      toast.error('No se pudo verificar si el ente tiene planes asociados', {
+        description: 'Inténtalo de nuevo. Si el ente ya no se usa, también puedes inactivarlo.',
+      });
+    } finally {
+      setVerificandoEnte(false);
+    }
+  };
+
+  const confirmarEliminarEnte = () => {
+    if (!enteAEliminar) return;
+    actualizarEntesControlPM(entesControlPM.filter(o => o.id !== enteAEliminar.id));
+    toast.success('Ente de control eliminado');
+    setEnteAEliminar(null);
+  };
 
   // Reglas globales de alerta de vencimiento de términos (viven en el backend,
   // no en ConfiguracionesSIGLContext/localStorage, porque el scheduler de
@@ -1202,8 +1242,16 @@ export function ConfiguracionesSIGL() {
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
-            <span className="text-xs text-gray-400 hidden md:inline flex-shrink-0">
-              ⚡ Guardado automático activo
+            <span
+              role="status"
+              aria-live="polite"
+              className={`text-xs hidden md:inline flex-shrink-0 ${
+                savingStatus === 'error' ? 'text-red-600 font-semibold'
+                  : savingStatus === 'saved' ? 'text-green-600 font-semibold'
+                  : 'text-gray-400'
+              }`}
+            >
+              {textoEstadoGuardado(savingStatus)}
             </span>
             <button
               onClick={() => {
@@ -2663,12 +2711,10 @@ export function ConfiguracionesSIGL() {
                             </label>
 
                             <button
-                              onClick={() => {
-                                const nuevos = entesControlPM.filter(o => o.id !== ente.id);
-                                actualizarEntesControlPM(nuevos);
-                                toast.success('Ente de control eliminado');
-                              }}
-                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              onClick={() => solicitarEliminarEnte(ente)}
+                              disabled={verificandoEnte}
+                              aria-label={`Eliminar ente ${ente.nombre}`}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                               title="Eliminar ente"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -2743,6 +2789,39 @@ export function ConfiguracionesSIGL() {
                     {entesControlPM.length === 0 && (
                       <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
                         <p>No hay entes de control registrados.</p>
+                      </div>
+                    )}
+
+                    {enteAEliminar && (
+                      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4">
+                        <div
+                          role="alertdialog"
+                          aria-modal="true"
+                          aria-labelledby="eliminar-ente-titulo"
+                          className="bg-white rounded-lg shadow-xl max-w-md w-full p-5"
+                        >
+                          <h3 id="eliminar-ente-titulo" className="text-base font-bold text-gray-900">
+                            ¿Eliminar el ente de control?
+                          </h3>
+                          <p className="text-sm text-gray-600 mt-2">
+                            Se eliminará "{enteAEliminar.nombre}" de la configuración. Esta acción no se puede deshacer.
+                          </p>
+                          <div className="flex justify-end gap-2 mt-4">
+                            <button
+                              autoFocus
+                              onClick={() => setEnteAEliminar(null)}
+                              className="px-3 py-2 text-sm font-semibold border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={confirmarEliminarEnte}
+                              className="px-3 py-2 text-sm font-semibold rounded-lg text-white bg-red-600 hover:bg-red-700"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>

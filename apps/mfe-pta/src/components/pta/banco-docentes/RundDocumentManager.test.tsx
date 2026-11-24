@@ -5,7 +5,10 @@ import { RundDocumentManager } from './RundDocumentManager';
 import { apiClient } from '../../../../../shell/src/services/api';
 import { toast } from 'sonner';
 import { RUND_BLOCK_LABELS } from '../../../utils/rundDocumentScope';
+import { RUND_MAX_EVIDENCES_PER_TYPE } from '../../../utils/rundEvidenceRules';
 import { RundSupportList, type RundSupportReview } from './RundSupportList';
+import { RundSoportesCodificacion } from './RundSoportesCodificacion';
+import { AuthProvider } from '../../../contexts/AuthContext';
 
 vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), upload: vi.fn(), getBlob: vi.fn(), delete: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -100,6 +103,57 @@ describe('Biblioteca compacta de documentos RUND', () => {
     await loaded();
     expect(screen.getByTitle('Descargar')).toBeTruthy();
     expect(screen.getByTitle('Eliminar')).toBeTruthy();
+  });
+
+  describe('tabla de soportes por codificación dentro de la sección', () => {
+    const conTabla = (review: RundSupportReview) => render(<RundDocumentManager {...props} activeBlock="FORMACION" activeBlockLabel="01 Títulos de formación" supportReview={review}
+      renderSupportTable={({ accionesExtra }) => <RundSoportesCodificacion incrustada grupos={review.groups} accionesExtra={accionesExtra}
+        onUpload={vi.fn()} onView={review.onView} onDelete={vi.fn()} />} />);
+
+    it('una sola sección «Documentos de <carpeta>» con la tabla dentro y sin las tarjetas repetidas', async () => {
+      const { review } = reviewFixture('FORMACION', 'diploma_maestria');
+      conTabla(review);
+      await loaded();
+      expect(screen.getAllByRole('heading', { name: /Documentos de 01 Títulos de formación/ })).toHaveLength(1);
+      expect(screen.getByRole('region', { name: 'Soportes documentales según codificación' })).toBeTruthy();
+      expect(screen.queryByText('Soportes documentales según codificación', { selector: 'h4' })).toBeNull();
+      expect(screen.queryByRole('group', { name: 'Soportes de esta sección' })).toBeNull();
+      expect(screen.queryByText('Agregar soportes')).toBeNull();
+      // Historial, Actualizar y Agregar documento siguen en el encabezado de la misma sección.
+      for (const nombre of ['Historial', 'Actualizar', 'Agregar documento']) expect(screen.getByRole('button', { name: new RegExp(nombre) })).toBeTruthy();
+    });
+
+    it('el archivo aparece una sola vez, con Ver, Descargar y la revisión del soporte', async () => {
+      const { file, support, review } = reviewFixture('FORMACION', 'diploma_maestria');
+      conTabla(review);
+      await loaded();
+      expect(screen.getAllByText(file.nombreArchivo)).toHaveLength(1);
+      expect(screen.getByRole('button', { name: /^Ver / })).toBeTruthy();
+      expect(screen.getByTitle('Descargar')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Validar soporte' }));
+      expect(review.onReview).toHaveBeenCalledWith(support, review.groups[0], 'Aprobado');
+      fireEvent.click(screen.getByRole('button', { name: 'Devolver soporte' }));
+      expect(review.onReview).toHaveBeenCalledWith(support, review.groups[0], 'Rechazado');
+    });
+
+    it('quien solo consulta no ve Validar ni Devolver', async () => {
+      const { review } = reviewFixture('FORMACION', 'diploma_maestria');
+      review.canValidate = false;
+      conTabla(review);
+      await loaded();
+      expect(screen.queryByRole('button', { name: 'Validar soporte' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Devolver soporte' })).toBeNull();
+    });
+
+    it('el historial muestra los archivos y versiones anteriores en lugar de la tabla', async () => {
+      const { review } = reviewFixture('FORMACION', 'diploma_maestria');
+      conTabla(review);
+      await loaded();
+      fireEvent.click(screen.getByRole('button', { name: /Historial/ }));
+      await loaded();
+      expect(screen.queryByRole('region', { name: 'Soportes documentales según codificación' })).toBeNull();
+      expect(screen.getByRole('button', { name: /Ver vigentes/ })).toBeTruthy();
+    });
   });
 
   it('la carga principal de PDF se puede abrir con un botón enfocable', async () => {
@@ -216,7 +270,7 @@ describe('Biblioteca compacta de documentos RUND', () => {
     expect(row('Categoria.pdf').queryByTitle(/Reemplazar/)).toBeNull();
     expect(row('Categoria.pdf').queryByTitle('Eliminar')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Agregar documento/ }));
-    expect(screen.queryByRole('button', { name: 'Anexo general', exact: true })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Anexo general (según aplique)', exact: true })).toBeNull();
     expect(screen.queryByText('Categoría', { selector: 'option' })).toBeNull();
   });
   it.each(Object.entries(RUND_BLOCK_LABELS))('muestra únicamente archivos de %s y los recupera al regresar a la pestaña', async (block, label) => {
@@ -352,7 +406,7 @@ describe('Biblioteca compacta de documentos RUND', () => {
     expect(screen.getByText('Contacto no requiere documentos soporte')).toBeTruthy();
     expect(screen.queryByLabelText('Información que acredita')).toBeNull();
     expect(screen.queryByLabelText('Cargar PDF')).toBeNull();
-    fireEvent.click(screen.getByRole('button',{name:'Anexo general',exact:true}));
+    fireEvent.click(screen.getByRole('button',{name:'Anexo general (según aplique)',exact:true}));
     fireEvent.click(screen.getByText('Clasificación opcional'));
     fireEvent.change(screen.getByLabelText('Categoría documental'),{target:{value:'TITULOS'}});
     fireEvent.change(screen.getByLabelText('Cargar PDF'),{target:{files:[new File(['%PDF-1.7'],'anexo.pdf',{type:'application/pdf'})]}});
@@ -582,11 +636,21 @@ describe('Biblioteca compacta de documentos RUND', () => {
     await waitFor(() => expect(props.onChanged).toHaveBeenCalled());
   });
 
+  it('marca el anexo general como opcional («según aplique») y mantiene el soporte como modo inicial (1356)', async () => {
+    render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" />);
+    await loaded();
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar documento' }));
+    const anexo = screen.getByRole('button', { name: 'Anexo general (según aplique)', exact: true });
+    expect(anexo.textContent).toContain('(según aplique)');
+    expect(anexo.getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /^Soporte de/ }).getAttribute('aria-pressed')).toBe('true');
+  });
+
   it.each(['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'])('permite el anexo sencillo desde %s sin vincularlo a un punto de control', async block => {
     render(<RundDocumentManager {...props} activeBlock={block} />);
     await loaded();
     fireEvent.click(screen.getByRole('button', { name: 'Agregar documento' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Anexo general', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Anexo general (según aplique)', exact: true }));
     const classification = screen.getByText('Clasificación opcional').closest('details')!;
     expect(classification.open).toBe(false);
     expect((within(classification).getByLabelText('Categoría documental') as HTMLSelectElement).value).toBe('OTROS');
@@ -606,15 +670,15 @@ describe('Biblioteca compacta de documentos RUND', () => {
     const view = render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" evidenceOptions={options} />);
     await screen.findByText('Identificación.pdf');
     fireEvent.click(screen.getByRole('button', { name: 'Agregar documento' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Anexo general', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Anexo general (según aplique)', exact: true }));
     fireEvent.click(screen.getByText('Clasificación opcional'));
     fireEvent.change(screen.getByLabelText('Categoría documental'), { target: { value: 'TITULOS' } });
     fireEvent.change(screen.getByLabelText('Descripción del documento'), { target: { value: 'Descripción anterior' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Anexo general', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Anexo general (según aplique)', exact: true }));
     expect((screen.getByLabelText('Descripción del documento') as HTMLInputElement).value).toBe('Descripción anterior');
     view.rerender(<RundDocumentManager {...props} activeBlock="FORMACION" evidenceOptions={options} />);
     expect((screen.getByLabelText('Descripción del documento') as HTMLInputElement).value).toBe('');
-    fireEvent.click(screen.getByRole('button', { name: 'Anexo general', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Anexo general (según aplique)', exact: true }));
     expect((screen.getByLabelText('Descripción del documento') as HTMLInputElement).value).toBe('');
     expect((screen.getByLabelText('Categoría documental') as HTMLSelectElement).value).toBe('OTROS');
     expect(screen.getByText('Clasificación opcional').closest('details')!.open).toBe(false);
@@ -827,11 +891,102 @@ describe('Varias evidencias por punto de control', () => {
   });
 
   it('impide agregar más evidencias al llegar al máximo', async () => {
-    setDocuments(Array.from({ length: 10 }, (_, index) => evidence(`e-${index}`, `Evidencia ${index}.pdf`, `2026-10-${String(index + 1).padStart(2, '0')}T10:00:00Z`)));
+    setDocuments(Array.from({ length: RUND_MAX_EVIDENCES_PER_TYPE }, (_, index) => evidence(`e-${index}`, `Evidencia ${index}.pdf`, `2026-10-${String(index % 28 + 1).padStart(2, '0')}T10:00:00Z`)));
     render(<RundDocumentManager {...props} activeBlock="IDENTIDAD" activeBlockLabel="Identidad" />);
     await screen.findByText('Evidencia 0.pdf');
     fireEvent.click(screen.getByRole('button', { name: /Agregar documento/ }));
-    expect(screen.getByText(/Este punto ya tiene 10 evidencias vigentes\. Reemplaza o elimina una/)).toBeTruthy();
+    expect(screen.getByText(new RegExp(`Este punto ya tiene ${RUND_MAX_EVIDENCES_PER_TYPE} evidencias vigentes\\. Reemplaza o elimina una`))).toBeTruthy();
     expect((screen.getByLabelText('Cargar PDF') as HTMLInputElement).disabled).toBe(true);
+  });
+});
+
+describe('HU 2426 — perfil Consulta RUND en la biblioteca de documentos', () => {
+  const montar = (permisos: string[]) => render(
+    <AuthProvider userEmail="consulta@esap.edu.co" permisos={permisos}>
+      <RundDocumentManager {...props} canManage={false} />
+    </AuthProvider>);
+
+  it('CA-06: visualiza los soportes pero no ofrece Descargar, Historial ni acciones de cambio', async () => {
+    montar(['banco-docentes.rund.consulta']);
+    await loaded();
+    expect(screen.getAllByTitle('Visualizar').length).toBeGreaterThan(0);
+    expect(screen.queryAllByTitle('Descargar')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: /Historial/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Agregar documento/ })).toBeNull();
+    expect(screen.queryAllByTitle('Eliminar')).toHaveLength(0);
+    expect(apiClient.get).not.toHaveBeenCalledWith(expect.stringContaining('historial=true'));
+  });
+
+  it('regresión: un perfil operativo con la misma vista conserva Descargar e Historial', async () => {
+    montar(['banco-docentes.rund.revision']);
+    await loaded();
+    expect(screen.getAllByTitle('Descargar').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /Historial/ })).toBeTruthy();
+  });
+});
+
+describe('Carga masiva desde «Documentos de <carpeta>»', () => {
+  const campo = { campo: 'Experiencia docente', documento: 'Experiencia docente', tipoSoporte: 'experiencia_docente' };
+  const revision = (): RundSupportReview => ({
+    groups: [{ field: campo, fields: [campo], uploadField: campo, evidences: [], canManage: true, canUpload: true }],
+    canValidate: false, disabled: false, busy: null, onView: vi.fn(), onReview: vi.fn(), onUpload: vi.fn(),
+  });
+  const montar = (extra: Record<string, unknown> = {}) => render(
+    <RundDocumentManager {...props} activeBlock="EXPERIENCIA_DOCENTE" supportReview={revision()} onSubirMasivo={vi.fn().mockResolvedValue(null)} {...extra} />,
+  );
+
+  it('muestra «Carga masiva» al lado de «Agregar documento»', async () => {
+    montar();
+    await loaded();
+    const masiva = screen.getByRole('button', { name: /Carga masiva/ });
+    const agregar = screen.getByRole('button', { name: /Agregar documento/ });
+    expect(masiva.parentElement).toBe(agregar.parentElement);
+    expect(masiva.compareDocumentPosition(agregar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('no se ofrece en Transversal (no es una carpeta de la codificación) ni en el historial', async () => {
+    const transversal = montar({ activeBlock: 'TRANSVERSAL' });
+    await loaded();
+    expect(screen.queryByRole('button', { name: /Carga masiva/ })).toBeNull();
+    transversal.unmount();
+    montar();
+    await loaded();
+    fireEvent.click(screen.getByRole('button', { name: /Historial/ }));
+    await loaded();
+    expect(screen.queryByRole('button', { name: /Carga masiva/ })).toBeNull();
+  });
+
+  it('no se ofrece sin permiso de gestión, en modo consulta del flujo de incorporación ni sin carga masiva configurada', async () => {
+    const sinPermiso = montar({ canManage: false });
+    await loaded();
+    expect(screen.queryByRole('button', { name: /Carga masiva/ })).toBeNull();
+    sinPermiso.unmount();
+    const incorporacion = montar({ allowedSupportTypes: ['contrato'] });
+    await loaded();
+    expect(screen.queryByRole('button', { name: /Carga masiva/ })).toBeNull();
+    incorporacion.unmount();
+    montar({ onSubirMasivo: undefined });
+    await loaded();
+    expect(screen.queryByRole('button', { name: /Carga masiva/ })).toBeNull();
+  });
+
+  it('al terminar el lote recarga los documentos, avisa al panel y emite el evento de sincronización', async () => {
+    const onSubirMasivo = vi.fn().mockResolvedValue(null);
+    const evento = vi.fn();
+    window.addEventListener('rund:soporte-uploaded', evento);
+    const onChanged = vi.fn();
+    montar({ onSubirMasivo, onChanged });
+    await loaded();
+    const llamadasAntes = vi.mocked(apiClient.get).mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: /Carga masiva/ }));
+    const entrada = screen.getByLabelText(/Documentos \(PDF/);
+    fireEvent.change(entrada, { target: { files: [new File(['%PDF'], '2002_1_ESAP.pdf', { type: 'application/pdf' })] } });
+    fireEvent.click(screen.getByRole('button', { name: /Cargar 1 archivo/ }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(onSubirMasivo).toHaveBeenCalledTimes(1);
+    expect(onSubirMasivo.mock.calls[0][2].descripcion).toContain('Año 2002 · Folio 1');
+    expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(llamadasAntes);
+    expect(evento).toHaveBeenCalledTimes(1);
+    window.removeEventListener('rund:soporte-uploaded', evento);
   });
 });

@@ -3,11 +3,24 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 export class CreateMantenimientoDto {
-  @ApiProperty({ example: 'id-sede-uuid', description: 'Sede a la que pertenece la solicitud' })
+  @ApiPropertyOptional({ example: 'id-sede-uuid', description: 'Sede a la que pertenece la solicitud (Nivel Central Bogotá)' })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @IsUUID()
-  idSede: string;
+  idSede?: string;
+
+  @ApiPropertyOptional({ example: 1, description: 'ID de la Dirección Territorial (academic_work_plan.direccion_territorial)' })
+  @IsOptional()
+  idDireccionTerritorial?: number;
+
+  @ApiPropertyOptional({ example: 12, description: 'ID del CETAP municipal (academic_work_plan.cetap)' })
+  @IsOptional()
+  idCetap?: number;
+
+  @ApiPropertyOptional({ example: 'Salón 2do piso al lado de coordinación', description: 'Texto libre de ubicación cuando el CETAP no tiene inventario detallado (Fallback)' })
+  @IsString()
+  @IsOptional()
+  ubicacionAdicionalTexto?: string;
 
   @ApiPropertyOptional({ example: 'id-espacio-uuid', description: 'Espacio fisico asociado (catálogo de espacios)' })
   @IsString()
@@ -50,6 +63,14 @@ export class CreateMantenimientoDto {
   @IsNotEmpty()
   @MaxLength(50)
   tipoMantenimiento: string;
+
+  @ApiPropertyOptional({
+    example: '2026-11-28',
+    description: 'RF-INF-011 (EFDS-2436): Fecha programada para mantenimiento preventivo. Obligatoria cuando tipoMantenimiento es PREVENTIVO (máximo 15 días calendario hacia el futuro).',
+  })
+  @IsOptional()
+  @IsString()
+  fechaProgramada?: string;
 
   @ApiProperty({
     example: 'FISICA',
@@ -95,6 +116,11 @@ export class CreateMantenimientoDto {
   @IsString()
   @IsOptional()
   prioridad?: string;
+
+  @ApiPropertyOptional({ example: false, description: 'RF-INF-014: Indica si la solicitud se cataloga como emergencia crítica con riesgo estructural o humano' })
+  @IsBoolean()
+  @IsOptional()
+  esEmergenciaCritica?: boolean;
 
   // ===== EFDS-1735..1739 Fase 3: Bien Asignado a Funcionario =====
   @ApiPropertyOptional({ example: false, description: 'Indica si el mantenimiento afecta un bien asignado a un funcionario específico.' })
@@ -434,9 +460,13 @@ export class TecnicoUmiFromAuthDto {
 }
 
 export class AsignarTecnicoPayload {
-  @ApiProperty({ example: 'a1b2c3d4-1234-5678-9abc-def012345678' })
+  @ApiPropertyOptional({
+    example: 'a1b2c3d4-1234-5678-9abc-def012345678',
+    description: 'UUID del técnico asignado (auth.user). Opcional si modalidadEjecutorTerritorial es PROVEEDOR_LOCAL_CONTRATADO.',
+  })
+  @IsOptional()
   @IsUUID('4')
-  idTecnicoAsignado: string;
+  idTecnicoAsignado?: string;
 
   @ApiPropertyOptional({ example: 'Ing. Porky', deprecated: true, description: 'Deprecated: display legacy se calcula desde JOIN persona. Ignorado si envian idTecnicoAsignado valido.' })
   @IsOptional()
@@ -454,6 +484,57 @@ export class AsignarTecnicoPayload {
   @ApiPropertyOptional({ example: false, description: 'Indica si requiere proceso de contratación o compras centralizadas.' })
   @IsOptional()
   requiereContratacion?: boolean;
+
+  @ApiPropertyOptional({
+    enum: ['CUADRILLA_CENTRAL_COMISION', 'PROVEEDOR_LOCAL_CONTRATADO', 'PERSONAL_PLANTA_TERRITORIAL'],
+    example: 'CUADRILLA_CENTRAL_COMISION',
+    description: 'Modalidad de ejecución para solicitudes en Direcciones Territoriales / CETAP (RF-INF-013).',
+  })
+  @IsOptional()
+  @IsIn(['CUADRILLA_CENTRAL_COMISION', 'PROVEEDOR_LOCAL_CONTRATADO', 'PERSONAL_PLANTA_TERRITORIAL'])
+  modalidadEjecutorTerritorial?: 'CUADRILLA_CENTRAL_COMISION' | 'PROVEEDOR_LOCAL_CONTRATADO' | 'PERSONAL_PLANTA_TERRITORIAL';
+
+  @ApiPropertyOptional({ example: 'Servicios Integrales de Urabá S.A.S.', description: 'Razón social del contratista local' })
+  @IsOptional()
+  @IsString()
+  proveedorLocalNombre?: string;
+
+  @ApiPropertyOptional({ example: '901.234.567-8', description: 'NIT del proveedor o contratista local' })
+  @IsOptional()
+  @IsString()
+  proveedorLocalNit?: string;
+
+  @ApiPropertyOptional({ example: 'OC-2026-0891 / Contrato DT-ANT-042', description: 'Número de contrato u orden de compra local' })
+  @IsOptional()
+  @IsString()
+  ordenCompraContratoLocal?: string;
+
+  @ApiPropertyOptional({ example: '2026-11-28', description: 'RF-INF-011: Fecha programada de ejecución (máximo 15 días a futuro)' })
+  @IsOptional()
+  @IsString()
+  fechaProgramada?: string;
+}
+
+export class RegistrarVoBoCierreDtDto {
+  @ApiPropertyOptional({ example: true, description: 'VoBo de cierre técnico aprobado (true) u observado (false) por la Dirección Territorial.' })
+  @IsOptional()
+  @IsBoolean()
+  aprobado?: boolean;
+
+  @ApiPropertyOptional({ example: true, description: 'VoBo de cierre técnico aprobado (true) u observado (false) (alias).' })
+  @IsOptional()
+  @IsBoolean()
+  voboCierreDtAprobado?: boolean;
+
+  @ApiPropertyOptional({ example: 'Trabajos ejecutados y recibidos a satisfacción en sede CETAP.', description: 'Observaciones del VoBo de cierre territorial.' })
+  @IsOptional()
+  @IsString()
+  observaciones?: string;
+
+  @ApiPropertyOptional({ example: 'Trabajos ejecutados y recibidos a satisfacción en sede CETAP.', description: 'Observaciones del VoBo de cierre territorial (alias).' })
+  @IsOptional()
+  @IsString()
+  voboCierreDtObservaciones?: string;
 }
 
 export class RegistrarRevisionVoBoDto {
@@ -489,25 +570,35 @@ export class RegistrarVoBoDto {
 }
 
 export class VincularTramiteContractualDto {
-  @ApiProperty({ example: 'ESAP-SAMC-014-2026', description: 'Número o identificador del proceso contractual / SECOP II.' })
-  @IsNotEmpty({ message: 'El número de proceso contractual es obligatorio.' })
+  @ApiPropertyOptional({ example: 'ESAP-SAMC-014-2026', description: 'Número o identificador del proceso o trámite contractual.' })
+  @IsOptional()
   @IsString()
-  procesoContractual: string;
+  procesoContractual?: string;
 
-  @ApiPropertyOptional({ example: '2026-ER-009845', description: 'Radicado Orfeo de remisión a Contratación.' })
+  @ApiPropertyOptional({ example: '2026-ER-009845', description: 'Radicado Orfeo de remisión o documento oficial.' })
   @IsOptional()
   @IsString()
   radicadoOrfeo?: string;
 
-  @ApiPropertyOptional({ example: 45000000, description: 'Presupuesto oficial estimado en COP.' })
+  @ApiPropertyOptional({ example: 45000000, description: 'Presupuesto o costo estimado en COP.' })
   @IsOptional()
   @IsNumber()
   presupuestoEstimadoCop?: number;
 
-  @ApiPropertyOptional({ example: 'Estudios previos y diagnóstico avalados por Coordinación GIM.', description: 'Observaciones de la gestión contractual.' })
+  @ApiPropertyOptional({ example: 'Estudios previos y diagnóstico avalados por Coordinación GIM.', description: 'Observaciones o notas de la gestión contractual.' })
   @IsOptional()
   @IsString()
   observaciones?: string;
+
+  @ApiPropertyOptional({ example: 'anexo_contrato.pdf', description: 'Nombre del anexo o soporte documental.' })
+  @IsOptional()
+  @IsString()
+  anexoNombre?: string;
+
+  @ApiPropertyOptional({ example: 'https://...', description: 'URL del anexo o soporte documental.' })
+  @IsOptional()
+  @IsString()
+  anexoUrl?: string;
 }
 
 
@@ -521,4 +612,14 @@ export class MarcarRequiereContratacionDto {
   @IsOptional()
   @IsString()
   insumosRequeridos?: string;
+}
+
+export class ConfirmarEmergenciaDto {
+  @ApiPropertyOptional({
+    example: 'Se activó cuadrilla inmediata de mitigación y se aisló el área.',
+    description: 'Notas u observaciones del acuse de recibo de la emergencia por parte del Coordinador GIM.',
+  })
+  @IsOptional()
+  @IsString()
+  notas?: string;
 }

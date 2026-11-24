@@ -771,6 +771,12 @@ const CLAVES_LISTAS_TERMINOS_INFORMES = {
 // se reutiliza la misma clave de la caché local.
 const CLAVE_EJES_ESTRATEGICOS = 'sigl-ejes-estrategicos';
 
+// Los entes de control de Planes de Mejoramiento alimentan el formulario "Nuevo Plan".
+// Igual que los ejes, viven en el backend (aplican a todos los usuarios y ambientes);
+// la misma clave se usa como caché local. El backend rechaza eliminar un ente que ya
+// tiene planes asociados.
+const CLAVE_ENTES_CONTROL_PM = 'sigl-entes-control-pm';
+
 // Lee una lista de caché local. Devuelve null si no existe o está corrupta.
 function leerListaLocal<T>(clave: string): T[] | null {
   const guardado = localStorage.getItem(clave);
@@ -884,7 +890,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   const avisarListasNoCargadas = () => {
     if (avisoListasNoCargadasRef.current) return;
     avisoListasNoCargadasRef.current = true;
-    toast.error('No se pudo cargar parte de la configuración (Términos e Informes o Ejes Estratégicos)', {
+    toast.error('No se pudo cargar parte de la configuración (Términos e Informes, Ejes Estratégicos o Entes de Control)', {
       description: 'Para no sobrescribir lo ya parametrizado, los cambios de las secciones afectadas no se guardarán. Recarga la página e inténtalo de nuevo.',
       duration: 8000,
     });
@@ -1004,16 +1010,10 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       }
     }
 
-    const entesGuardados = localStorage.getItem('sigl-entes-control-pm');
-    if (entesGuardados) {
-      try {
-        const parsed = JSON.parse(entesGuardados);
-        setEntesControlPM(parsed);
-        console.log('✅ Entes de Control PM cargados desde localStorage');
-      } catch (error) {
-        console.error('❌ Error al cargar entes de control PM:', error);
-      }
-    }
+    // Entes de Control PM: caché local para pintar de inmediato; el backend (más abajo)
+    // es la fuente de verdad.
+    const entesPMLocales = leerListaLocal<EnteControlPM>(CLAVE_ENTES_CONTROL_PM);
+    if (entesPMLocales) setEntesControlPM(entesPMLocales);
 
     const categoriasDocsGuardadas = localStorage.getItem('sigl-categorias-documentos');
     if (categoriasDocsGuardadas) {
@@ -1081,12 +1081,13 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     };
 
     const loadListasTerminosInformes = async () => {
-      const [lecturaDestinatarios, lecturaEntes, lecturaFuentes, lecturaRolesResponsables, lecturaEjes] = await Promise.all([
+      const [lecturaDestinatarios, lecturaEntes, lecturaFuentes, lecturaRolesResponsables, lecturaEjes, lecturaEntesPM] = await Promise.all([
         leerListaBackend<DestinatarioInforme>(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme),
         leerListaBackend<EnteSolicitanteInforme>(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme),
         leerListaBackend<TipoFuenteNormativa>(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa),
         leerListaBackend<ClaveRolResponsableTermino>(CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino),
         leerListaBackend<EjeEstrategico>(CLAVE_EJES_ESTRATEGICOS),
+        leerListaBackend<EnteControlPM>(CLAVE_ENTES_CONTROL_PM),
       ]);
 
       // El bloqueo de escritura se marca aunque el usuario ya esté editando: si no sabemos
@@ -1097,6 +1098,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         [lecturaFuentes, CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa],
         [lecturaRolesResponsables, CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino],
         [lecturaEjes, CLAVE_EJES_ESTRATEGICOS],
+        [lecturaEntesPM, CLAVE_ENTES_CONTROL_PM],
       ] as const;
       claves.forEach(([lectura, clave]) => {
         if (lectura.estado === 'error') listasNoCargadasRef.current.add(clave);
@@ -1116,6 +1118,8 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino, setRolesResponsablesTermino);
       resolverLista(lecturaEjes, ejesLocales, ejesEstrategicosIniciales,
         CLAVE_EJES_ESTRATEGICOS, setEjesEstrategicos);
+      resolverLista(lecturaEntesPM, entesPMLocales, entesControlPMIniciales,
+        CLAVE_ENTES_CONTROL_PM, setEntesControlPM);
 
       if (listasNoCargadasRef.current.size === 0) {
         console.log('✅ Listas de Términos e Informes y Ejes Estratégicos sincronizados desde backend');
@@ -1328,6 +1332,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       [CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, tiposFuenteNormativa],
       [CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino, rolesResponsablesTermino],
       [CLAVE_EJES_ESTRATEGICOS, ejesEstrategicos],
+      [CLAVE_ENTES_CONTROL_PM, entesControlPM],
     ];
     const listasGuardables = listasTerminosInformes.filter(([clave]) => !listasNoCargadasRef.current.has(clave));
     if (listasGuardables.length < listasTerminosInformes.length) {
@@ -1342,7 +1347,6 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       localStorage.setItem('sigl-tipos-indicadores', JSON.stringify(tiposIndicadores));
       localStorage.setItem('sigl-tipos-requerimientos', JSON.stringify(tiposRequerimientos));
       localStorage.setItem('sigl-organismos-control', JSON.stringify(organismosControl));
-      localStorage.setItem('sigl-entes-control-pm', JSON.stringify(entesControlPM));
       localStorage.setItem('sigl-categorias-documentos', JSON.stringify(categoriasDocumentos));
       listasGuardables.forEach(([clave, valor]) => localStorage.setItem(clave, JSON.stringify(valor)));
     } catch (error) {
@@ -1440,8 +1444,9 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       console.error('❌ Error al guardar configuraciones:', error);
       if (!silencioso) {
         setSavingStatus('error');
+        const motivo = error instanceof Error && error.message ? `${error.message}. ` : '';
         toast.error('Error al guardar configuraciones en el servidor', {
-          description: 'Los cambios siguen en pantalla: vuelve a pulsar "Guardar Cambios" para reintentar.',
+          description: `${motivo}Los cambios siguen en pantalla: vuelve a pulsar "Guardar Cambios" para reintentar.`,
         });
       }
       throw error;
@@ -1523,7 +1528,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       localStorage.setItem('sigl-tipos-indicadores', JSON.stringify(guardado.tiposIndicadores));
       localStorage.setItem('sigl-tipos-requerimientos', JSON.stringify(guardado.tiposRequerimientos));
       localStorage.setItem('sigl-organismos-control', JSON.stringify(guardado.organismosControl));
-      localStorage.setItem('sigl-entes-control-pm', JSON.stringify(guardado.entesControlPM));
+      localStorage.setItem(CLAVE_ENTES_CONTROL_PM, JSON.stringify(guardado.entesControlPM));
       localStorage.setItem('sigl-categorias-documentos', JSON.stringify(guardado.categoriasDocumentos));
       localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, JSON.stringify(guardado.destinatariosInforme));
       localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, JSON.stringify(guardado.entesSolicitantesInforme));

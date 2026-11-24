@@ -10,6 +10,9 @@ export interface NotifUser {
   nombre: string | null;
 }
 
+/** Código del módulo en la configuración de notificaciones (EFDS-2406). */
+const MODULO = 'pta';
+
 /** Etiquetas legibles por componente para los textos de notificación. */
 const COMPONENT_LABELS: Record<string, string> = {
   docencia: 'Docencia',
@@ -163,9 +166,14 @@ export class PtaNotificationsService {
     await this.postJson('/notifications', dto);
   }
 
-  private async sendEmail(to: string, subject: string, text: string, html: string): Promise<void> {
+  /**
+   * `evento` es la clave con la que la configuración de notificaciones
+   * (EFDS-2406) decide si este correo sale; es la misma `tipo_notificacion`
+   * de la campana del mismo aviso.
+   */
+  private async sendEmail(to: string, subject: string, text: string, html: string, evento: string): Promise<void> {
     if (!to) return;
-    await this.postJson('/api/v1/emails/send', { to, subject, text, html });
+    await this.postJson('/api/v1/emails/send', { to, subject, text, html, modulo: MODULO, evento });
   }
 
   // ── Casos de negocio ──────────────────────────────────────────────────────
@@ -224,6 +232,7 @@ export class PtaNotificationsService {
         titulo,
         mensaje,
         categoria: 'PTA',
+        modulo: MODULO,
         prioridad: 'Alta',
         icono: 'clipboard-check',
         color: '#2563EB',
@@ -240,7 +249,7 @@ export class PtaNotificationsService {
           <p><a href="${linkAbsoluto}">Abrir la plataforma para revisar</a></p>
         `;
         // fire-and-forget: no esperamos el correo para no serializar N envíos.
-        void this.sendEmail(user.email, titulo, mensaje, html);
+        void this.sendEmail(user.email, titulo, mensaje, html, 'pta_pendiente_aprobacion');
       }
     }
 
@@ -284,6 +293,7 @@ export class PtaNotificationsService {
       titulo,
       mensaje,
       categoria: 'PTA',
+      modulo: MODULO,
       prioridad: 'Media',
       icono: 'paper-plane',
       color: '#2563EB',
@@ -305,7 +315,7 @@ export class PtaNotificationsService {
         <p>Te avisaremos a medida que cada componente sea aprobado o devuelto.</p>
         <p><a href="${linkAbsoluto}">Ver mi PTA</a></p>
       `;
-      void this.sendEmail(prof.email, titulo, mensaje, html);
+      void this.sendEmail(prof.email, titulo, mensaje, html, 'pta_enviado_aprobacion');
     }
 
     this.logger.log(
@@ -367,6 +377,7 @@ export class PtaNotificationsService {
       mensaje,
       descripcion_corta: componentesLabel || 'Edición de componentes del PTA',
       categoria: 'PTA',
+      modulo: MODULO,
       prioridad: aprobada ? 'Media' : 'Alta',
       icono: aprobada ? 'check-circle' : 'x-circle',
       color: aprobada ? '#16A34A' : '#DC2626',
@@ -392,7 +403,13 @@ export class PtaNotificationsService {
         <p>${this.escapeHtml(mensaje)}</p>
         <p><a href="${linkAbsoluto}">Ver mi PTA</a></p>
       `;
-      void this.sendEmail(prof.email, titulo, mensaje, html);
+      void this.sendEmail(
+        prof.email,
+        titulo,
+        mensaje,
+        html,
+        aprobada ? 'pta_solicitud_edicion_aprobacion' : 'pta_solicitud_edicion_rechazo',
+      );
     }
 
     this.logger.log(
@@ -434,6 +451,7 @@ export class PtaNotificationsService {
       mensaje,
       descripcion_corta: compLabel,
       categoria: 'PTA',
+      modulo: MODULO,
       prioridad: 'Media',
       icono: 'check-circle',
       color: '#16A34A',
@@ -451,7 +469,7 @@ export class PtaNotificationsService {
         <p>${this.escapeHtml(mensaje)}.</p>
         <p><a href="${linkAbsoluto}">Ver mi PTA</a></p>
       `;
-      void this.sendEmail(prof.email, titulo, `${compLabel}: ${mensaje}.`, html);
+      void this.sendEmail(prof.email, titulo, `${compLabel}: ${mensaje}.`, html, 'pta_componente_aprobado');
     }
 
     this.logger.log(`PTA ${opts.ptaId}: profesor ${prof.idUser} notificado de aprobación de "${opts.componente}"`);
@@ -498,6 +516,7 @@ export class PtaNotificationsService {
       mensaje,
       descripcion_corta: compLabel,
       categoria: 'PTA',
+      modulo: MODULO,
       // Alta: a diferencia de la aprobación, la devolución requiere que el
       // docente corrija y reenvíe para que el flujo continúe.
       prioridad: 'Alta',
@@ -524,7 +543,7 @@ export class PtaNotificationsService {
         <p>Debes realizar los ajustes indicados y reenviar tu PTA.</p>
         <p><a href="${linkAbsoluto}">Corregir mi PTA</a></p>
       `;
-      void this.sendEmail(prof.email, titulo, `${compLabel}: ${mensaje}`, html);
+      void this.sendEmail(prof.email, titulo, `${compLabel}: ${mensaje}`, html, 'pta_componente_devuelto');
     }
 
     this.logger.log(`PTA ${opts.ptaId}: profesor ${prof.idUser} notificado de devolución de "${opts.componente}"`);
@@ -555,7 +574,7 @@ export class PtaNotificationsService {
       <p><a href="${this.escapeHtml(enlace)}">${this.escapeHtml(enlace)}</a></p>
       <p>Este enlace es personal e intransferible: toda consulta realizada con él queda registrada.</p>
     `;
-    await this.sendEmail(to, subject, text, html);
+    await this.sendEmail(to, subject, text, html, 'pta_acceso_externo_otorgado');
     this.logger.log(`Acceso externo Macro Docente notificado por correo a ${to} (${opts.enteNombre})`);
     return true;
   }

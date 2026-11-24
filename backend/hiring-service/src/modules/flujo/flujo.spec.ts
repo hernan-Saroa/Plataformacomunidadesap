@@ -105,7 +105,34 @@ describe('validar el flujo antes de activarlo', () => {
     const problemas = validarModalidad(datos({ filas, cadenas }));
     expect(problemas).toHaveLength(1);
     expect(problemas[0]).toMatchObject({ numeral: '3.1', parte: 'APRUEBA', gravedad: 'ERROR' });
-    expect(problemas[0].mensaje).toMatch(/escalón 2 \(Jefe\)/);
+    expect(problemas[0].mensaje).toBe(
+      'En el escalón 2 (Jefe) nadie puede decidir: ninguna cuenta activa tiene el rol ROL_SIN_NADIE (asígnaselo a alguien). ' +
+        'También puedes cambiar quién decide en la cadena «Revisión»',
+    );
+  });
+
+  it('el mensaje del escalón dice si lo que falta es el permiso del rol', () => {
+    const filas: FilaAsignacion[] = [
+      { numeral: '3.1', modalidad: null, laHace: null, aprobacion: { tipo: 'ESCALON', roles: ['DIRECTOR'], personas: [], puestos: [] } },
+    ];
+    const problemas = validarModalidad(
+      datos({
+        filas,
+        // El director tiene cuenta (u-1), pero aprobar solo puede u-2.
+        pueden: (accion) => new Set([accion === 'aprobar' ? 'u-2' : 'u-1']),
+        nombreRol: () => 'Director de Contratación',
+      }),
+    );
+    expect(problemas.map((p) => p.mensaje)).toEqual([
+      'En la aprobación nadie puede decidir: el rol Director de Contratación no tiene permiso de aprobar la 3.1 (dáselo en Permisos por etapa). ' +
+        'También puedes cambiar quién decide en la aprobación de la actividad',
+    ]);
+  });
+
+  it('el mensaje del puesto dice qué permisos exige', () => {
+    const filas: FilaAsignacion[] = [{ numeral: '3.6', modalidad: null, laHace: { tipo: 'PUESTO', puestoId: 'p-revisor' }, aprobacion: null }];
+    const [p] = validarModalidad(datos({ filas, pueden: () => new Set() })).filter((x) => x.numeral === '3.6');
+    expect(p.mensaje).toMatch(/quien lo ocupe necesita permiso para \w+ la 3\.6, y ninguna cuenta lo tiene\. Dáselo a un rol en Permisos por etapa/);
   });
 
   it('una cadena archivada no deja activar', () => {

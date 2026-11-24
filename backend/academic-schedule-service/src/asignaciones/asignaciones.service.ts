@@ -16,7 +16,9 @@ import { DocenciaService } from '../docencia/docencia.service.js';
 import { cargarFranjasCruceables, cicloDelGrupo } from '../horarios/choque.js';
 import { tomaDeFranjasHabilitada } from '../portal-docente/flujo-docente.js';
 import { areaDelGrupo, docentesDelArea, motivoDeArea, nucleosDeDocentes } from './area-docente.js';
+import { bloqueoTotal, type BloqueoTotal } from './bloqueo-total.js';
 import { ESTADOS_EN_CURSO } from '../concertacion/concertacion.service.js';
+import { esSinAula } from '../grupos/grupo.entity.js';
 
 export interface AsignarDocenteDto {
   idGrupo: string;
@@ -83,11 +85,25 @@ export interface Candidato {
 
 export interface ResultadoCandidatos {
   grupo: string;
+  /**
+   * Grupo virtual sin franjas (063): se asigna sin horario y el docente lo define
+   * en «Mi programación». El impacto es el de las horas del plan de la asignatura.
+   */
+  horarioPorDefinir: boolean;
   franjas: Array<{ idFranja: string; diaSemana: string; horaInicio: string; horaFin: string; docenteActual: string | null }>;
   area: { codigo: string; nombre: string; nucleoAsignatura: string | null } | null;
   candidatos: Candidato[];
   sugerido: { documento: string; nombre: string; razones: string[] } | null;
-  /** Explica por qué no hay candidatos o no hay sugerido. Nulo si hay sugerido. */
+  /** EFDS-2434: conteo de la lista completa (aptos y bloqueados). */
+  resumen: { total: number; asignables: number; bloqueados: number };
+  /** Informativo: hay docentes pero todos bloqueados. NO oculta la lista (la pantalla la muestra con sus motivos). */
+  aviso: string | null;
+  /**
+   * EFDS-2449: solo cuando hay candidatos y TODOS están bloqueados. Que no se puede asignar a nadie,
+   * qué hacer y los motivos más frecuentes con su conteo. `aviso` trae el mismo título y acción en texto.
+   */
+  bloqueoTotal: BloqueoTotal | null;
+  /** SOLO cuando no hay lista posible (sin área o ningún docente del área). Con lista, va en `aviso`. */
   mensaje: string | null;
 }
 
@@ -218,9 +234,10 @@ export class AsignacionesService {
    */
   private async cargarGrupo(idGrupo: string, horasRequeridas: number, seleccion?: string[]): Promise<GrupoParaAsignar & {
     codigoAsignatura: string | null; todas: FranjaDelGrupo[]; seleccionadas: string[]; completo: boolean;
+    horarioPorDefinir: boolean;
   }> {
     const filas = await this.dataSource.query(
-      `SELECT g.id_grupo, g.fecha_inicio, g.fecha_fin, pr.tipo AS tipo_programa, a.codigo AS codigo_asignatura
+      `SELECT g.id_grupo, g.fecha_inicio, g.fecha_fin, g.modalidad, pr.tipo AS tipo_programa, a.codigo AS codigo_asignatura
          FROM "academic-schedule".grupo g
          JOIN academic_work_plan.asignatura a ON a.id = g.id_asignatura
          JOIN academic_work_plan.programa  pr ON pr.id = a.id_programa
@@ -252,6 +269,8 @@ export class AsignacionesService {
       todas,
       seleccionadas,
       completo: seleccionadas.length === todas.length,
+      // Virtual y sin franjas: se asigna sin horario; el docente lo define (063).
+      horarioPorDefinir: esSinAula(g.modalidad) && todas.length === 0,
       idGrupo: g.id_grupo,
       cicloInicio: ciclo.cicloInicio,
       cicloFin: ciclo.cicloFin,
@@ -276,12 +295,15 @@ export class AsignacionesService {
    * franjas seleccionadas como suyas y las demás con el docente que tengan.
    */
   private async horasDeLaSeleccion(
-    grupo: { idGrupo: string; codigoAsignatura: string | null; seleccionadas: string[] },
+    grupo: { idGrupo: string; codigoAsignatura: string | null; seleccionadas: string[]; horarioPorDefinir?: boolean },
     docente: { idDocente: string; vinculacion: string | null },
     token: string | null,
   ): Promise<number> {
     if (!grupo.codigoAsignatura) return 0;
     const calculo = await this.docencia.calculoAsignatura(grupo.codigoAsignatura, docente.vinculacion, token);
+    // Sin horario todavía (grupo virtual, 063): se reservan las horas del plan, que son
+    // las que el docente tendrá que programar. Así el tope se valida desde la asignación.
+    if (grupo.horarioPorDefinir) return Math.round(Number(calculo.horasImpacto ?? 0) * 10) / 10;
     const despues = (await this.docencia.franjasConSesiones([grupo.idGrupo]))
       .map((f) => (grupo.seleccionadas.includes(f.idFranja) ? { ...f, idDocente: docente.idDocente } : f));
     return this.docencia.horasEnGrupo(despues, docente.idDocente, calculo).horas;
@@ -397,6 +419,12 @@ export class AsignacionesService {
     docente.situacionMotivo = situacion.motivo;
 
     const grupo = await this.cargarGrupo(dto.idGrupo, 0, dto.franjas);
+    // Solo un grupo VIRTUAL se asigna sin horario (063); uno presencial sin franjas no tiene
+    // nada que dictar todavía: se rechaza en vez de grabar una asignación de 0 horas.
+    if (!grupo.todas.length && !grupo.horarioPorDefinir) {
+      throw new BadRequestException(
+        'El grupo no tiene franjas: defina su horario antes de asignar docente, o márquelo como virtual para que lo defina el docente.');
+    }
     // Impacto real por el contrato (RN-03): el cliente no fija las horas — sería
     // un bypass del tope. Un `horasRequeridas` del DTO se ignora a propósito.
     // Fuera de su área no se asigna (decisión 6): el área es un motivo más del bloqueo.
@@ -441,6 +469,61 @@ export class AsignacionesService {
     return avisos.length
       ? { asignado: true, idAsignacion: filas[0].id_asignacion, avisos }
       : { asignado: true, idAsignacion: filas[0].id_asignacion };
+  }
+
+  /**
+   * Asignación MÚLTIPLE (EFDS-2434): varios docentes, cada uno con sus franjas, en UNA operación
+   * TODO O NADA. Se valida todo junto (las mismas reglas del bloqueo duro, sobre las franjas de
+   * cada uno) y solo si nadie tiene motivos se escribe, en una sola transacción. Un 409 de la
+   * concertación (franja ya aprobada o en curso) también revierte todo.
+   */
+  async asignarMultiple(
+    dto: { idGrupo: string; asignaciones: Array<{ documento: string; franjas: string[] }>; asignadoPor?: string | null; observaciones?: string | null },
+    token?: string | null,
+  ): Promise<{ asignado: true; resultados: Array<{ documento: string; franjas: string[]; avisos: string[] }> }
+    | { asignado: false; errores: Array<{ documento: string; nombre: string | null; motivos: MotivoRechazo[] }> }> {
+    if (!dto?.idGrupo) throw new BadRequestException('Debe indicar el grupo.');
+    if (!Array.isArray(dto.asignaciones) || dto.asignaciones.length === 0) {
+      throw new BadRequestException('Debe indicar al menos un docente con sus franjas.');
+    }
+    const pares = new Map<string, string[]>();
+    const usadas = new Set<string>();
+    for (const a of dto.asignaciones) {
+      const documento = String(a?.documento ?? '').trim();
+      const franjas = [...new Set((Array.isArray(a?.franjas) ? a.franjas : []).map((x) => String(x).trim()).filter(Boolean))];
+      if (!documento) throw new BadRequestException('Cada asignación debe indicar el documento del docente.');
+      if (!franjas.length) throw new BadRequestException(`El docente ${documento} no tiene franjas asignadas.`);
+      for (const f of franjas) {
+        if (usadas.has(f)) throw new BadRequestException('Una franja no puede asignarse a dos docentes en la misma operación.');
+        usadas.add(f);
+      }
+      pares.set(documento, [...(pares.get(documento) ?? []), ...franjas]);
+    }
+
+    const errores: Array<{ documento: string; nombre: string | null; motivos: MotivoRechazo[] }> = [];
+    const aplicar: Array<{ idDocente: string; documento: string; franjas: string[]; avisos: string[] }> = [];
+    for (const [documento, franjas] of pares) {
+      const docente = await this.cargarDocente(documento); // 404 si no existe: nada se escribió
+      const situacion = resolverSituacion(docente.categoriaRaw, docente.situacionRaw);
+      docente.situacionAsignable = situacion.asignable;
+      docente.situacionMotivo = situacion.motivo;
+      const grupo = await this.cargarGrupo(dto.idGrupo, 0, franjas); // 400 si alguna franja no es del grupo
+      if (!grupo.todas.length) {
+        throw new BadRequestException('El grupo no tiene franjas: defina su horario antes de asignar docentes.');
+      }
+      const { motivos } = await this.evaluar(docente, grupo, token ?? null);
+      if (motivos.length) errores.push({ documento, nombre: docente.nombre ?? null, motivos });
+      else aplicar.push({ idDocente: docente.idDocente, documento, franjas, avisos: situacion.aviso ? [situacion.aviso] : [] });
+    }
+    // Un solo bloqueo basta para no guardar NADA.
+    if (errores.length) return { asignado: false, errores };
+
+    await this.dataSource.transaction(async (m) => {
+      for (const a of aplicar) {
+        await this.asignarFranjas(m, { idGrupo: dto.idGrupo, documento: a.documento, asignadoPor: dto.asignadoPor ?? undefined, observaciones: dto.observaciones ?? null }, a.idDocente, a.franjas);
+      }
+    });
+    return { asignado: true, resultados: aplicar.map((a) => ({ documento: a.documento, franjas: a.franjas, avisos: a.avisos })) };
   }
 
   /**
@@ -514,6 +597,7 @@ export class AsignacionesService {
     );
     const base: ResultadoCandidatos = {
       grupo: idGrupo,
+      horarioPorDefinir: grupo.horarioPorDefinir,
       franjas: grupo.todas.filter((f) => grupo.seleccionadas.includes(f.idFranja)).map((f) => ({
         idFranja: f.idFranja, diaSemana: f.diaSemana, horaInicio: String(f.horaInicio).slice(0, 5),
         horaFin: String(f.horaFin).slice(0, 5), docenteActual: f.idDocente ? nombres.get(f.idDocente) ?? null : null,
@@ -521,6 +605,9 @@ export class AsignacionesService {
       area: area ? { codigo: area.codigo, nombre: area.nombre, nucleoAsignatura: area.nucleoAsignatura } : null,
       candidatos: [],
       sugerido: null,
+      resumen: { total: 0, asignables: 0, bloqueados: 0 },
+      aviso: null,
+      bloqueoTotal: null,
       mensaje: null,
     };
     if (!area) {
@@ -563,8 +650,16 @@ export class AsignacionesService {
     const porCedula = (a: Candidato, b: Candidato) => a.documento.localeCompare(b.documento, 'es', { numeric: true });
     candidatos.sort((a, b) => Number(b.asignable) - Number(a.asignable) || a.horasProgramadas - b.horasProgramadas || porCedula(a, b));
     const aptos = candidatos.filter((c) => c.asignable);
+    const resumen = { total: candidatos.length, asignables: aptos.length, bloqueados: candidatos.length - aptos.length };
     if (!aptos.length) {
-      return { ...base, candidatos, mensaje: `Hay ${candidatos.length} docente(s) del área «${area.nombre}», pero todos tienen algún bloqueo: revise los motivos.` };
+      // EFDS-2434: la lista se entrega completa; el texto es un AVISO, no un `mensaje` que oculte los docentes.
+      // EFDS-2449: y la alerta redactada aquí, para que sea igual en cualquier pantalla.
+      const alerta = bloqueoTotal(candidatos, area.nombre)!;
+      return {
+        ...base, candidatos, resumen,
+        bloqueoTotal: alerta,
+        aviso: `${alerta.titulo} ${alerta.accion}`,
+      };
     }
 
     const elegido = aptos[0];
@@ -572,12 +667,16 @@ export class AsignacionesService {
     const texto = elegido.nucleos.find((n) => n.area === area.nombre && n.origen === elegido.origenArea)?.texto;
     const razones = [
       `Es del área «${area.nombre}» por su núcleo ${elegido.origenArea === 'rund' ? 'del RUND' : 'de puente (asignaturas que ya dicta)'}${texto ? `: «${texto}»` : ''}.`,
-      `Tiene ${elegido.horasProgramadas} h programadas${aptos.length > 1 ? ', la menor entre los aptos' : ''}; dictar estas franjas le suma ${elegido.horasImpacto} h (tope ${elegido.tope} h).`,
-      'No tiene cruce de horario con las franjas pedidas.',
+      grupo.horarioPorDefinir
+        ? `Tiene ${elegido.horasProgramadas} h programadas${aptos.length > 1 ? ', la menor entre los aptos' : ''}; se le reservan ${elegido.horasImpacto} h del plan hasta que defina el horario (tope ${elegido.tope} h).`
+        : `Tiene ${elegido.horasProgramadas} h programadas${aptos.length > 1 ? ', la menor entre los aptos' : ''}; dictar estas franjas le suma ${elegido.horasImpacto} h (tope ${elegido.tope} h).`,
+      grupo.horarioPorDefinir
+        ? 'El grupo es virtual y aún no tiene horario: el docente lo define en «Mi programación», con la validación de cruces.'
+        : 'No tiene cruce de horario con las franjas pedidas.',
       'No tiene bloqueos de situación administrativa, vinculación, escalafón ni tope (EFDS-1372).',
     ];
     if (empatados > 0) razones.push(`Empata en horas con ${empatados} docente(s) apto(s); se desempata por cédula.`);
-    return { ...base, candidatos, sugerido: { documento: elegido.documento, nombre: elegido.nombre, razones } };
+    return { ...base, candidatos, resumen, sugerido: { documento: elegido.documento, nombre: elegido.nombre, razones } };
   }
 
   /**

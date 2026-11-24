@@ -19,6 +19,7 @@ export const TIPOS_CON_TRAMITE: TipoModificacion[] = [
   'SUSPENSION',
   'REANUDACION',
   'TERMINACION_ANTICIPADA',
+  'OTRO',
 ];
 
 /** Cómo se nombra cada causal de terminación cuando hay que decírsela al usuario. */
@@ -36,7 +37,20 @@ export const NOMBRE_TIPO: Record<TipoModificacion, string> = {
   SUSPENSION: 'la suspensión',
   REANUDACION: 'la reanudación',
   TERMINACION_ANTICIPADA: 'la terminación anticipada',
+  OTRO: 'la modificación',
 };
+
+/**
+ * Desde cuándo se puede modificar el contrato: desde que lo firman las dos
+ * partes (sesión de QA del 04/11, 138), no desde el acta de inicio. Antes de
+ * eso es una minuta, y lo que se corrige es la minuta.
+ */
+export const ESTADOS_QUE_ADMITEN_MODIFICACION: EstadoContrato[] = [
+  'PERFECCIONADO',
+  'LEGALIZADO',
+  'EJECUCION',
+  'SUSPENDIDO',
+];
 
 /** Lo que el contrato tiene que ser para admitir cada tipo. */
 export interface SituacionDelContrato {
@@ -75,8 +89,8 @@ export function porQueNoAdmiteTipo(
     return 'el contrato está terminado anticipadamente: ya no hay ejecución que modificar';
   }
 
-  if (estado !== 'EJECUCION' && estado !== 'SUSPENDIDO') {
-    return 'el contrato todavía no está en ejecución: falta el acta de inicio (8.7)';
+  if (!ESTADOS_QUE_ADMITEN_MODIFICACION.includes(estado)) {
+    return 'el contrato todavía no lo han firmado las dos partes (8.1)';
   }
 
   // De un contrato suspendido solo se sale reanudándolo o terminándolo.

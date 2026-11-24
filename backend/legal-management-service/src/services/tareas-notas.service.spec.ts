@@ -225,6 +225,7 @@ describe('TareasNotasService', () => {
                 'resuelve@esap.edu.co',
                 expect.stringContaining('Contestar demanda'),
                 expect.stringContaining('RAD-100'),
+                'TAREA_ASIGNADA',
             );
         });
 

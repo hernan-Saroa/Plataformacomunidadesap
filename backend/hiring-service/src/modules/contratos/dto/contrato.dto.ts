@@ -49,12 +49,34 @@ export class GenerarContratoDto {
   @IsPositive({ message: 'El valor del contrato debe ser mayor que cero' })
   valor: number;
 
-  @ApiPropertyOptional({ description: 'Plazo de ejecución en días' })
+  /** La forma de antes: solo días. Se sigue aceptando. */
+  @ApiPropertyOptional({ description: 'Plazo de ejecución en días (forma anterior)' })
   @IsOptional()
   @Transform(aNumero)
   @IsInt({ message: 'El plazo se expresa en días enteros' })
   @IsPositive({ message: 'El plazo debe ser mayor que cero' })
   plazoDias?: number;
+
+  /**
+   * El plazo como lo dice la minuta (sesión de QA del 04/11): un número con su
+   * unidad, o una fecha cierta. Una de las dos.
+   */
+  @ApiPropertyOptional({ description: 'Unidad del plazo', enum: ['DIAS', 'MESES', 'ANIOS'] })
+  @IsOptional()
+  @IsIn(['DIAS', 'MESES', 'ANIOS'], { message: 'La unidad del plazo es días, meses o años' })
+  plazoUnidad?: 'DIAS' | 'MESES' | 'ANIOS';
+
+  @ApiPropertyOptional({ description: 'Cuántas unidades dura el plazo' })
+  @IsOptional()
+  @Transform(aNumero)
+  @IsInt({ message: 'El plazo se expresa en un número entero' })
+  @IsPositive({ message: 'El plazo debe ser mayor que cero' })
+  plazoCantidad?: number;
+
+  @ApiPropertyOptional({ description: 'Fecha cierta en que vence el plazo (YYYY-MM-DD)' })
+  @IsOptional()
+  @IsDateString({}, { message: 'La fecha del plazo debe tener el formato AAAA-MM-DD' })
+  plazoFechaFin?: string;
 
   @ApiProperty({ description: 'Documento de identidad o NIT del contratista' })
   @IsString()
@@ -139,7 +161,7 @@ export class FirmarContratoDto {
 
   /** La del acto, no la del registro: es cuando la parte firmó. */
   @ApiProperty({ description: 'Fecha de la firma (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de la firma debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de la firma debe tener el formato AAAA-MM-DD' })
   fechaFirma: string;
 
   /**

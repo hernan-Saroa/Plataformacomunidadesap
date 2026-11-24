@@ -118,14 +118,14 @@ describe('bandeja Por revisar', () => {
     ]);
   });
 
-  it('sin permiso de aprobar pólizas ni decidir modificaciones no las consulta', async () => {
+  it('sin permiso de aprobar pólizas, decidir modificaciones ni avalar pagos no las consulta', async () => {
     const { service, consultas } = montar({ aprobaciones: [], estudios: [] }, () => false);
 
     await service.porRevisar(acceso);
 
     expect(consultas.some((c) => c.includes('FROM hiring.garantias'))).toBe(false);
     expect(consultas.some((c) => c.includes('FROM hiring.modificaciones_contrato'))).toBe(false);
-    // El aval no es de permiso sino de persona: se consulta igual.
-    expect(consultas.some((c) => c.includes('FROM hiring.pagos_contrato'))).toBe(true);
+    // El aval lo carga quien aprueba la 9.4: el supervisor no entra (136).
+    expect(consultas.some((c) => c.includes('FROM hiring.pagos_contrato'))).toBe(false);
   });
 });

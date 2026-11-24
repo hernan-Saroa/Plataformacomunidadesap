@@ -18,6 +18,7 @@ export function RundDatosCargaOriginal({ bloque, datos, accesoCompleto }: {
 }) {
   if (!datos || !Object.keys(datos).length) return null;
   const columnas = COLUMNAS_CARGA_POR_BLOQUE[bloque] || [];
+  if (!columnas.length) return null;
   const campos = columnas.map(([clave, etiqueta]) => {
     const restringido = ['DOCUMENTO_IDENTIDAD', 'PUNTAJE_SALARIAL'].includes(clave) && !accesoCompleto;
     let valor = datos[clave];
@@ -44,17 +45,17 @@ export function RundDatosCargaOriginal({ bloque, datos, accesoCompleto }: {
   } as CSSProperties;
   return (
     <div className="rund-source-data">
-      <details className="rund-source-data__panel">
+      <details className="rund-source-data__panel" open>
         <summary className="rund-source-data__summary">
           <span className="rund-source-data__icon" aria-hidden="true"><FileText size={19} /></span>
           <span className="rund-source-data__heading">
-            <span className="rund-source-data__title">Datos originales del archivo de carga</span>
-            <span className="rund-source-data__count">{columnas.length} datos</span>
+            <span className="rund-source-data__title">Datos de la plantilla de cargue</span>
+            <span className="rund-source-data__count">{columnas.length} campos</span>
           </span>
           <ChevronDown className="rund-source-data__chevron" size={18} aria-hidden="true" />
         </summary>
         <div className="rund-source-data__content">
-          <p className="rund-source-data__description">Información reportada al cargar el archivo. El perfil puede incluir correcciones posteriores y valores calculados, como la edad actual.</p>
+          <p className="rund-source-data__description">Campos cargados desde CargaDocentes_RUND asociados a esta carpeta. El perfil puede incluir correcciones posteriores y valores calculados, como la edad actual.</p>
           <dl className="rund-source-data__grid" style={gridStyle}>
             {campos.map(({ clave, etiqueta, restringido, valor, vacio, textoLargo }) => {
               return <div key={clave} className={`rund-source-data__field${textoLargo ? ' rund-source-data__field--wide' : ''}${restringido || vacio ? ' rund-source-data__field--muted' : ''}`}>

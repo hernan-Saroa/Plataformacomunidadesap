@@ -64,10 +64,13 @@ const NOMBRE_TIPO: Record<string, string> = {
   SUSPENSION: 'Suspensión',
   REANUDACION: 'Reanudación',
   TERMINACION_ANTICIPADA: 'Terminación anticipada',
+  OTRO: 'Otra modificación',
 };
 
 const VACIO = {
   justificacion: '',
+  // otra (138)
+  descripcion: '',
   // adicion
   valorAdicionado: '',
   // prorroga
@@ -169,6 +172,11 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
           justificacion,
         }),
       ACLARATORIO: () => contratacionService.solicitarAclaratorio(procesoId, { justificacion }),
+      OTRO: () =>
+        contratacionService.solicitarOtraModificacion(procesoId, {
+          descripcion: datos.descripcion.trim(),
+          justificacion,
+        }),
       SUSPENSION: () =>
         contratacionService.solicitarSuspension(procesoId, {
           suspensionDesde: datos.suspensionDesde,
@@ -200,7 +208,10 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
     if (datos.justificacion.trim().length < 20) return false;
     switch (tipoNuevo) {
       case 'ADICION':
-        return Number(datos.valorAdicionado || 0) > 0 && cabeLoEscrito;
+        // El tope es informativo (sesión de QA del 04/11): se avisa, no se impide.
+        return Number(datos.valorAdicionado || 0) > 0;
+      case 'OTRO':
+        return datos.descripcion.trim().length >= 5;
       case 'PRORROGA':
         return Number(datos.diasProrroga || 0) > 0;
       case 'CESION':
@@ -356,7 +367,7 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
         </Aviso>
       ) : null}
 
-      {estado.margen ? <Margen margen={estado.margen} /> : null}
+      {estado.margen ? <Margen margen={estado.margen} smmlv={estado.smmlv?.valor ?? null} /> : null}
 
       {!estado.puedeSolicitar && estado.motivoNoPuede ? (
         <Pendiente falta="8.7" texto={`No se puede modificar: ${estado.motivoNoPuede}.`} />
@@ -433,7 +444,13 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
               {/* Se dice antes de enviar, no después del error del servidor. */}
               {!cabeLoEscrito && estado.margen ? (
                 <p className="text-[11px] text-amber-700 m-0 mt-1 leading-relaxed tabular-nums">
-                  Se pasa del tope: solo caben {pesos(estado.margen.margenDisponible)}.
+                  Supera el tope del {estado.margen.topePorcentaje}%: caben{' '}
+                  {pesos(estado.margen.margenDisponible)}
+                  {estado.smmlv
+                    ? ` (${enSmmlv(estado.margen.margenDisponible, estado.smmlv.valor)} SMMLV)`
+                    : ''}
+                  . Es una referencia: la adición se puede registrar igual y el aviso queda en
+                  la trazabilidad.
                 </p>
               ) : null}
             </div>
@@ -615,6 +632,28 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
             </>
           ) : null}
 
+          {tipoNuevo === 'OTRO' ? (
+            <div>
+              <label htmlFor="ot-desc" className="block text-xs font-bold text-gray-600 mb-1.5">
+                Qué se modifica <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="ot-desc"
+                type="text"
+                maxLength={300}
+                value={datos.descripcion}
+                onChange={(e) => setDatos((p) => ({ ...p, descripcion: e.target.value }))}
+                placeholder="Por ejemplo, modificación de los anexos técnicos"
+                className={campo}
+              />
+              <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+                Para lo que no es adición, prórroga, cesión, aclaratorio, suspensión, reanudación
+                ni terminación. No cambia plazo, valor ni partes en la plataforma; lo sustenta el
+                acto que se adjunta al aprobarla.
+              </p>
+            </div>
+          ) : null}
+
           {tipoNuevo === 'ACLARATORIO' ? (
             <p className="text-[11px] text-slate-500 m-0 leading-relaxed">
               El aclaratorio precisa lo que el contrato ya dice: corrige cláusulas no esenciales,
@@ -672,7 +711,11 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
  * adición procede, y el tope se cuenta acumulado sobre el valor inicial —no
  * sobre el valor vigente, que ya incluye las anteriores—.
  */
-function Margen({ margen }: { margen: MargenDeAdicion }) {
+/** Cuántos salarios mínimos son, con un decimal. */
+const enSmmlv = (valor: number, smmlv: number) =>
+  (valor / smmlv).toLocaleString('es-CO', { maximumFractionDigits: 1 });
+
+function Margen({ margen, smmlv }: { margen: MargenDeAdicion; smmlv: number | null }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3">
       <p className="text-[12.5px] font-bold text-slate-800 m-0 mb-2">Margen de adición</p>
@@ -691,6 +734,7 @@ function Margen({ margen }: { margen: MargenDeAdicion }) {
         </dt>
         <dd className="text-[11.5px] font-bold text-slate-800 m-0 text-right tabular-nums">
           {pesos(margen.topeValor)}
+          {smmlv ? ` · ${enSmmlv(margen.topeValor, smmlv)} SMMLV` : ''}
         </dd>
       </dl>
 
@@ -701,8 +745,14 @@ function Margen({ margen }: { margen: MargenDeAdicion }) {
         </span>
         <span className="text-[13px] font-black text-slate-900 tabular-nums">
           {pesos(margen.margenDisponible)}
+          {smmlv ? ` · ${enSmmlv(margen.margenDisponible, smmlv)} SMMLV` : ''}
         </span>
       </div>
+      {/* Sesión de QA del 04/11: el tope es una referencia para los abogados. */}
+      <p className="text-[11px] text-slate-500 m-0 mt-1.5 leading-relaxed">
+        El tope es informativo: el sistema avisa si una adición lo supera, pero no impide
+        registrarla.
+      </p>
     </div>
   );
 }
@@ -786,6 +836,9 @@ function Modificacion({
         </div>
       </div>
 
+      {m.descripcion ? (
+        <p className="text-[11.5px] font-bold text-slate-700 m-0 break-words">{m.descripcion}</p>
+      ) : null}
       <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed whitespace-pre-line break-words">
         {m.justificacion}
       </p>

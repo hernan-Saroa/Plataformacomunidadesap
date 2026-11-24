@@ -25,7 +25,7 @@ import {
   SoporteDelRevisor,
   VersionSustituida,
 } from '../../types';
-import { DocumentoVisible, VisorDocumento } from './VisorDocumento';
+import { DocumentoVisible, VisorDocumento, sePuedeVer } from './VisorDocumento';
 import { useSoloLectura } from './SoloLectura';
 
 interface Props {
@@ -204,23 +204,24 @@ export function ListaDeDocumentos({
       'Documento retirado del expediente',
     );
 
-  // Sin nada que pedir ni nada cargado la lista no se pinta: la mayoría de
-  // las actividades no piden documentos, y un marco vacío se leería como
-  // algo pendiente.
   const delRevisor = estado?.soportesDelRevisor ?? [];
   const deOtraModalidad = estado?.deOtraModalidad ?? [];
-  if (
-    !estado ||
-    (estado.documentos.length === 0 &&
-      estado.adicionales.length === 0 &&
-      delRevisor.length === 0 &&
-      deOtraModalidad.length === 0)
-  ) {
+  const motivo = soloLectura || bloqueo;
+  const puedeTocar = !!estado?.puedeCargar && !motivo;
+  const vacia =
+    !!estado &&
+    estado.documentos.length === 0 &&
+    estado.adicionales.length === 0 &&
+    delRevisor.length === 0 &&
+    deOtraModalidad.length === 0;
+
+  // Vacía, la lista solo se pinta para quien puede adjuntar: la mayoría de las
+  // actividades no piden documentos fijos, pero todas tienen que poder dejar
+  // varios soportes en el expediente, como la 5.1. A quien no puede cargar un
+  // marco vacío se le leería como algo pendiente.
+  if (!estado || (vacia && !puedeTocar)) {
     return null;
   }
-
-  const motivo = soloLectura || bloqueo;
-  const puedeTocar = estado.puedeCargar && !motivo;
   /** Los de consulta van aparte: no se cargan ni cuentan como pendientes. */
   const aEntregar = estado.documentos.filter((d) => !d.informativo);
   const deConsulta = estado.documentos.filter((d) => d.informativo);
@@ -228,6 +229,11 @@ export function ListaDeDocumentos({
   const faltan = estado.faltantes.length;
   /** Alguna fila sale de la lectura del procedimiento y no del formato oficial. */
   const haySupuestos = estado.documentos.some((d) => !d.confirmado);
+  const explicacion =
+    ayuda ??
+    (vacia
+      ? 'Esta actividad no pide documentos fijos. Si algún soporte debe quedar en el expediente, adjúntalo aquí; puedes elegir varios a la vez.'
+      : undefined);
 
   return (
     <section
@@ -239,8 +245,10 @@ export function ListaDeDocumentos({
           <ClipboardCheck className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />
           <div className="min-w-0">
             <p className="text-[12.5px] font-bold text-slate-800 m-0">{titulo}</p>
-            {ayuda && (
-              <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">{ayuda}</p>
+            {explicacion && (
+              <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">
+                {explicacion}
+              </p>
             )}
           </div>
         </div>
@@ -343,7 +351,11 @@ export function ListaDeDocumentos({
             className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-[#003DA5] transition-colors disabled:opacity-50"
           >
             <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-            {ocupado === 'adicional' ? 'Cargando…' : 'Adjuntar otros documentos'}
+            {ocupado === 'adicional'
+              ? 'Cargando…'
+              : vacia
+                ? 'Adjuntar documentos'
+                : 'Adjuntar otros documentos'}
           </button>
         </div>
       )}
@@ -523,6 +535,7 @@ function FilaDocumento({
 
         {cargado?.descargaUrl && (
           <>
+            {sePuedeVer(cargado.mimeType, cargado.nombre) && (
             <button
               type="button"
               onClick={() =>
@@ -540,6 +553,7 @@ function FilaDocumento({
             >
               <Eye className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
+            )}
             <a
               href={contratacionService.urlDescarga(cargado.descargaUrl)}
               target="_blank"
@@ -640,6 +654,7 @@ function FilaAdicional({
 
       {documento.descargaUrl && (
         <>
+          {sePuedeVer(documento.mimeType, documento.nombre) && (
           <button
             type="button"
             onClick={() =>
@@ -655,6 +670,7 @@ function FilaAdicional({
           >
             <Eye className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
+          )}
           <a
             href={contratacionService.urlDescarga(documento.descargaUrl)}
             target="_blank"
@@ -703,6 +719,7 @@ function AccionesArchivo({
   if (!descargaUrl) return null;
   return (
     <>
+      {sePuedeVer(mimeType, nombre) && (
       <button
         type="button"
         onClick={() => onVer({ nombre, descargaUrl, detalle, mimeType: mimeType ?? null })}
@@ -711,6 +728,7 @@ function AccionesArchivo({
       >
         <Eye className="w-3.5 h-3.5" aria-hidden="true" />
       </button>
+      )}
       <a
         href={contratacionService.urlDescarga(descargaUrl)}
         target="_blank"

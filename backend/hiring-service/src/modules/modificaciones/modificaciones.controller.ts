@@ -25,6 +25,7 @@ import {
   RechazarRespaldoDto,
   RevocarModificacionDto,
   SolicitarAclaratorioDto,
+  SolicitarOtraModificacionDto,
   SolicitarAdicionDto,
   SolicitarCesionDto,
   SolicitarProrrogaDto,
@@ -129,6 +130,21 @@ export class ModificacionesController {
     @Req() req: any,
   ) {
     return this.service.solicitarAclaratorio(procesoId, dto, getHiringAccess(req));
+  }
+
+  @Post('otras')
+  @Puede('editar', '9.5')
+  @ApiOperation({
+    summary: 'Actividad 9.5 · Solicitar otra modificación',
+    description:
+      'Lo que no es adición, prórroga, cesión, aclaratorio, suspensión, reanudación ni terminación —por ejemplo, modificar los anexos técnicos—, con descripción libre. No cambia plazo, valor ni partes.',
+  })
+  solicitarOtra(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: SolicitarOtraModificacionDto,
+    @Req() req: any,
+  ) {
+    return this.service.solicitarOtra(procesoId, dto, getHiringAccess(req));
   }
 
   @Post('suspensiones')

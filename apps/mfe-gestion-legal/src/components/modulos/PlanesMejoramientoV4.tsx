@@ -44,12 +44,14 @@ import {
 } from '@esap-mfe/shared-ui/dropdown-menu';
 import { add } from '@dnd-kit/utilities';
 import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
+import { resolverEnteControl, colorFondoSuave, agruparPlanesPorEnte } from '../config/entesControlPM';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // ==================== TIPOS ====================
 type EstadoPlan = 'FORMULACION' | 'EN_EJECUCION' | 'COMPLETADO' | 'SUSPENDIDO';
-type EnteControl = 'CONTRALORIA' | 'PROCURADURIA' | 'OCI' | 'AUDITORIA_EXTERNA';
+// Id del ente de control configurado en Configuraciones SIGL (el plan lo guarda en `origen`).
+type EnteControl = string;
 type SeveridadHallazgo = 'CRITICA' | 'ALTA' | 'MEDIA' | 'BAJA';
 type EstadoAccion = 'PENDIENTE' | 'EN_PROCESO' | 'COMPLETADA' | 'VENCIDA';
 
@@ -101,48 +103,14 @@ interface PlanMejoramiento {
 type VistaModulo = 'dashboard' | 'lista' | 'timeline' | 'archivados';
 
 // ==================== HELPERS ====================
-const getEnteConfig = (ente: EnteControl) => {
-  const configs = {
-    CONTRALORIA: {
-      nombre: 'Contraloría General',
-      color: '#DC2626',
-      bgColor: '#FEE2E2',
-      icon: '🏛️'
-    },
-    PROCURADURIA: {
-      nombre: 'Procuraduría General',
-      color: '#059669',
-      bgColor: '#D1FAE5',
-      icon: '⚖️'
-    },
-    OCI: {
-      nombre: 'Oficina Control Interno',
-      color: '#2962FF',
-      bgColor: '#E3F2FD',
-      icon: '🔍'
-    },
-    AUDITORIA_EXTERNA: {
-      nombre: 'Auditoría Externa',
-      color: '#9C27B0',
-      bgColor: '#F3E5F5',
-      icon: '📊'
-    },
-    // Fallback for others
-    RIESGO: {
-      nombre: 'Riesgo',
-      color: '#F59E0B',
-      bgColor: '#FEF3C7',
-      icon: '⚠️'
-    },
-    OTRO: {
-      nombre: 'Otro',
-      color: '#6B7280',
-      bgColor: '#F3F4F6',
-      icon: '📄'
-    }
+// Nombre, ícono y color vigentes del ente según Configuraciones SIGL (no un listado fijo).
+function useEnteConfig() {
+  const { entesControlPM } = useConfiguracionesSIGL();
+  return (enteId: string) => {
+    const ente = resolverEnteControl(entesControlPM, enteId);
+    return { nombre: ente.nombre, icon: ente.icono, color: ente.color, bgColor: colorFondoSuave(ente.color) };
   };
-  return configs[ente] || configs['OTRO'];
-};
+}
 
 const getEstadoConfig = (estado: EstadoPlan | string) => {
   const configs: any = {
@@ -228,6 +196,8 @@ const formatearFecha = (fecha: Date | string): string => {
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ModuloPlanesMejoramientoV4() {
   const { entesControlPM } = useConfiguracionesSIGL();
+
+  const getEnteConfig = useEnteConfig();
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
   const canMutatePlanesMejoramiento = authService.hasPermission(Permissions.GESTION_LEGAL_PLANES_MEJORAMIENTO_CREATE);
@@ -784,7 +754,18 @@ export function ModuloPlanesMejoramientoV4() {
                       </SelectTrigger>
                       <SelectContent className="z-[9999]">
                         {entesControlPM.filter(o => o.activo).map(o => (
-                          <SelectItem key={o.id} value={o.id}>{o.nombre}</SelectItem>
+                          <SelectItem key={o.id} value={o.id}>
+                            <span className="inline-flex items-center gap-2">
+                              <span
+                                aria-hidden="true"
+                                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-xs"
+                                style={{ backgroundColor: o.color }}
+                              >
+                                {o.icono}
+                              </span>
+                              {o.nombre}
+                            </span>
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1072,18 +1053,15 @@ export function ModuloPlanesMejoramientoV4() {
 
 // ==================== VISTA: DASHBOARD ====================
 function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; onVerDetalle?: (id: string) => void }) {
+  const { entesControlPM } = useConfiguracionesSIGL();
+  const getEnteConfig = useEnteConfig();
   // const { entesControl } = useConfiguracionesSIGL();
 
   // Agrupar por ente de control
   const planesPorEnte = useMemo(() => {
-    const grupos = {
-      CONTRALORIA: planes.filter(p => p.enteControl === 'CONTRALORIA'),
-      PROCURADURIA: planes.filter(p => p.enteControl === 'PROCURADURIA'),
-      OCI: planes.filter(p => p.enteControl === 'OCI'),
-      AUDITORIA_EXTERNA: planes.filter(p => p.enteControl === 'AUDITORIA_EXTERNA')
-    };
+    const grupos = agruparPlanesPorEnte(planes, entesControlPM);
     return grupos;
-  }, [planes]);
+  }, [planes, entesControlPM]);
 
   // Estadísticas de severidad
   const estadisticasSeveridad = useMemo(() => {
@@ -1116,7 +1094,7 @@ function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; 
         <h3 className="font-black text-gray-900 mb-4">Planes por Ente de Control</h3>
         <div className="space-y-3">
           {Object.entries(planesPorEnte).map(([ente, planesEnte]) => {
-            const config = getEnteConfig(ente as EnteControl);
+            const config = getEnteConfig(ente);
             const avancePromedio = planesEnte.length > 0
               ? Math.round(planesEnte.reduce((sum, p) => sum + p.avanceGeneral, 0) / planesEnte.length)
               : 0;
@@ -1234,6 +1212,7 @@ function VistaLista({
   onVerDetalle?: (id: string) => void;
   onArchivar?: (id: string) => void;
 }) {
+  const getEnteConfig = useEnteConfig();
   return (
     <div className="space-y-3">
       {planes.map(plan => {
@@ -1411,6 +1390,7 @@ function VistaLista({
 
 // ==================== VISTA: TIMELINE ====================
 function VistaTimeline({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; onVerDetalle?: (id: string) => void }) {
+  const getEnteConfig = useEnteConfig();
   // Ordenar planes por fecha de vencimiento
   const planesOrdenados = useMemo(() => {
     return [...planes].sort((a, b) => a.fechaFin.getTime() - b.fechaFin.getTime());

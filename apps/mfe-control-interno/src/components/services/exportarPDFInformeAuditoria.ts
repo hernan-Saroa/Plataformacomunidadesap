@@ -16,8 +16,6 @@ export interface InformePreliminarPDF {
   moderados: number;
   leves: number;
   observaciones: string;
-  /** Folios del anexo (ej: 45) */
-  foliosAnexos?: number;
 }
 
 export interface InformeFinalPDF {
@@ -36,8 +34,7 @@ export interface AuditoriaBasicaPDF {
   auditorLider: string;
   focos?: string[];
   // --- Variables para carta de cubierta ---
-  radicado?: string;
-  fechaOficio?: string;
+  // Sin radicado ni fecha de radicación: los asigna el aplicativo de correspondencia (EFDS-2455)
   destinatarioNombre?: string;
   destinatarioCargo?: string;
   unidadAuditable?: string;
@@ -181,16 +178,12 @@ function formatFechaEspañol(fechaStr: string): string {
 }
 
 /** Dibuja el encabezado institucional en la página activa y devuelve la Y donde termina */
-function encabezadoInforme(doc: JsPDFType, tipo?: TipoInforme, proceso?: string): number {
-  const configBase = tipo === 'ejecutivo'
+function encabezadoInforme(doc: JsPDFType, tipo?: TipoInforme): number {
+  // El PROCESO del encabezado es el dueño del formato (Evaluación, Control y Mejora),
+  // no la unidad auditada, que es lo que salía antes (EFDS-2455)
+  const config = tipo === 'ejecutivo'
     ? DOCUMENTOS_PREDEFINIDOS.INFORME_EJECUTIVO_OCI
     : DOCUMENTOS_PREDEFINIDOS.INFORME_AUDITORIA_OCI;
-  
-  const config = {
-    ...configBase,
-    proceso: proceso || configBase.proceso
-  };
-
   return dibujarEncabezadoInstitucional(doc as any, config as ConfiguracionDocumento, 10);
 }
 
@@ -207,7 +200,7 @@ function checkPage(
   const pageHeight = doc.internal.pageSize.getHeight();
   if (y + needed > pageHeight - footerMargin) {
     doc.addPage();
-    const yStart = encabezadoInforme(doc, (doc as any)._tipoInforme, (doc as any)._procesoAuditado);
+    const yStart = encabezadoInforme(doc, (doc as any)._tipoInforme);
     dibujarPieInstitucional(doc as any, (doc as any).getNumberOfPages(), true);
     doc.setTextColor(0, 0, 0); 
     doc.setFont('helvetica', 'normal');
@@ -262,7 +255,7 @@ function filaTabla(
   // Nueva página si no cabe
   if (y + rowH > pageHeight - footerMargin) {
     doc.addPage();
-    y = encabezadoInforme(doc, (doc as any)._tipoInforme, (doc as any)._procesoAuditado) + 5;
+    y = encabezadoInforme(doc, (doc as any)._tipoInforme) + 5;
     dibujarPieInstitucional(doc as any, (doc as any).getNumberOfPages(), true);
   }
 
@@ -465,6 +458,25 @@ function tablaGenerica(
 
 // ─── Función principal ─────────────────────────────────────────────────────────
 
+/** Secciones del informe en el orden del formato EM-FO-003 versión 03 (EFDS-2455) */
+const SECCIONES_INFORME = [
+  'DECLARACIÓN',
+  'NOTA DE SEGURIDAD Y CONFIDENCIALIDAD',
+  'ANTECEDENTES',
+  'CONTEXTO GENERAL',
+  'EJECUCIÓN DE LA AUDITORÍA',
+  'FORTALEZAS',
+  'RECOMENDACIONES',
+  'HALLAZGOS',
+  'RESUMEN DE HALLAZGOS',
+  'EVALUACIÓN DEL CONTROL INTERNO',
+  'CONCLUSIONES',
+] as const;
+
+/** Lo que no se registró en la auditoría no se rellena con textos de otro informe (EFDS-2455) */
+const SECCION_PENDIENTE = '[Sección a desarrollar por el auditor]';
+const SIN_HALLAZGOS = 'No se registraron hallazgos en la auditoría.';
+
 /** salida: false descarga el PDF, true devuelve una blob URL y 'blob' devuelve el archivo (para subirlo). */
 export async function exportarPDFInformeAuditoria(
   tipo: TipoInforme,
@@ -514,7 +526,8 @@ export async function exportarPDFInformeAuditoria(
       : new Date().toLocaleDateString('es-CO');
 
   const añoActual = new Date().getFullYear();
-  // Año del Plan Anual: prioridad al campo explícito, luego metadata del plan, luego año de la fecha inicio
+  // Año del Plan Anual: prioridad al campo explícito, luego metadata del plan, luego año de la fecha inicio.
+  // El oficio cita este año y no el de hoy, como el asunto (EFDS-2455)
   const planAnualAño: number =
     auditoria.planAnualAño
     || (auditoria as any).programaAnualMetadata?.año
@@ -528,21 +541,6 @@ export async function exportarPDFInformeAuditoria(
     || 'el periodo correspondiente';
 
   // ─── Derivar valores ────────────────────────────────────────────────────────
-  // El "consecutivo" es el radicado o el código técnico formateado como I-YYYY-XXXXXX
-  let radicado = auditoria.radicado;
-  if (!radicado && auditoria.codigo) {
-    const parts = auditoria.codigo.split('-');
-    if (parts.length >= 3) {
-      const year = parts[1];
-      const num = parts[2];
-      radicado = `I-${year}-${num.padStart(6, '0')}`;
-    } else {
-      radicado = auditoria.codigo;
-    }
-  }
-  if (!radicado) radicado = `I-${añoActual}-000001`;
-
-  const fechaOficio = auditoria.fechaOficio || fechaStr;
   const cargoDest = auditoria.destinatarioCargo || 'Director(a) Territorial';
   // Si destinatarioNombre parece un ID (sin espacios y corto), usar cargo como nombre de display
   const rawDest = auditoria.destinatarioNombre || '';
@@ -558,8 +556,8 @@ export async function exportarPDFInformeAuditoria(
   const elaboro = auditoria.elaboro || auditoria.auditorLider || 'Auditor Líder';
   const reviso = auditoria.reviso || (jefe || 'Jefe Oficina de Control Interno');
   const aprobo = auditoria.aprobo || (jefe || 'Jefe Oficina de Control Interno');
-  const folios = (informe as InformePreliminarPDF).foliosAnexos
-    ?? (hallazgosDetalle?.length || 0) * 2 + 10;
+  // Los folios del anexo se escriben al final, con las páginas reales del informe (EFDS-2455)
+  let yFolios = 0;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // PÁGINA 1 — CARTA DE CUBIERTA (Estilo Oficio)
@@ -568,27 +566,10 @@ export async function exportarPDFInformeAuditoria(
     // Logo institucional completo (escudo + texto) únicamente en la página 1
     const logoInstitucionalBase64 = await getLogoInstitucionalESAP();
     doc.addImage(logoInstitucionalBase64, 'PNG', margin, 13, 65, 22);
-    
-    // Bloque radicado / fecha (Estilo original solicitado)
-    doc.setFontSize(8);
-    const boxW = 55;
-    const boxH = 14;
-    const boxX = pageWidth - margin - boxW;
-    const boxY = 20;
-    
-    doc.setDrawColor(120, 120, 120);
-    doc.setLineWidth(0.2);
-    if ((doc as any).roundedRect) {
-      (doc as any).roundedRect(boxX, boxY, boxW, boxH, 3, 3);
-    } else {
-      doc.rect(boxX, boxY, boxW, boxH);
-    }
-    
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Radicado: ${radicado}`, boxX + 3, boxY + 5);
-    doc.text(`Fecha: ${fechaOficio}`, boxX + 3, boxY + 10);
-    
-    let y = boxY + boxH + 20;
+
+    // Sin recuadro de radicado ni fecha de radicación: los asigna el aplicativo de
+    // correspondencia de la ESAP al radicar el oficio, no este módulo (EFDS-2455)
+    let y = 54;
 
     // Consecutivo y Ciudad
     doc.setFont('helvetica', 'normal');
@@ -640,7 +621,7 @@ export async function exportarPDFInformeAuditoria(
 
     const parrafosCuerpo = tipo === 'final'
       ? [
-          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento el Informe Final de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
+          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${planAnualAño}, remite para su conocimiento el Informe Final de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
           '',
           `La ${unidad} tiene plazo hasta el ${plazoPronunc}, para formular un plan de mejora el cual debe contener acciones con el objetivo de subsanar la(s) causa(s) raíz de los hallazgos formalizados.`,
           '',
@@ -651,7 +632,7 @@ export async function exportarPDFInformeAuditoria(
         ].join('\n')
       : tipo === 'ejecutivo'
       ? [
-          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento el Informe Ejecutivo de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
+          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${planAnualAño}, remite para su conocimiento el Informe Ejecutivo de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
           '',
           'Este documento resume los resultados definitivos y la evaluación del sistema de control interno del proceso auditado.',
           '',
@@ -661,7 +642,7 @@ export async function exportarPDFInformeAuditoria(
           'Jefe Oficina de Control Interno',
         ].join('\n')
       : [
-          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento y pronunciamiento el Informe Preliminar de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
+          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${planAnualAño}, remite para su conocimiento y pronunciamiento el Informe Preliminar de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
           '',
           `Así mismo, la ${unidad} tiene plazo hasta el ${plazoPronunc}, para que se pronuncie frente a cada uno de los hallazgos y recomendaciones incluidas en el informe preliminar, allegando los soportes y evidencias respectivos, con el objetivo que los hallazgos sean levantados o en su defecto declarada su firmeza.`,
           '',
@@ -686,7 +667,7 @@ export async function exportarPDFInformeAuditoria(
     // Pie de carta
     doc.setFontSize(8);
     y = checkPage(doc, y, 25, FOOTER_MARGIN);
-    doc.text(`Anexos: Informe ${isFinal ? 'Final' : 'Preliminar'} de Auditoría (${folios}) folios`, margin, y);
+    yFolios = y;
     y += LH;
     doc.text('Copia: N/A', margin, y);
     y += LH + 2;
@@ -699,11 +680,8 @@ export async function exportarPDFInformeAuditoria(
     doc.addPage();
   }
 
-  // Guardar datos en doc para checkPage
-  (doc as any)._procesoAuditado = auditoria.proceso || 'EVALUACIÓN CONTROL Y MEJORA';
-
   // Margen superior inicial para el cuerpo del informe
-  let y = encabezadoInforme(doc, (doc as any)._tipoInforme, (doc as any)._procesoAuditado) + 5;
+  let y = encabezadoInforme(doc, (doc as any)._tipoInforme) + 5;
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(10.5);
 
@@ -764,149 +742,149 @@ export async function exportarPDFInformeAuditoria(
   y = filaTabla(doc, margin, y, tableW, 'EQUIPO AUDITOR:', equipoTxt.toUpperCase(), TABLA_OPTS);
 
   // Fila: OBJETIVO
-  const obj = auditoria.objetivo ||
-    'Evaluar el cumplimiento de las normas, directrices, procedimientos y regulaciones aplicables, mediante la auditoría interna como actividad independiente y objetiva, identificando riesgos y evaluando controles.';
+  const obj = auditoria.objetivo || 'No registrado';
   y = filaTabla(doc, margin, y, tableW, 'OBJETIVO(S):', obj, TABLA_OPTS);
 
-  // Fila: ALCANCE
-  const alc = auditoria.alcance ||
-    'La etapa de ejecución de la auditoría se realizará evaluando el desarrollo de las actividades, acciones y controles establecidos para el periodo correspondiente.';
+  // Fila: ALCANCE (el registrado en la auditoría; sin él no se inventa uno, EFDS-2455)
+  const alc = auditoria.alcance || SECCION_PENDIENTE;
   y = filaTabla(doc, margin, y, tableW, 'ALCANCE:', alc, TABLA_OPTS);
 
   y += SEC + 4;
 
-  // ── Declaración ──
-  y = checkPage(doc, y, 20, FOOTER_MARGIN);
+  // ─── TABLA DE CONTENIDO (EM-FO-003 v3, EFDS-2455) ─────────────────────────
+  // Las páginas se escriben al final, cuando ya se sabe dónde quedó cada sección.
+  y = checkPage(doc, y, 14 + SECCIONES_INFORME.length * 6, FOOTER_MARGIN);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.text('DECLARACIÓN:', margin, y);
+  doc.setFontSize(12);
+  doc.text('TABLA DE CONTENIDO', margin + tableW / 2, y, { align: 'center' });
+  y += LH + 3;
+  const paginaIndice: number = (doc as any).getCurrentPageInfo().pageNumber;
+  const yIndice: number[] = [];
   doc.setFont('helvetica', 'normal');
-  const declDefault = 'La auditoría se realiza con base en el análisis de diferentes muestras aleatorias seleccionadas por los auditores, y se fundamenta en el siguiente soporte documental: expedientes, procesos y procedimientos del Sistema de Gestión, reportes de los sistemas de información, cruces y validaciones, página web, intranet y normas internas y externas, entre otros.';
-  const decl = (auditoria as any).declaracion || declDefault;
-  y = imprimirParrafo(doc, decl, margin, y + LH, tableW, LH, FOOTER_MARGIN);
+  doc.setFontSize(10.5);
+  SECCIONES_INFORME.forEach((seccion, i) => {
+    doc.text(`${i + 1}. ${seccion}`, margin + 2, y);
+    yIndice.push(y);
+    y += 6;
+  });
   y += SEC + 4;
 
-  // ── Instrumentos Decreto 648 ──
+  const paginaSeccion: number[] = [];
+  /** Título numerado de la sección; guarda su página para la tabla de contenido. */
+  const tituloSeccion = (idx: number) => {
+    y = checkPage(doc, y, 20, FOOTER_MARGIN);
+    paginaSeccion[idx] = (doc as any).getCurrentPageInfo().pageNumber;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text(`${idx + 1}. ${SECCIONES_INFORME[idx]}`, margin, y);
+    y += LH + 3;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10.5);
+  };
+  /** Sección sin datos registrados: queda para que el auditor la desarrolle. */
+  const seccionPendiente = (x = margin) => {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(10.5);
+    y = imprimirParrafo(doc, SECCION_PENDIENTE, x, y, tableW - (x - margin), LH, FOOTER_MARGIN);
+    doc.setFont('helvetica', 'normal');
+  };
+  const vinetas = (items: string[], x = margin + 4) => {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10.5);
+    items.forEach((item) => {
+      y = imprimirParrafo(doc, `•  ${item}`, x, y, tableW - (x - margin), LH, FOOTER_MARGIN);
+      y += 1;
+    });
+  };
+
+  // ── 1. Declaración ──
+  tituloSeccion(0);
+  const declDefault = 'La auditoría se realiza con base en el análisis de diferentes muestras aleatorias seleccionadas por los auditores, y se fundamenta en el siguiente soporte documental: expedientes, procesos y procedimientos del Sistema de Gestión, reportes de los sistemas de información, cruces y validaciones, página web, intranet y normas internas y externas, entre otros.';
+  const decl = (auditoria as any).declaracion || declDefault;
+  y = imprimirParrafo(doc, decl, margin, y, tableW, LH, FOOTER_MARGIN);
+  y += SEC;
+
+  // Instrumentos Decreto 648
   y = checkPage(doc, y, 30, FOOTER_MARGIN);
   doc.setFont('helvetica', 'normal');
   const instrumentoIntro = 'En aplicación al Decreto 648 de 2017 Artículo 2.2.21.4.8, la Oficina de Control Interno incorpora los siguientes Instrumentos para la Actividad de la Auditoría Interna:';
-  const lII = doc.splitTextToSize(instrumentoIntro, tableW);
-  doc.text(lII, margin, y);
-  y += (lII.length * LH) + 2;
+  y = imprimirParrafo(doc, instrumentoIntro, margin, y, tableW, LH, FOOTER_MARGIN);
+  y += 2;
   const instrumentos = [
     'Código de Ética del Auditor Interno que tiene como bases fundamentales, la integridad, objetividad, confidencialidad, conflictos de interés y competencia de éste.',
     'Estatuto de auditoría, en el cual se establecen y comunican las directrices fundamentales que definen el marco dentro del cual se desarrollan las actividades de la Oficina de Control Interno, según los lineamientos de las normas internacionales de auditoría.'
   ];
   instrumentos.forEach(ins => {
-    const li = doc.splitTextToSize(`- ${ins}`, tableW - 8);
-    doc.text(li, margin + 4, y);
-    y += (li.length * LH) + 1;
-    y = checkPage(doc, y, 10, FOOTER_MARGIN);
+    y = imprimirParrafo(doc, `- ${ins}`, margin + 4, y, tableW - 8, LH, FOOTER_MARGIN);
+    y += 1;
   });
   y += 4;
 
-  // ── Carta de representación ──
-  const fechaCarta = (auditoria as any).cartaRepresentacionFecha || '8 de julio 2025';
-  y = checkPage(doc, y, 15, FOOTER_MARGIN);
-  doc.setFont('helvetica', 'normal');
+  // Carta de representación: la fecha es la registrada; sin ella no se pone una de otro informe
+  const fechaCarta = (auditoria as any).cartaRepresentacionFecha || '[fecha por registrar]';
   const cartaText = `De acuerdo con la Carta de representación formalizada el ${fechaCarta}, la ${unidad} se comprometió a presentar a la Oficina de Control Interno información veraz, oportuna y de calidad.`;
   y = imprimirParrafo(doc, cartaText, margin, y, tableW, LH, FOOTER_MARGIN);
-  y += 6;
+  y += SEC + 4;
 
-  // ── Nota de Seguridad y Confidencialidad ──
-  y = checkPage(doc, y, 25, FOOTER_MARGIN);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  const nsTitulo = 'NOTA DE SEGURIDAD Y CONFIDENCIALIDAD DE LA INFORMACIÓN:';
-  doc.text(nsTitulo, margin, y);
-  y += LH;
-  doc.setFont('helvetica', 'normal');
+  // ── 2. Nota de Seguridad y Confidencialidad ──
+  tituloSeccion(1);
   const textoNotaSeguridad = 'Este documento contiene información de interés exclusivo del auditor y el auditado para surtir los trámites establecidos en la Guía de Auditoría. En ese sentido, hasta tanto no se constituya como informe final y sea publicado en la página web de la ESAP, no podrá ser distribuido ni utilizado por terceros, ni se podrá hacer referencia a él en ningún otro asunto, sin el consentimiento previo y por escrito del Jefe de la Oficina de Control Interno.';
   y = imprimirParrafo(doc, textoNotaSeguridad, margin, y, tableW, LH, FOOTER_MARGIN);
   y += SEC + 4;
 
-  // ─── ANTECEDENTES Y CONTEXTO GENERAL ───────────────────────────────────────
-  y = checkPage(doc, y, 20, FOOTER_MARGIN);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('1. ANTECEDENTES Y CONTEXTO GENERAL', margin + (tableW / 2), y, { align: 'center' });
-  y += LH + 4;
-
-  // 1. MARCO NORMATIVO
+  // ── 3. Antecedentes: marco normativo registrado en la auditoría (EFDS-2451) ──
+  tituloSeccion(2);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text('1.1 MARCO NORMATIVO', margin, y);
+  doc.text('Marco normativo', margin, y);
   y += LH + 2;
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(11);
 
   let nGenerales: string[] = [];
   let nEspecificas: string[] = [];
-  if (typeof auditoria.marcoNormativo === 'object' && auditoria.marcoNormativo !== null) {
-    nGenerales = (auditoria.marcoNormativo as any).generales || [];
-    nEspecificas = (auditoria.marcoNormativo as any).especificas || [];
+  if (typeof auditoria.marcoNormativo === 'object' && auditoria.marcoNormativo !== null && !Array.isArray(auditoria.marcoNormativo)) {
+    nGenerales = auditoria.marcoNormativo.generales || [];
+    nEspecificas = auditoria.marcoNormativo.especificas || [];
+  } else if (Array.isArray(auditoria.marcoNormativo)) {
+    nGenerales = auditoria.marcoNormativo;
   }
+  ([['Normas generales:', nGenerales], ['Normas específicas:', nEspecificas]] as const).forEach(([etiqueta, normas]) => {
+    y = checkPage(doc, y, 10, FOOTER_MARGIN);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text(etiqueta, margin + 2, y);
+    y += LH + 1;
+    if (normas.length === 0) {
+      seccionPendiente(margin + 6);
+    } else {
+      vinetas(normas, margin + 6);
+    }
+    y += 2;
+  });
+  y += SEC;
 
-  if (nGenerales.length > 0) {
-    y = checkPage(doc, y, 8, FOOTER_MARGIN);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('Normas generales:', margin + 2, y);
-    y += LH + 1;
-    nGenerales.forEach((n) => {
-      y = checkPage(doc, y, LH + 1, FOOTER_MARGIN);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10.5);
-      const ls = doc.splitTextToSize(`o  ${n}`, tableW - 10);
-      doc.text(ls, margin + 6, y);
-      y += ls.length * LH + 0.2; 
+  // ── 4. Contexto general ──
+  tituloSeccion(3);
+  const contexto = [auditoria.descripcionUnidad, auditoria.contextoGeneral].filter((t) => t && t.trim());
+  if (contexto.length === 0) {
+    seccionPendiente();
+  } else {
+    contexto.forEach((t) => {
+      y = imprimirParrafo(doc, t as string, margin, y, tableW, LH, FOOTER_MARGIN);
+      y += 2;
     });
-    y += 2;
-  }
-  if (nEspecificas.length > 0) {
-    y = checkPage(doc, y, 8, FOOTER_MARGIN);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('Normas específicas:', margin + 2, y);
-    y += LH + 1;
-    nEspecificas.forEach((n) => {
-      y = checkPage(doc, y, LH + 1, FOOTER_MARGIN);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10.5);
-      const ls = doc.splitTextToSize(`o  ${n}`, tableW - 10);
-      doc.text(ls, margin + 6, y);
-      y += ls.length * LH + 0.2;
-    });
-    y += 2;
   }
   y += SEC;
 
-    // 2. CONTEXTO / DESCRIPCIÓN
-    y = checkPage(doc, y, 15, FOOTER_MARGIN);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('1.2 CONTEXTO DE LA AUDITORÍA Y DESCRIPCIÓN DE LA UNIDAD', margin, y);
-    y += LH + 3;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10.5);
-    y = imprimirParrafo(doc, auditoria.descripcionUnidad || '', margin, y, tableW, LH, FOOTER_MARGIN);
-    y += 2;
-    doc.setFontSize(10.5);
-    y = imprimirParrafo(doc, auditoria.contextoGeneral || '', margin, y, tableW, LH, FOOTER_MARGIN);
-    y += SEC;
-
-    // --- SECCIÓN 2. EJECUCIÓN ---
-    y = checkPage(doc, y, 20, FOOTER_MARGIN);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('2. EJECUCIÓN DE LA AUDITORIA', margin + tableW / 2, y, { align: 'center' });
-    y += LH + 3;
-    doc.setFont('helvetica', 'normal');
+  // ── 5. Ejecución de la auditoría ──
+  tituloSeccion(4);
+  if (auditoria.procesosAuditados && auditoria.procesosAuditados.length > 0) {
     doc.setFontSize(11);
     const intro = 'A continuación, se detalla lo verificado y validado en cada uno de los procesos auditados, a través de evidencias documentales o inspección en sitio:';
     y = imprimirParrafo(doc, intro, margin, y, tableW, LH, FOOTER_MARGIN);
-    y += SEC;
+  } else {
+    seccionPendiente();
+  }
+  y += SEC;
 
     // --- RENDERIZADO DE PROCESOS ---
     if (auditoria.procesosAuditados && auditoria.procesosAuditados.length > 0) {
@@ -998,13 +976,43 @@ export async function exportarPDFInformeAuditoria(
       });
     }
 
+    // ── 6. Fortalezas registradas en Ejecución ──
+    tituloSeccion(5);
+    const fortalezas = (auditoria.fortalezas || []).filter((t) => typeof t === 'string' && t.trim());
+    if (fortalezas.length === 0) seccionPendiente();
+    else vinetas(fortalezas);
+    y += SEC;
+
+    // ── 7. Recomendaciones registradas en Ejecución ──
+    tituloSeccion(6);
+    const recomendaciones = (auditoria.recomendacionesPorCategoria || [])
+      .map((r) => ({ ...r, items: (r.items || []).filter((t) => typeof t === 'string' && t.trim()) }))
+      .filter((r) => r.items.length > 0);
+    if (recomendaciones.length === 0) {
+      seccionPendiente();
+    } else {
+      recomendaciones.forEach((r) => {
+        if (recomendaciones.length > 1 && r.categoria) {
+          y = checkPage(doc, y, 10, FOOTER_MARGIN);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.text(r.categoria.toUpperCase(), margin, y);
+          y += LH + 1;
+        }
+        vinetas(r.items);
+        y += 2;
+      });
+    }
+    y += SEC;
+
+    // ── 8. Hallazgos ──
+    tituloSeccion(7);
     const listaH = hallazgosDetalle && hallazgosDetalle.length > 0 ? hallazgosDetalle : [];
+    if (listaH.length === 0) {
+      y = imprimirParrafo(doc, SIN_HALLAZGOS, margin, y, tableW, LH, FOOTER_MARGIN);
+      y += SEC;
+    }
     if (listaH.length > 0) {
-      y = checkPage(doc, y, 14, FOOTER_MARGIN);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.text('HALLAZGOS', margin, y);
-      y += 7;
       listaH.forEach((h, index) => {
         y = checkPage(doc, y, 20, FOOTER_MARGIN);
         const titH = `HALLAZGO No. ${index + 1}${h.titulo ? ' - ' + h.titulo.toUpperCase() : ''}`;
@@ -1081,13 +1089,14 @@ export async function exportarPDFInformeAuditoria(
       y += SEC;
     }
 
-    // ── RESUMEN DE HALLAZGOS ──
+    // ── 9. Resumen de hallazgos ──
+    tituloSeccion(8);
+    if (listaH.length === 0) {
+      y = imprimirParrafo(doc, SIN_HALLAZGOS, margin, y, tableW, LH, FOOTER_MARGIN);
+      y += SEC;
+    }
     if (listaH.length > 0) {
-      y = checkPage(doc, y, 30, FOOTER_MARGIN);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.text('RESUMEN DE HALLAZGOS', margin, y);
-      y += 6;
+      y = checkPage(doc, y, 25, FOOTER_MARGIN);
       {
         // En el final se agrega cómo respondió el área auditada (EFDS-1637). Total 180
         const colsSum = isFinal ? [12, 78, 30, 34, 26] : [12, 110, 30, 28];
@@ -1145,32 +1154,35 @@ export async function exportarPDFInformeAuditoria(
           rx0 += colsSum[2]; doc.line(rx0, y, rx0, y + rh0);
 
           // Col RESPUESTA (solo informe final)
-          let colRepetitivo = 3;
           if (isFinal) {
             doc.text(respuestaAuditadoResumen(h), rx0 + (colsSum[3] / 2), y + (rh0 / 2) + 1.5, { align: 'center' });
             rx0 += colsSum[3]; doc.line(rx0, y, rx0, y + rh0);
-            colRepetitivo = 4;
           }
 
-          // Col REPETITIVO
-          doc.text('NO', rx0 + (colsSum[colRepetitivo] / 2), y + (rh0 / 2) + 1.5, { align: 'center' });
-          
+          // Col REPETITIVO en blanco: el hallazgo no registra si es repetitivo y no se supone "NO" (EFDS-2455)
           y += rh0;
         });
         y += SEC;
       }
     }
 
-    // ── Conclusiones
-    y = checkPage(doc, y, 20, FOOTER_MARGIN);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('CONCLUSIONES', margin, y);
-    y += 7;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10.5);
-    const cText = isFinal ? infFinal?.observacionesFinales : infPrelim?.observaciones;
-    y = imprimirParrafo(doc, cText || auditoria.conclusiones || 'Sin conclusiones.', margin, y, tableW, LH, FOOTER_MARGIN);
+    // ── 10. Evaluación del control interno ──
+    tituloSeccion(9);
+    if (auditoria.evaluacionControlInterno?.trim()) {
+      y = imprimirParrafo(doc, auditoria.evaluacionControlInterno, margin, y, tableW, LH, FOOTER_MARGIN);
+    } else {
+      seccionPendiente();
+    }
+    y += SEC;
+
+    // ── 11. Conclusiones ──
+    tituloSeccion(10);
+    const cText = (isFinal ? infFinal?.observacionesFinales : infPrelim?.observaciones) || auditoria.conclusiones;
+    if (cText?.trim()) {
+      y = imprimirParrafo(doc, cText, margin, y, tableW, LH, FOOTER_MARGIN);
+    } else {
+      seccionPendiente();
+    }
     y += SEC;
 
     // Firmas...
@@ -1192,6 +1204,29 @@ export async function exportarPDFInformeAuditoria(
   // PIE INSTITUCIONAL EN TODAS LAS PÁGINAS (con numeración correcta)
   // ═══════════════════════════════════════════════════════════════════════════
   const totalPages = (doc as any).getNumberOfPages?.() || 1;
+
+  // Páginas de la tabla de contenido, con puntos guía hasta el número
+  (doc as any).setPage(paginaIndice);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10.5);
+  SECCIONES_INFORME.forEach((seccion, i) => {
+    const pagina = paginaSeccion[i];
+    if (!pagina) return;
+    const xNumero = margin + tableW - 2;
+    const xIni = margin + 2 + doc.getTextWidth(`${i + 1}. ${seccion}`) + 2;
+    const xFin = xNumero - doc.getTextWidth(String(pagina)) - 2;
+    const puntos = Math.max(0, Math.floor((xFin - xIni) / doc.getTextWidth('.')));
+    if (puntos > 0) doc.text('.'.repeat(puntos), xIni, yIndice[i]);
+    doc.text(String(pagina), xNumero, yIndice[i], { align: 'right' });
+  });
+
+  // Folios del anexo: las páginas del informe sin contar el oficio
+  if (yFolios) {
+    (doc as any).setPage(1);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text(`Anexos: Informe ${isFinal ? 'Final' : tipo === 'ejecutivo' ? 'Ejecutivo' : 'Preliminar'} de Auditoría (${totalPages - 1}) folios`, margin, yFolios);
+  }
   for (let i = 1; i <= totalPages; i++) {
     (doc as any).setPage(i);
     if ((tipo === 'preliminar' || tipo === 'final') && i === 1) {

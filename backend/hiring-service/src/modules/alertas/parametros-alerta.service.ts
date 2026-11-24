@@ -11,6 +11,7 @@ export type ClaveParametroAlerta =
   | 'tolerancia_sin_abogado'
   | 'plazo_acta_comite'
   | 'plazo_memorando_comite'
+  | 'anticipacion_cronograma'
   | 'hora_aviso'
   | 'cuantia_minima_comite';
 
@@ -36,6 +37,7 @@ export const PARAMETROS_POR_DEFECTO: ParametroAlerta[] = [
   { clave: 'tolerancia_sin_abogado', valor: 2, minimo: 0, maximo: 30, descripcion: 'Días que un proceso recibido puede estar sin abogado antes de alertar' },
   { clave: 'plazo_acta_comite', valor: 10, minimo: 1, maximo: 60, descripcion: 'Días calendario que puede tardar el acta de una sesión del Comité de Contratación antes de darse por vencida' },
   { clave: 'plazo_memorando_comite', valor: 10, minimo: 1, maximo: 60, descripcion: 'Días calendario que puede tardar el memorando de designación del comité evaluador antes de darse por vencido' },
+  { clave: 'anticipacion_cronograma', valor: 5, minimo: 1, maximo: 60, descripcion: 'Días antes del fin de una etapa del cronograma en que se empieza a alertar' },
   { clave: 'hora_aviso', valor: 7, minimo: 0, maximo: 23, descripcion: 'Hora de Bogotá a la que sale el aviso diario de vencimientos' },
   { clave: 'cuantia_minima_comite', valor: 1000, minimo: 1, maximo: 100000, descripcion: 'SMMLV que debe superar el valor del proceso para pasar por el Comité de Contratación, en las modalidades sin umbral propio' },
 ];
@@ -105,4 +107,57 @@ export class ParametrosAlertaService {
 
     return this.listar();
   }
+
+  // ------------------------------------------------ correos institucionales --
+
+  /**
+   * Los buzones de la entidad a los que el módulo manda copia (138): por ahora
+   * el correo general de Contratación, que recibe copia de la notificación al
+   * supervisor. Sin la tabla (138 sin aplicar), la lista sale vacía.
+   */
+  async correos(): Promise<CorreoInstitucional[]> {
+    try {
+      return await this.dataSource.query(
+        `SELECT clave, correo, descripcion FROM hiring.correos_institucionales ORDER BY clave`,
+      );
+    } catch (error: any) {
+      this.logger.warn(`No se pudieron leer los correos institucionales: ${error.message}`);
+      return [];
+    }
+  }
+
+  async guardarCorreos(
+    cambios: Record<string, string | null>,
+    acceso: HiringAccess,
+  ): Promise<CorreoInstitucional[]> {
+    const actuales = await this.correos();
+    for (const [clave, correo] of Object.entries(cambios ?? {})) {
+      if (!actuales.some((c) => c.clave === clave)) {
+        throw new BadRequestException(`No existe el correo ${clave}`);
+      }
+      const limpio = (correo ?? '').trim();
+      if (limpio && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(limpio)) {
+        throw new BadRequestException(`El correo ${limpio} no es válido`);
+      }
+    }
+
+    await this.dataSource.transaction(async (em) => {
+      for (const [clave, correo] of Object.entries(cambios ?? {})) {
+        await em.query(
+          `UPDATE hiring.correos_institucionales
+              SET correo = $1, updated_at = now(), updated_by = $2
+            WHERE clave = $3`,
+          [(correo ?? '').trim().toLowerCase() || null, acceso.userName ?? null, clave],
+        );
+      }
+    });
+
+    return this.correos();
+  }
+}
+
+export interface CorreoInstitucional {
+  clave: string;
+  correo: string | null;
+  descripcion: string;
 }

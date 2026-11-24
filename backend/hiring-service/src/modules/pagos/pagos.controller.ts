@@ -35,10 +35,10 @@ import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '.
 /**
  * Trámite de pagos — actividad 9.4 (EFDS-1170).
  *
- * Tres actos y tres responsables: radica el gestor o el supervisor, avala el
- * supervisor del contrato, y tramita la Dirección Financiera. Cada uno con su
- * lista de roles, porque confundirlos sería dejar que quien cobra se apruebe a
- * sí mismo o que quien vigila mueva el presupuesto.
+ * Tres actos: se radica la cuenta, el supervisor la avala y se tramita el
+ * pago. El supervisor no entra a la aplicación (136): su aval firmado lo carga
+ * quien tenga «aprobar» en la 9.4. Cada acto con su acción, para que quien
+ * radica no se apruebe a sí mismo.
  */
 @ApiTags('Etapa 9 · Trámite de pagos')
 @Controller('procesos/:id/pagos')
@@ -150,24 +150,51 @@ export class PagosController {
 
   @Post(':pagoId/avalar')
   @Puede('aprobar', '9.4')
+  @UseInterceptors(
+    FileInterceptor(
+      'file',
+      opcionesDeCarga(MIME_DOCUMENTOS, 'El aval del supervisor se carga en PDF, Word o Excel'),
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Avalar la cuenta de cobro',
+    summary: 'Registrar el aval del supervisor',
     description:
-      'El aval del supervisor: es su responsabilidad la que respalda el pago. Lo da el supervisor vigente de este contrato y nadie más.',
+      'El supervisor no entra a la aplicación (136): firma el aval por fuera y aquí se carga. Queda como soporte de la cuenta.',
   })
-  avalar(
+  async avalar(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @Param('pagoId', ParseUUIDPipe) pagoId: string,
     @Body() dto: AvalarPagoDto,
+    @UploadedFile() file: any,
     @Req() req: any,
   ) {
-    return this.service.avalar(procesoId, pagoId, dto, getHiringAccess(req));
+    if (!file) {
+      throw new BadRequestException(
+        'Adjunta el aval firmado por el supervisor: es lo que respalda el pago',
+      );
+    }
+
+    const ruta = join(STORAGE_PATH, file.filename);
+    try {
+      return await this.service.avalar(
+        procesoId,
+        pagoId,
+        dto,
+        file,
+        await sha256Archivo(ruta),
+        getHiringAccess(req),
+      );
+    } catch (error) {
+      await unlink(ruta).catch(() => undefined);
+      throw error;
+    }
   }
 
   @Post(':pagoId/devolver')
   @Puede('aprobar', '9.4')
   @ApiOperation({
-    summary: 'Devolver la cuenta para que la corrijan',
+    summary: 'Registrar que el supervisor devolvió la cuenta',
     description:
       'No se borra: el periodo y los documentos que el contratista presentó existieron. El motivo es lo que le dice qué arreglar.',
   })
@@ -185,7 +212,7 @@ export class PagosController {
   @ApiOperation({
     summary: 'Tramitar el pago avalado',
     description:
-      'La Dirección Financiera registra que el pago se tramitó y con qué referencia. La plataforma no gira: el pago sale del sistema financiero de la entidad.',
+      'Se registra que el pago se tramitó y con qué referencia. La plataforma no gira: el pago sale del sistema financiero de la entidad.',
   })
   tramitar(
     @Param('id', ParseUUIDPipe) procesoId: string,

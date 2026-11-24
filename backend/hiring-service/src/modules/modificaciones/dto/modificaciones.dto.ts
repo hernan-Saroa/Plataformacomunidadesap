@@ -101,6 +101,19 @@ export class SolicitarCesionDto extends ConJustificacion {
  */
 export class SolicitarAclaratorioDto extends ConJustificacion {}
 
+/**
+ * Modificación de tipo «Otro» (sesión de QA del 04/11, 138): lo que no encaja
+ * en los demás tipos, como modificar los anexos técnicos.
+ */
+export class SolicitarOtraModificacionDto extends ConJustificacion {
+  @ApiProperty({ description: 'Qué se modifica, en pocas palabras' })
+  @IsString()
+  @IsNotEmpty({ message: 'Describe qué se modifica: por ejemplo, los anexos técnicos' })
+  @MinLength(5, { message: 'Describe qué se modifica con algo más que una palabra' })
+  @MaxLength(300)
+  descripcion: string;
+}
+
 /** Solicitud de suspension del contrato (EFDS-1178, RF-SIS-01). */
 export class SolicitarSuspensionDto extends ConJustificacion {
   @ApiProperty({ description: 'Desde cuándo queda suspendido', example: '2026-09-01' })
@@ -159,7 +172,7 @@ export class AprobarModificacionDto {
   numero: string;
 
   @ApiProperty({ description: 'Fecha de suscripción (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de suscripción debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de suscripción debe tener el formato AAAA-MM-DD' })
   fechaSuscripcion: string;
 
   /** Solo si la 9.5 quedo configurada con `EXIGE_FIRMA` (EFDS-2070). */
@@ -217,7 +230,7 @@ export class ExpedirRespaldoDto {
   valor: number;
 
   @ApiProperty({ description: 'Fecha de expedición (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de expedición debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de expedición debe tener el formato AAAA-MM-DD' })
   fechaExpedicion: string;
 
   @ApiPropertyOptional({ description: 'Vigencia fiscal a la que se imputa' })
@@ -240,7 +253,7 @@ export class RechazarRespaldoDto {
 /** Registro de la publicacion de la modificacion en SECOP II (RF-MOD-05). */
 export class PublicarModificacionDto {
   @ApiProperty({ description: 'Fecha real de la publicación (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de publicación debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de publicación debe tener el formato AAAA-MM-DD' })
   fechaPublicacion: string;
 
   @ApiPropertyOptional({ description: 'Número con el que quedó publicada' })

@@ -85,6 +85,9 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
 
   // Generación y traslado del informe
   const [medioPublicacion, setMedioPublicacion] = useState('');
+  /** Sesión de QA del 04/11: enlace del proceso y observaciones del traslado. */
+  const [enlaceProceso, setEnlaceProceso] = useState('');
+  const [observacionesTraslado, setObservacionesTraslado] = useState('');
   const [evidencia, setEvidencia] = useState<File | null>(null);
 
   // Registro de un escrito
@@ -130,9 +133,12 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
           medioPublicacion.trim(),
           evidencia,
           firmaOtp,
+          { enlaceProceso, observaciones: observacionesTraslado },
         ),
       );
       setMedioPublicacion('');
+      setEnlaceProceso('');
+      setObservacionesTraslado('');
       setEvidencia(null);
       await leer();
       toast.success('Informe trasladado: el término empezó a correr');
@@ -343,6 +349,29 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
             onChange={(e) => setMedioPublicacion(e.target.value)}
           />
 
+          <input
+            type="url"
+            className={campo}
+            aria-label="Enlace del proceso"
+            placeholder="Enlace del proceso (https://…)"
+            value={enlaceProceso}
+            onChange={(e) => setEnlaceProceso(e.target.value)}
+          />
+          {enlaceProceso.trim() && !/^https?:\/\/\S+$/.test(enlaceProceso.trim()) ? (
+            <span className="text-[11px] text-red-600">
+              El enlace tiene que ser una dirección completa, con https://
+            </span>
+          ) : null}
+
+          <textarea
+            rows={2}
+            className={campo}
+            aria-label="Observaciones del traslado"
+            placeholder="Observaciones relevantes del traslado (opcional)"
+            value={observacionesTraslado}
+            onChange={(e) => setObservacionesTraslado(e.target.value)}
+          />
+
           <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
             <UploadCloud size={15} className="text-slate-400" />
             <span>{evidencia?.name ?? 'Adjuntar la evidencia de la publicación y el traslado'}</span>
@@ -356,7 +385,12 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
           <Boton
             icono={<Megaphone className="w-3.5 h-3.5" />}
             onClick={() => firmaTraslado.conFirma(trasladar)}
-            disabled={guardando || !evidencia || medioPublicacion.trim().length < 10}
+            disabled={
+              guardando ||
+              !evidencia ||
+              medioPublicacion.trim().length < 10 ||
+              (!!enlaceProceso.trim() && !/^https?:\/\/\S+$/.test(enlaceProceso.trim()))
+            }
           >
             Trasladar el informe
           </Boton>
@@ -709,6 +743,22 @@ function ResumenInforme({ informe }: { informe: InformeEvaluacion }) {
           {informe.observacionEntidad}
         </p>
       )}
+
+      {informe.medioPublicacion || informe.enlaceProceso || informe.observacionesTraslado ? (
+        <div className="text-[11.5px] text-slate-600 space-y-0.5">
+          {informe.medioPublicacion ? <p className="m-0">Publicación: {informe.medioPublicacion}</p> : null}
+          {informe.enlaceProceso ? (
+            <p className="m-0">
+              <a className="text-blue-700" href={informe.enlaceProceso} target="_blank" rel="noreferrer">
+                Ver el proceso
+              </a>
+            </p>
+          ) : null}
+          {informe.observacionesTraslado ? (
+            <p className="m-0 whitespace-pre-wrap">Observaciones: {informe.observacionesTraslado}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       {informe.trasladadoAt && (
         <p className="text-[11.5px] text-slate-500 m-0">

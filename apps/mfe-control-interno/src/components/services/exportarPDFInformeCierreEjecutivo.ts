@@ -584,19 +584,9 @@ export async function exportarPDFInformeEjecutivo(datos: DatosInformeCierre): Pr
     console.error('Error cargando logo en remisión:', e);
   }
 
-  // Recuadro de Radicado y Fecha (Derecha)
-  const boxWidth = 60;
-  const boxHeight = 18;
-  const boxX = pageWidth - margin - boxWidth;
-  const boxY = 15;
-  doc.setDrawColor(150, 150, 150);
-  doc.roundedRect(boxX, boxY, boxWidth, boxHeight, 3, 3, 'D');
-  
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  // Sin recuadro de radicado ni fecha de radicación: el radicado era fijo (I-AAAA-000001)
+  // y los asigna el aplicativo de correspondencia de la ESAP (EFDS-2455)
   const fechaActual = new Date();
-  doc.text(`Radicado: I-${fechaActual.getFullYear()}-000001`, boxX + 4, boxY + 7);
-  doc.text(`Fecha: ${fechaActual.getDate()}/${fechaActual.getMonth() + 1}/${fechaActual.getFullYear()}`, boxX + 4, boxY + 13);
   let y = 45;
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
@@ -740,7 +730,7 @@ export async function exportarPDFInformeEjecutivo(datos: DatosInformeCierre): Pr
     [{ content: `LUGAR Y FECHA DE EJECUCIÓN AUDITORIA: ${territorial} / ${rangoFechas}`, styles: { fontStyle: 'bold' } }],
     [{ content: `PERIODO DE LA AUDITORIA: ${periodoEvaluado}`, styles: { fontStyle: 'bold' } }],
     [{ content: `EQUIPO AUDITOR:\n${(datos.auditoria.equipoAuditores || []).map((a: any) => `${a.nombre} - ${a.rol}`).join('\n')}`, styles: { fontStyle: 'bold' } }],
-    [{ content: `OBJETIVO(S):\n${objetivosText}`, styles: { fontStyle: 'normal' } }],
+    [{ content: `OBJETIVO(S):\n${objetivosText || 'No registrado'}`, styles: { fontStyle: 'normal' } }],
     [{ content: `ALCANCE:\n${alcanceText}`, styles: { fontStyle: 'normal' } }],
   ];
 

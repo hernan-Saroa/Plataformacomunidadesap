@@ -12,6 +12,8 @@ import { AuditClientService } from './audit-client.service';
 import { CreateAuditLogDto } from './dto/create-audit-log.dto';
 import { isRundAuditUrl, redactRundAuditUrl } from './rund-audit-redaction';
 import { accionCentroAyuda } from './centro-ayuda-audit';
+import { accionNotificaciones } from './notificaciones-audit';
+import { datosAntesYDespues } from './audit-valor-anterior';
 import { getServiceFromUrl, getModuleFromService, getSubmoduleFromUrl, Microservice } from './microservice.enum';
 
 @Injectable()
@@ -44,7 +46,10 @@ export class AuditInterceptor implements NestInterceptor {
     const version = urlMatch?.[2] || '1';
     const module = getModuleFromService(serviceName, url);
     const submodule = getSubmoduleFromUrl(url) || undefined;
-    const action = accionCentroAyuda(method, url, request.body) ?? this.determineAction(method, url);
+    const action =
+      accionCentroAyuda(method, url, request.body) ??
+      accionNotificaciones(method, url, request.body) ??
+      this.determineAction(method, url);
     const clientIp = this.getClientIp(request);
     const userInfo = this.extractUserInfo(request);
 
@@ -74,9 +79,14 @@ export class AuditInterceptor implements NestInterceptor {
         // Para POST: newData = requestBody (lo que se intentó crear)
         // Para PUT/PATCH: newData = responseBody (el objeto actualizado si fue exitoso)
         // Esto permite al audit-service generar el diff de cambios
-        const newData = ['POST', 'PUT', 'PATCH'].includes(method)
-          ? (method === 'POST' ? requestBody : (responseBody || requestBody))
-          : undefined;
+        // Si la respuesta trae el valor anterior (configuraciones), se registran el antes y
+        // el después para que Auditoría muestre el cambio y no solo el valor nuevo.
+        const antesYDespues = datosAntesYDespues(method, responseBody);
+        const newData = antesYDespues
+          ? antesYDespues.newData
+          : ['POST', 'PUT', 'PATCH'].includes(method)
+            ? (method === 'POST' ? requestBody : (responseBody || requestBody))
+            : undefined;
 
         // Si la respuesta es un error, extraer el mensaje
         const errorMessage = statusCode >= 400
@@ -108,6 +118,7 @@ export class AuditInterceptor implements NestInterceptor {
           responseBodySize,
           responseSizeBytes: responseBodySize,
           newData,
+          ...(antesYDespues ? { previousData: antesYDespues.previousData } : {}),
           errorMessage,
         };
 

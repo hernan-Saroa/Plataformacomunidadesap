@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, ParseUUIDPipe, ParseIntPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { SedesService } from './sedes.service.js';
 import { CreateSedeDto, CreateBloqueDto, UpdateBloqueDto } from './dto/create-sede.dto.js';
@@ -18,6 +18,25 @@ export class SedesController {
   findAllSedes(@Query('soloActivos') soloActivos?: string) {
     const flag = soloActivos === undefined ? true : String(soloActivos).toLowerCase() !== 'false';
     return this.sedesService.findAllSedes(flag);
+  }
+
+  @Get('territoriales-cetaps')
+  @Public()
+  @ApiOperation({ summary: 'Obtener sedes de Nivel Central y red de Direcciones Territoriales con CETAPs' })
+  getTerritorialesConCetaps() {
+    return this.sedesService.obtenerTerritorialesConCetaps();
+  }
+
+  @Get('cetap/:idCetap/bloques')
+  @Public()
+  @ApiOperation({ summary: 'Listar bloques de un CETAP específico' })
+  @ApiQuery({ name: 'soloActivos', required: false, type: Boolean })
+  listBloquesPorCetap(
+    @Param('idCetap', ParseIntPipe) idCetap: number,
+    @Query('soloActivos') soloActivos?: string,
+  ) {
+    const flag = soloActivos === undefined ? true : String(soloActivos).toLowerCase() !== 'false';
+    return this.sedesService.listBloquesPorCetap(idCetap, flag);
   }
 
   @Get('jerarquia-completa')

@@ -17,9 +17,17 @@ import {
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import type { Riesgo } from '../core/types';
-import { riesgosService, RiesgoHistorialAPI } from '../../../../services/api/legal.service';
+import {
+  riesgosService,
+  type ControlSeguimientoAPI,
+  type RiesgoHistorialAPI,
+  type RiesgoSeguimientosAPI,
+} from '../../../../services/api/legal.service';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
+import { ControlesSeguimientoTab } from './ControlesSeguimientoTab';
+import { ModalSeguimientoControl } from './ModalSeguimientoControl';
+import { textoSeguimientosExportacion } from './riesgoSeguimientoUtils';
 
 interface ModalDetalleRiesgoProps {
   open: boolean;
@@ -69,24 +77,54 @@ export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onDelete, on
   // Estado para modal de confirmación de eliminación
   const [showEliminarConfirm, setShowEliminarConfirm] = useState(false);
 
-  // Cargar historial cuando se abre el modal o cambia el riesgo
-  useEffect(() => {
-    if (open && riesgo?.id) {
-      const cargarHistorial = async () => {
-        setLoadingHistorial(true);
-        try {
-          const data = await riesgosService.getHistorial(riesgo.id);
-          setHistorial(data);
-        } catch (error) {
-          console.log('Historial no disponible');
-          setHistorial([]);
-        } finally {
-          setLoadingHistorial(false);
-        }
-      };
-      cargarHistorial();
+  // Seguimiento cuatrimestral de controles
+  const [seguimientos, setSeguimientos] = useState<RiesgoSeguimientosAPI | null>(null);
+  const [loadingSeguimientos, setLoadingSeguimientos] = useState(false);
+  const [errorSeguimientos, setErrorSeguimientos] = useState(false);
+  const [seguimientoActivo, setSeguimientoActivo] = useState<{ control: ControlSeguimientoAPI; cuatrimestre?: number } | null>(null);
+
+  const riesgoId = riesgo?.id;
+
+  const cargarHistorial = async () => {
+    if (!riesgoId) return;
+    setLoadingHistorial(true);
+    try {
+      setHistorial(await riesgosService.getHistorial(riesgoId));
+    } catch (error) {
+      setHistorial([]);
+    } finally {
+      setLoadingHistorial(false);
     }
-  }, [open, riesgo?.id]);
+  };
+
+  const cargarSeguimientos = async () => {
+    if (!riesgoId) return;
+    setLoadingSeguimientos(true);
+    setErrorSeguimientos(false);
+    try {
+      setSeguimientos(await riesgosService.getSeguimientos(riesgoId));
+    } catch (error) {
+      setSeguimientos(null);
+      setErrorSeguimientos(true);
+    } finally {
+      setLoadingSeguimientos(false);
+    }
+  };
+
+  // Cargar historial y seguimiento cuando se abre el modal o cambia el riesgo
+  useEffect(() => {
+    if (open && riesgoId) {
+      setSeguimientos(null);
+      cargarHistorial();
+      cargarSeguimientos();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, riesgoId]);
+
+  // El seguimiento queda en el Timeline y cambia la efectividad del control
+  const alGuardarSeguimiento = async () => {
+    await Promise.all([cargarSeguimientos(), cargarHistorial()]);
+  };
 
   if (!riesgo) return null;
 
@@ -211,6 +249,10 @@ ${riesgo.consecuencias?.map((c, i) => `${i + 1}. ${c}`).join('\n') || 'No especi
 CONTROLES EXISTENTES
 ═══════════════════════════════════════════════════════════════
 ${riesgo.controlesExistentes?.map((c, i) => `${i + 1}. ${c.descripcion} (${c.efectividad}%)`).join('\n') || 'No especificados'}
+
+SEGUIMIENTO DE CONTROLES (CUATRIMESTRAL)
+═══════════════════════════════════════════════════════════════
+${textoSeguimientosExportacion(seguimientos)}
 
 PLAN DE TRATAMIENTO
 ═══════════════════════════════════════════════════════════════
@@ -595,40 +637,15 @@ Metodología DAFP - MECI
 
                 {/* TAB: CONTROLES */}
                 <TabsContent value="controles" className="space-y-4 mt-4">
-                  <div>
-                    <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-                      <Shield className="w-4 h-4 text-blue-600" />
-                      Controles Existentes
-                    </h3>
-                    {riesgo.controlesExistentes && riesgo.controlesExistentes.length > 0 ? (
-                      <div className="space-y-2">
-                        {riesgo.controlesExistentes.map((control, idx) => (
-                          <div key={control.id || idx} className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                            <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                            <div className="flex-1">
-                              <p className="text-sm font-semibold text-gray-900">{control.descripcion}</p>
-                              <div className="mt-2">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex-1 h-2 bg-gray-200 rounded-full">
-                                    <div
-                                      className="h-2 bg-green-600 rounded-full transition-all"
-                                      style={{ width: `${control.efectividad}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-xs font-bold text-gray-700">{control.efectividad}% efectivo</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center">
-                        <Shield className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                        <p className="text-sm text-gray-500">No se han definido controles aún</p>
-                      </div>
-                    )}
-                  </div>
+                  <ControlesSeguimientoTab
+                    controlesRiesgo={riesgo.controlesExistentes}
+                    vista={seguimientos}
+                    cargando={loadingSeguimientos}
+                    error={errorSeguimientos}
+                    puedeRegistrar={authService.hasPermission(Permissions.GESTION_LEGAL_RIESGOS_EDIT)}
+                    onReintentar={cargarSeguimientos}
+                    onRegistrar={(control, cuatrimestre) => setSeguimientoActivo({ control, cuatrimestre })}
+                  />
                 </TabsContent>
 
                 {/* TAB: TIMELINE */}
@@ -725,6 +742,18 @@ Metodología DAFP - MECI
           </div>
         </DialogContent>
       </Dialog>
+
+      {seguimientos && (
+        <ModalSeguimientoControl
+          open={!!seguimientoActivo}
+          onClose={() => setSeguimientoActivo(null)}
+          riesgoId={riesgo.id}
+          control={seguimientoActivo?.control ?? null}
+          cuatrimestreInicial={seguimientoActivo?.cuatrimestre}
+          vista={seguimientos}
+          onGuardado={alGuardarSeguimiento}
+        />
+      )}
 
       {/* Modal de confirmación de archivado */}
       <Dialog open={showArchivarConfirm} onOpenChange={setShowArchivarConfirm}>

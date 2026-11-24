@@ -31,6 +31,16 @@ export class ConfiguracionProfesionalOCIG {
   })
   rolOcig: string;
 
+  // Roles que la persona tiene además del principal, p. ej. el Jefe OCI que también audita (EFDS-2452).
+  @Column({
+    name: 'roles_adicionales',
+    type: 'text',
+    array: true,
+    default: '{}',
+    nullable: false,
+  })
+  rolesAdicionales: string[];
+
   @Column({
     name: 'especialidades',
     type: 'text',

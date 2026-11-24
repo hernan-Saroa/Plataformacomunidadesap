@@ -18,7 +18,7 @@ describe('Autores y revisores de las aprobaciones RUND', () => {
       ...(available ? { cargadoPorNombre: 'Gestor Documental', revisadoPorNombre: 'Revisora Académica' } : {}),
     }] } as any);
     render(<BancoDocenteAprobacion docenteId="docente" docenteNombre="Docente de Prueba" />);
-    fireEvent.click((await screen.findAllByText('Identidad'))[0]);
+    fireEvent.click((await screen.findAllByText('00 Datos básicos'))[0]);
     if (available) {
       expect(await screen.findByText(/Gestor Documental/)).toBeTruthy();
       expect(screen.getByText(/Revisora Académica/)).toBeTruthy();

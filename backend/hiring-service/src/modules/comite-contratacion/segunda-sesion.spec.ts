@@ -133,3 +133,18 @@ describe('SegundaSesionService · el CDP es condición de la cadena', () => {
     await expect(condicion({}, 'p-1', 'ENVIAR')).resolves.toBeUndefined();
   });
 });
+
+/** Sesión de QA del 04/11 (EFDS-1153): la cuantía decide la segunda sesión como la primera. */
+describe('segunda sesión · la misma regla de cuantía que la 3.7', () => {
+  it('sin comité en la 3.7, basta el pliego definitivo aprobado para abrir', () => {
+    expect(requisitoDeLaSegundaSesion('APROBADO', [], true)).toEqual({ cumplido: true, motivo: null });
+  });
+
+  it('sin comité, el pliego definitivo sin aprobar sigue frenando la apertura', () => {
+    expect(requisitoDeLaSegundaSesion('BORRADOR', [], true).cumplido).toBe(false);
+  });
+
+  it('sin comité no se registra segunda sesión', () => {
+    expect(motivoParaNoRegistrarLaSesion('APROBADO', null, true)).toMatch(/cuantía/);
+  });
+});

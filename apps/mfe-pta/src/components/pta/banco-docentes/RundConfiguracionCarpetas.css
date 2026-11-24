@@ -1,0 +1,25 @@
+.rund-config { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; margin: 20px 24px; overflow: hidden; }
+.rund-config__encabezado { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; padding: 18px 22px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
+.rund-config__encabezado h3 { margin: 0; font-size: 17px; font-weight: 800; color: #0f172a; }
+.rund-config__encabezado p { margin: 4px 0 0; max-width: 720px; font-size: 13px; line-height: 1.55; color: #64748b; }
+.rund-config__actualizar { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #334155; font-size: 12px; font-weight: 700; cursor: pointer; }
+.rund-config__actualizar:disabled { opacity: .55; cursor: not-allowed; }
+.rund-config__estado { margin: 20px 24px; padding: 16px; border-radius: 12px; background: #f8fafc; color: #64748b; font-size: 13px; }
+.rund-config__tabla-contenedor { overflow-x: auto; }
+.rund-config__tabla { width: 100%; border-collapse: collapse; min-width: 720px; }
+.rund-config__tabla th, .rund-config__tabla td { padding: 11px 14px; border-bottom: 1px solid #eef2f7; text-align: center; font-size: 13px; }
+.rund-config__tabla thead th { background: #f8fafc; color: #334155; font-weight: 800; white-space: nowrap; }
+.rund-config__tabla thead th small { display: block; margin-top: 2px; font-size: 11px; font-weight: 600; color: #64748b; }
+.rund-config__tabla tbody th { text-align: left; font-weight: 700; color: #0f172a; white-space: nowrap; }
+.rund-config__tabla tbody th small { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; font-size: 10.5px; font-weight: 700; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 999px; padding: 1px 7px; }
+.rund-config__tabla tbody tr:hover { background: #fafcff; }
+.rund-config__codigo { display: inline-grid; place-items: center; min-width: 26px; height: 22px; margin-right: 8px; border-radius: 6px; background: #f1f5f9; color: #475569; font-size: 11px; font-weight: 800; }
+.rund-config__interruptor { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+.rund-config__interruptor input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.rund-config__interruptor span { position: relative; width: 38px; height: 22px; border-radius: 999px; background: #cbd5e1; transition: background .15s; }
+.rund-config__interruptor span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
+.rund-config__interruptor input:checked + span { background: #10b981; }
+.rund-config__interruptor input:checked + span::after { transform: translateX(16px); }
+.rund-config__interruptor input:disabled + span { opacity: .55; }
+.rund-config__interruptor input:focus-visible + span { outline: 2px solid #003da5; outline-offset: 2px; }
+.rund-config__interruptor em { font-style: normal; font-size: 11px; font-weight: 700; color: #64748b; }

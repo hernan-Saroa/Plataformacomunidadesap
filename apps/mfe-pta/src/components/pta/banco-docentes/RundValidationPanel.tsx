@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, CheckCircle, ShieldAlert, Lock, History, ChevronDown, ChevronRight,
@@ -10,20 +11,29 @@ import { apiClient } from '../../../../../shell/src/services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import { sanitizeText } from '../../../utils/textSanitizer';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
+import { nivelTituloDeFila, titulosAdicionalesDeCampos } from '../../../utils/titulosFormacion';
+import { TitulosOrigenFila } from './TitulosOrigenFila';
 import { RundDocumentManager } from './RundDocumentManager';
+import { RundConfirmarEliminacion, type ConfirmacionEliminar } from './RundConfirmarEliminacion';
 import { RundExtractionPanel } from './RundExtractionPanel';
 import { RundDatosCargaOriginal } from './RundDatosCargaOriginal';
-import { canUploadRundField, groupRundEvidenceOptions, hasRundData } from '../../../utils/rundEvidenceData';
+import { RundSoportesCodificacion } from './RundSoportesCodificacion';
+import { canUploadRundField, groupRundEvidenceOptions, hasRundData, RUND_STANDALONE_SUPPORTS } from '../../../utils/rundEvidenceData';
 import { rundActorName } from '../../../utils/rundActorName';
 import { rundReviewStatus } from '../../../utils/rundReviewStatus';
 import { canReturnRundBlock } from '../../../utils/rundReturnEligibility';
-import { hasRundPermission, RUND_INCORPORATION_SUPPORTS, RUND_PROFILE_PERMISSIONS } from '../../../../../shared/rund-permissions';
+import { hasRundPermission, isRundReadOnly, RUND_INCORPORATION_SUPPORTS, RUND_PROFILE_PERMISSIONS } from '../../../../../shared/rund-permissions';
 import { RundIncorporationPanel } from './RundIncorporationPanel';
 import { RundPhotoPanel } from './RundPhotoPanel';
 import type { RundSupportGroup } from './RundSupportList';
 import './RundCheckpointEvidence.css';
 import { PHOTO_MANAGE, PHOTO_VALIDATE } from '../../../../../shared/profile-photos';
-import { rundCheckpointEvidences, rundDocumentDecision, rundEvidenceDecision } from '../../../utils/rundEvidenceRules';
+import { RUND_BLOCK_LABELS } from '../../../utils/rundDocumentScope';
+import { RUND_CARPETA_ORDEN, rundCarpeta } from '../../../utils/rundCarpetas';
+import { RUND_MAX_ARCHIVO_BYTES, RUND_MAX_ARCHIVO_MB, rundCheckpointEvidences, rundDocumentDecision, rundEvidenceDecision } from '../../../utils/rundEvidenceRules';
+import { auditCambiosOf, formatAuditValue } from './rundAuditCambios';
+import { formatFechaPrueba } from '../../../utils/rundPeriodoPrueba';
+import { esSoporteDeTitulo, NIVEL_TITULO_POR_SOPORTE } from '../../../utils/rundSoportesTabla';
 
 // ============================================================================
 // CATALOGO BR-039 / RUND CONSTANTS
@@ -48,8 +58,8 @@ const CATALOGO_BR039: Record<string, {
   campos: CampoDoc[];
 }> = {
   IDENTIDAD: {
-    label: 'Identidad',
-    letra: 'A',
+    label: RUND_BLOCK_LABELS.IDENTIDAD,
+    letra: '00',
     subtitle: 'Documentos que acreditan la identidad del docente',
     icon: User,
     color: '#3b82f6',
@@ -61,6 +71,8 @@ const CATALOGO_BR039: Record<string, {
       { revisionId: 'SEXO_BIOLOGICO', campo: 'Sexo biológico', documento: 'Documento de identidad', tipoSoporte: 'documento_identidad', obligatorio: 'Sí' },
       { revisionId: 'FECHA_NACIMIENTO', campo: 'Fecha de nacimiento', documento: 'Documento de identidad', tipoSoporte: 'documento_identidad', obligatorio: 'Sí', validacion: 'Debe ser < hoy' },
       { campo: 'Edad / Rango de edad', documento: '— (Calculado)', tipoSoporte: '', obligatorio: 'Derivado', validacion: 'Calculado desde fecha de nacimiento' },
+      { campo: 'Tarjeta profesional', documento: 'Tarjeta profesional', tipoSoporte: 'tarjeta_profesional', obligatorio: 'Si aplica' },
+      { campo: 'Hoja de vida', documento: 'Hoja de vida', tipoSoporte: 'hoja_vida', obligatorio: 'No' },
     ],
   },
   CONTACTO: {
@@ -77,13 +89,14 @@ const CATALOGO_BR039: Record<string, {
     ],
   },
   FORMACION: {
-    label: 'Formación Académica',
-    letra: 'C',
+    label: RUND_BLOCK_LABELS.FORMACION,
+    letra: '01',
     subtitle: 'Títulos académicos y soportes de formación',
     icon: GraduationCap,
     color: '#8b5cf6',
     bg: '#F5F3FF',
     campos: [
+      { campo: 'Bachiller', documento: 'Diploma de bachiller', tipoSoporte: 'diploma_bachiller', obligatorio: 'No' },
       { campo: 'Pregrado', documento: 'Diploma + Acta de grado', tipoSoporte: 'diploma_pregrado', obligatorio: 'Sí', validacion: 'Base mínima requerida' },
       { campo: 'Especialización', documento: 'Diploma + Acta de grado', tipoSoporte: 'diploma_especializacion', obligatorio: 'Si aplica' },
       { campo: 'Maestría', documento: 'Diploma + Acta de grado', tipoSoporte: 'diploma_maestria', obligatorio: 'Si aplica' },
@@ -95,8 +108,8 @@ const CATALOGO_BR039: Record<string, {
     ],
   },
   VINCULACION: {
-    label: 'Vinculación',
-    letra: 'D',
+    label: RUND_BLOCK_LABELS.VINCULACION,
+    letra: '10',
     subtitle: 'Documentos administrativos de la vinculación docente',
     icon: Briefcase,
     color: '#f59e0b',
@@ -119,8 +132,8 @@ const CATALOGO_BR039: Record<string, {
     ],
   },
   ACADEMICO: {
-    label: 'Académico',
-    letra: 'E',
+    label: RUND_BLOCK_LABELS.ACADEMICO,
+    letra: '04',
     subtitle: 'Asignaciones académicas, investigación y evaluación',
     icon: BookOpen,
     color: '#06b6d4',
@@ -129,11 +142,12 @@ const CATALOGO_BR039: Record<string, {
       { campo: 'Núcleo temático', documento: 'Acto de asignación / definición institucional GGP', tipoSoporte: 'acto_asignacion_nucleo', obligatorio: 'Sí', validacion: 'Lista controlada' },
       { campo: 'Investigación activa', documento: 'Acto de convocatoria / certificación de producto', tipoSoporte: 'certificacion_investigacion', obligatorio: 'Si aplica', validacion: 'Coherente con dedicación' },
       { campo: 'Última evaluación', documento: 'Acta o certificado de evaluación de desempeño (SEDP)', tipoSoporte: 'acta_evaluacion_desempeno', obligatorio: 'Sí', validacion: 'BR-055: Vigencia / caducidad' },
+      { campo: 'Experiencia investigativa', documento: 'Soportes de experiencia investigativa', tipoSoporte: 'experiencia_investigativa', obligatorio: 'No' },
     ],
   },
   TRANSVERSAL: {
-    label: 'Transversal',
-    letra: 'F',
+    label: RUND_BLOCK_LABELS.TRANSVERSAL,
+    letra: 'T',
     subtitle: 'Información transversal y validación del revisor',
     icon: Shield,
     color: '#e11d48',
@@ -145,6 +159,30 @@ const CATALOGO_BR039: Record<string, {
     ],
   },
 };
+
+/** Carpetas 02, 03 y 05 a 09 de la codificación: opcionales, cada una con su propia aprobación. */
+const carpetaOpcional = (bloque: string, letra: string, icon: any, color: string, bg: string, campos: CampoDoc[]) => {
+  CATALOGO_BR039[bloque] = { label: RUND_BLOCK_LABELS[bloque], letra, subtitle: '', icon, color, bg, campos };
+};
+carpetaOpcional('EXPERIENCIA_DOCENTE', '02', Briefcase, '#0ea5e9', '#F0F9FF', [
+  { campo: '02 Experiencia docente', documento: 'Certificaciones de experiencia docente', tipoSoporte: 'experiencia_docente', obligatorio: 'No' }]);
+carpetaOpcional('EXPERIENCIA_LABORAL', '03', Briefcase, '#14b8a6', '#F0FDFA', [
+  { campo: '03 Experiencia laboral', documento: 'Certificaciones de experiencia laboral', tipoSoporte: 'experiencia_laboral', obligatorio: 'No' }]);
+carpetaOpcional('PRODUCTIVIDAD_ACADEMICA', '05', BookOpen, '#6366f1', '#EEF2FF', [
+  { campo: 'Productividad académica', documento: 'Soportes de productividad académica', tipoSoporte: 'productividad_academica', obligatorio: 'No' }]);
+carpetaOpcional('SEGUNDA_LENGUA', '06', BookOpen, '#ec4899', '#FDF2F8', [
+  { campo: 'Dominio de segunda lengua', documento: 'Certificado de dominio de segunda lengua', tipoSoporte: 'dominio_segunda_lengua', obligatorio: 'No' }]);
+carpetaOpcional('FORMACION_NO_FORMAL', '07', GraduationCap, '#84cc16', '#F7FEE7', [
+  { campo: 'Formación no formal adicional', documento: 'Certificados de formación no formal', tipoSoporte: 'formacion_no_formal', obligatorio: 'No' }]);
+carpetaOpcional('ESTUDIO_HOJA_VIDA', '08', FileText, '#f97316', '#FFF7ED', [
+  { campo: 'Estudio de hoja de vida', documento: 'Estudio de hoja de vida', tipoSoporte: 'estudio_hoja_vida', obligatorio: 'No' }]);
+carpetaOpcional('DOCUMENTOS_NO_VALIDOS', '09', FolderOpen, '#64748b', '#F8FAFC', [
+  { campo: 'Documentos no válidos', documento: 'Documentos que no corresponden a ninguna otra carpeta', tipoSoporte: 'documento_no_valido', obligatorio: 'No' }]);
+// La descripción de cada carpeta es la de la codificación documental.
+Object.entries(CATALOGO_BR039).forEach(([bloque, config]) => { const carpeta = rundCarpeta(bloque); if (carpeta) config.subtitle = carpeta.descripcion; });
+
+/** Soportes que ofrece una carpeta (la foto del perfil se gestiona en Datos básicos). */
+const rundCarpetaSoportes = (bloque: string) => new Set((CATALOGO_BR039[bloque]?.campos || []).map(campo => campo.tipoSoporte).filter(Boolean)).size + (bloque === 'IDENTIDAD' ? 1 : 0);
 
 const CAMPO_LABELS: Record<string, string> = {
   NOMBRE_COMPLETO: 'Nombre completo',
@@ -338,6 +376,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     };
   }, [viewingDoc?.displayUrl]);
   const [isEditing, setIsEditing] = useState(false);
+  // Referencia estable: el modal reinicia su formulario cuando cambia `docente`, y un objeto nuevo en cada render borraba lo digitado.
+  const docenteEdicion = useMemo(() => ({ id: tarjetaRund?.docenteId, ...docente }), [tarjetaRund?.docenteId, docente]);
   const auth = useAuth();
 
   const requestSequence = useRef(0);
@@ -361,6 +401,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     return () => observer?.disconnect();
   }, [selectedRundBloque, tarjetaRund?.docenteId, rundBloques.length]);
 
+  // «Consulta RUND»: sin historial de fotos (trazabilidad); la foto publicada se ve en el encabezado de la ficha.
+  const readOnlyRund = isRundReadOnly(auth.session?.permisos, auth.isSuperUser);
   const canManageDocuments = useMemo(() => {
     return hasRundPermission(auth, 'banco-docentes.rund.documents.manage') || hasRundPermission(auth, 'banco-docentes.rund.manage');
   }, [auth]);
@@ -478,23 +520,102 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     };
   }, [fetchRundData]);
 
+  // Confirmación de eliminación con el diálogo de la ficha (no el confirm del navegador).
+  const [confirmacionEliminar, setConfirmacionEliminar] = useState<ConfirmacionEliminar | null>(null);
+
+  const deleteEvidenceFromTable = (evidence: any) => {
+    const documentId = evidence?.documento_perfil_id;
+    if (!documentId) { toast.error('Este archivo es un soporte histórico y no se puede eliminar desde aquí.'); return; }
+    setConfirmacionEliminar({
+      titulo: 'Eliminar archivo', objeto: evidence.nombre_archivo || 'Archivo sin nombre',
+      descripcion: 'El archivo dejará de estar entre los documentos vigentes. La versión queda en el historial.',
+      confirmar: () => { setConfirmacionEliminar(null); return eliminarEvidencia(evidence, documentId); },
+    });
+  };
+
+  const eliminarEvidencia = async (evidence: any, documentId: string) => {
+    setRundActionLoading(`eliminar-${evidence.id}`);
+    try {
+      await apiClient.delete(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/documentos/${documentId}`);
+      toast.success('Archivo eliminado. La versión se conserva en el historial.');
+      await fetchRundData();
+      setDocumentRevision(value => value + 1);
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo eliminar el archivo.');
+    } finally {
+      setRundActionLoading(null);
+    }
+  };
+
+  /** Cambia el nombre de un título de la lista de formación. Devuelve false si no se pudo guardar. */
+  const editarTituloFila = async (group: RundSupportGroup, tituloAnterior: string, tituloNuevo: string): Promise<boolean> => {
+    const tipoSoporte = group.field.tipoSoporte;
+    if (!canManageSupport(tipoSoporte) || rundActionLoading || loadingRund || loadError || !tarjetaRund?.docenteId) return false;
+    setRundActionLoading(`titulo-${tipoSoporte}`);
+    try {
+      await apiClient.post(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/titulos-formacion/editar`, { tipoSoporte, titulo: tituloAnterior, nuevoTitulo: tituloNuevo });
+      toast.success('Título actualizado.');
+      await fetchRundData();
+      onUpdated?.();
+      return true;
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo actualizar el título.');
+      return false;
+    } finally {
+      setRundActionLoading(null);
+    }
+  };
+
+  /** Elimina la fila de un título: primero su archivo (si lo tiene) y luego el título, para que lista y archivos sigan alineados. */
+  const eliminarTituloFila = async (group: RundSupportGroup, titulo: string, evidence?: any) => {
+    const tipoSoporte = group.field.tipoSoporte;
+    if (!canManageSupport(tipoSoporte) || rundActionLoading || loadingRund || loadError || !tarjetaRund?.docenteId) return;
+    if (evidence && !evidence.documento_perfil_id) { toast.error('Este archivo es un soporte histórico y no se puede eliminar desde aquí.'); return; }
+    setConfirmacionEliminar({
+      titulo: 'Eliminar título', objeto: titulo,
+      descripcion: evidence ? 'Se eliminará el título y su documento. Las versiones quedan en el historial.' : 'Se eliminará el título de la ficha del docente.',
+      detalle: evidence?.nombre_archivo || undefined,
+      confirmar: () => { setConfirmacionEliminar(null); return ejecutarEliminarTitulo(group, titulo, evidence); },
+    });
+  };
+
+  const ejecutarEliminarTitulo = async (group: RundSupportGroup, titulo: string, evidence?: any) => {
+    const tipoSoporte = group.field.tipoSoporte;
+    if (!tarjetaRund?.docenteId) return;
+    setRundActionLoading(`titulo-${tipoSoporte}`);
+    try {
+      if (evidence) await apiClient.delete(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/documentos/${evidence.documento_perfil_id}`);
+      await apiClient.post(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/titulos-formacion/eliminar`, { tipoSoporte, titulo });
+      toast.success('Título eliminado.');
+      onUpdated?.();
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo eliminar el título.');
+    } finally {
+      await fetchRundData();
+      setDocumentRevision(value => value + 1);
+      setRundActionLoading(null);
+    }
+  };
+
   const toggleRundBloque = (bloque: string) => {
     setSelectedRundBloque(bloque);
   };
 
   /** Without a target the file is added as another evidence; with one, that exact evidence gets a new version. */
-  const handleUploadFile = async (file: File, tipoSoporte: string, campo: string, replaceTarget?: any) => {
+  const handleUploadFile = async (file: File, tipoSoporte: string, campo: string, replaceTarget?: any, titulo?: string) => {
     if (!canManageSupport(tipoSoporte) || rundActionLoading || loadingRund || loadError) return;
     // Legacy evidences only have a folder file: they are replaced through their review row.
     const replaceDocumentId = replaceTarget?.documento_perfil_id;
     const replaceLegacySupportId = replaceTarget && !replaceDocumentId ? replaceTarget.id : undefined;
     const field = CATALOGO_BR039[selectedRundBloque]?.campos.find(item => item.campo === campo && item.tipoSoporte === tipoSoporte);
-    if (!field || !canUploadRundField(selectedRundBloque, field, tarjetaRund)) {
+    // Con título escrito en el formulario el backend registra el dato antes del soporte.
+    const tituloEscrito = esSoporteDeTitulo(tipoSoporte) ? titulo?.trim() : '';
+    if (!field || (!tituloEscrito && !canUploadRundField(selectedRundBloque, field, tarjetaRund))) {
       toast.error('Registre primero el dato de la fila antes de cargar su soporte.');
       return;
     }
-    if (!file.name.toLowerCase().endsWith('.pdf') || file.type !== 'application/pdf' || file.size > 10 * 1024 * 1024) {
-      toast.error('Seleccione un PDF válido de máximo 10 MB.');
+    if (!file.name.toLowerCase().endsWith('.pdf') || file.type !== 'application/pdf' || file.size > RUND_MAX_ARCHIVO_BYTES) {
+      toast.error(`Seleccione un PDF válido de máximo ${RUND_MAX_ARCHIVO_MB} MB.`);
       return;
     }
     toast(`Subiendo: ${file.name}...`);
@@ -526,6 +647,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       if (replaceDocumentId) formData.append('documentoId', replaceDocumentId);
       else if (replaceLegacySupportId) formData.append('soporteHistoricoId', replaceLegacySupportId);
       else formData.append('modo', 'agregar');
+      if (tituloEscrito) formData.append('titulo', tituloEscrito);
       formData.append('file', file);
 
       // CORRECTO: usar apiClient.upload (multipart/form-data) en vez de apiClient.post (JSON)
@@ -566,6 +688,28 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       toast.error(err?.message || 'Error al subir el soporte.');
     } finally {
       setRundActionLoading(null);
+    }
+  };
+
+  /** Carga masiva: sube un archivo como evidencia nueva de su soporte (con título si hace falta). No refresca la vista: lo hace el lote al terminar. */
+  const subirSoporteMasivo = async (file: File, group: RundSupportGroup, opciones: { titulo?: string; descripcion: string }): Promise<string | null> => {
+    const tipoSoporte = group.field.tipoSoporte;
+    if (!canManageSupport(tipoSoporte)) return 'No tiene permiso para cargar este soporte.';
+    if (loadError || !tarjetaRund?.docenteId || !selectedRundBloque) return 'Actualice el expediente e intente de nuevo.';
+    const field = CATALOGO_BR039[selectedRundBloque]?.campos.find(item => item.campo === group.uploadField.campo && item.tipoSoporte === tipoSoporte);
+    if (!field) return 'El soporte no está disponible en esta carpeta.';
+    try {
+      const formData = new FormData();
+      formData.append('tipoSoporte', tipoSoporte);
+      formData.append('campo', field.revisionId || field.tipoSoporte);
+      formData.append('modo', 'agregar');
+      formData.append('descripcion', opciones.descripcion);
+      if (opciones.titulo && esSoporteDeTitulo(tipoSoporte)) formData.append('titulo', opciones.titulo);
+      formData.append('file', file);
+      const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${selectedRundBloque}/soportes`, formData);
+      return res?.id ? null : 'El servidor no confirmó la carga.';
+    } catch (err: any) {
+      return err?.message || 'No fue posible cargar el archivo.';
     }
   };
 
@@ -677,8 +821,9 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
   };
 
   const sortedRundBloques = useMemo(() => {
-    const blockOrder = ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'];
-    return [...rundBloques].sort((a, b) => {
+    const blockOrder = RUND_CARPETA_ORDEN;
+    // RUND-013: los datos de contacto se gestionan en el cabezote, así que su sección de validación se oculta.
+    return rundBloques.filter(b => b.bloque !== 'CONTACTO' && b.aplica !== false && CATALOGO_BR039[b.bloque]).sort((a, b) => {
       return blockOrder.indexOf(a.bloque) - blockOrder.indexOf(b.bloque);
     });
   }, [rundBloques]);
@@ -698,6 +843,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
   }
 
   const reviewStatus = rundReviewStatus(Object.fromEntries(rundBloques.map(b => [b.bloque, b.estado])));
+  const carpetasAprobadas = sortedRundBloques.filter(b => b.estado === 'Aprobado').length;
   const viewerReview = viewingDoc?.review;
   const viewerSupport = viewerReview && rundBloques.find(b => b.bloque === viewerReview.block)?.soportes?.find((s: any) => s.id === viewerReview.support.id);
   // The viewer decides only on the evidence it shows, while that version is current and the row is still pending.
@@ -709,13 +855,19 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
   const activeConfig = CATALOGO_BR039[selectedRundBloque];
   const showExtraction = selectedRundBloque !== 'CONTACTO' && canReadExtraction && tarjetaRund.proteccion_datos?.acceso_completo === true && !loadError;
   const hasOriginalData = !!tarjetaRund.datos_carga_masiva && Object.keys(tarjetaRund.datos_carga_masiva).length > 0;
-  const showSupportingTools = !!activeBlock && (showExtraction || hasOriginalData);
+  const showSupportingTools = !!activeBlock && showExtraction;
   const supportGroups: RundSupportGroup[] = (activeConfig?.campos || [])
     .filter((field, index, all) => field.tipoSoporte && all.findIndex(item => item.tipoSoporte === field.tipoSoporte) === index)
     .map(field => {
       const fields = activeConfig.campos.filter(item => item.tipoSoporte === field.tipoSoporte);
       const uploadField = fields.find(item => canUploadRundField(selectedRundBloque, item, tarjetaRund));
-      return { field, fields, uploadField: uploadField || field, canUpload: !!uploadField,
+      // Diplomas de nivel: cada título registrado (precargado y adicionales) es una fila de la tabla.
+      const nivelTitulo = selectedRundBloque === 'FORMACION' ? NIVEL_TITULO_POR_SOPORTE[field.tipoSoporte] : undefined;
+      const precargado = nivelTitulo ? getDatoExtraido('FORMACION', field.campo, tarjetaRund) : null;
+      const titulos = nivelTitulo
+        ? [...(hasRundData(precargado) ? [String(precargado)] : []), ...titulosAdicionalesDeCampos(tarjetaRund?.bloques?.FORMACION?.campos, nivelTitulo)]
+        : undefined;
+      return { field, fields, uploadField: uploadField || field, canUpload: !!uploadField, titulos,
         dataSummary: fields.map(item => getDatoExtraido(selectedRundBloque, item.campo, tarjetaRund))
           .filter(value => hasRundData(value)).join(' · '),
         canManage: canManageSupport(field.tipoSoporte),
@@ -731,7 +883,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       {canValidateRund && <div style={{ padding: '12px 24px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
         <button onClick={() => setShowRundAudit(v => !v)} style={{ border: 0, background: 'transparent', color: '#003DA5', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600 }}><History size={16} /> {showRundAudit ? 'Ocultar trazabilidad' : 'Ver trazabilidad de revisiones y documentos'}</button>
         {showRundAudit && <div role="region" aria-label="Trazabilidad de revisiones y documentos" style={{ maxHeight: 320, overflowY: 'auto', marginTop: 12 }}>
-          <p style={{ fontSize: 12, color: '#64748B' }}>Últimas 50 acciones. Se conserva el historial de cargas, versiones y decisiones.</p>
+          <p style={{ fontSize: 12, color: '#64748B' }}>Últimas 50 acciones y las 20 consultas más recientes de datos sensibles. Se conserva el historial de cargas, versiones y decisiones.</p>
           {auditError ? <p role="alert" style={{ fontSize: 12, color: '#B91C1C' }}>No fue posible consultar la trazabilidad. <button onClick={fetchRundData}>Reintentar</button></p> : rundAuditLog.length === 0 && <p style={{ fontSize: 12 }}>Sin acciones registradas.</p>}
           {rundAuditLog.map((entry: any) => <div key={entry.id} style={{ borderLeft: '2px solid #CBD5E1', padding: '8px 14px', marginBottom: 8, fontSize: 12 }}>
             <strong>{String(entry.accion).replace(/_/g, ' ')} ·{CATALOGO_BR039[entry.bloque]?.label || (entry.bloque === 'DOCUMENTAL' ? 'Expediente documental' : entry.bloque)}</strong>
@@ -741,9 +893,19 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
             {Number(entry.metadata?.evidenciasVigentes) > 1 && entry.metadata?.evidencia && <div>Evidencia {entry.metadata.evidencia} de {entry.metadata.evidenciasVigentes}{entry.metadata.evidenciaAdicional ? ' · evidencia adicional' : ''}</div>}
             {entry.accion === 'ELIMINAR_DOCUMENTO' && entry.metadata?.evidenciasVigentes !== undefined && <div>Evidencias vigentes del punto: {entry.metadata.evidenciasVigentes}</div>}
             {Array.isArray(entry.metadata?.orden) && <div>Orden de análisis: {entry.metadata.orden.map((item: any) => `${item.posicion}. ${item.nombreArchivo || 'Documento'}`).join(' · ')}</div>}
+            {entry.accion === 'DECISION_COMITE_PRUEBA' && <div data-testid="rund-audit-decision-prueba" style={{ marginTop: 2, overflowWrap: 'anywhere' }}>
+              <div><strong>Resultado:</strong> {entry.metadata?.resultadoEtiqueta || entry.metadata?.resultado}{entry.metadata?.correccion ? ' (corrección)' : ''}</div>
+              <div><strong>Fecha del comité:</strong> {formatFechaPrueba(entry.metadata?.fechaComite)}</div>
+              <div><strong>Soporte:</strong> {entry.metadata?.soporteNombre || entry.soporteId || entry.soporte_id || '—'}</div>
+              {entry.metadata?.motivo && <div><strong>Motivo:</strong> {entry.metadata.motivo}</div>}
+              {entry.metadata?.observacion && <div><strong>Observación:</strong> {entry.metadata.observacion}</div>}
+            </div>}
             {entry.metadata?.nombreArchivo && <div>{entry.metadata.nombreArchivo}</div>}
             {entry.metadata?.version && <div>Versión {entry.metadata.version}</div>}
             {entry.metadata?.versionNueva && <div>Versión {entry.metadata.versionAnterior} → {entry.metadata.versionNueva}</div>}
+            {auditCambiosOf(entry).map(cambio => <div key={cambio.campo} data-testid="rund-audit-cambio" style={{ marginTop: 2, overflowWrap: 'anywhere' }}>
+              <strong>{cambio.campo}</strong>: {formatAuditValue(cambio.anterior)} → {formatAuditValue(cambio.nuevo)}
+            </div>)}
             {entry.observacion && <div style={{ marginTop: 4 }}>{entry.observacion}</div>}
           </div>)}
         </div>}
@@ -789,7 +951,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
             )}
           </h3>
           <p style={{ margin: 0, fontSize: 13, color: '#64748B', marginTop: 4, fontWeight: 500 }}>
-            ID RUND: <span style={{ color: '#0F172A' }}>{tarjetaRund.idRund}</span> · Periodo: <span style={{ color: '#0F172A' }}>{tarjetaRund.periodoCarga || currentPeriodoCarga || 'Sin periodo'}</span>
+            ID RUND: <span style={{ color: '#0F172A' }}>{tarjetaRund.idRund}</span> · Periodo: <span style={{ color: '#0F172A' }}>{tarjetaRund.periodoCarga || currentPeriodoCarga || 'Sin periodo'}</span> · Estructura según archivo de codificación documental
           </p>
           {tarjetaRund.proteccion_datos?.acceso_completo === false && (
             <p style={{ margin: '6px 0 0', fontSize: 11, color: '#9A6700', fontWeight: 700 }}>
@@ -799,15 +961,15 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
         </div>
         <div style={{ textAlign: 'right', minWidth: 220 }}>
           <div role="status" title={reviewStatus.description} style={{ fontSize: 12, fontWeight: 700, color: reviewStatus.approved ? '#047857' : reviewStatus.returned ? '#B91C1C' : '#64748B', marginBottom: 6 }}>{reviewStatus.label}</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>Secciones de datos aprobadas</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>Carpetas aprobadas</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
             <div style={{ fontSize: 14, fontWeight: 800, color: '#0F172A' }}>
-              {reviewStatus.count} / {reviewStatus.total}
+              {carpetasAprobadas} / {sortedRundBloques.length}
             </div>
             <div style={{ width: 140, height: 8, background: '#E2E8F0', borderRadius: 4, overflow: 'hidden' }}>
               {(() => {
-                const aprobados = reviewStatus.count;
-                const total = reviewStatus.total;
+                const aprobados = carpetasAprobadas;
+                const total = sortedRundBloques.length;
                 const pct = total > 0 ? Math.round((aprobados / total) * 100) : 0;
                 return (
                   <div style={{
@@ -827,7 +989,9 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 450 }}>
         
         {/* Top Tabs: Categories List */}
-        <div ref={tabsRef} role="tablist" aria-label="Secciones del expediente RUND" onKeyDown={event => {
+        <div className="rund-review-tabs-wrap">
+        <button type="button" className="rund-review-tabs-arrow" aria-label="Ver carpetas anteriores" onClick={() => tabsRef.current?.scrollBy?.({ left: -320, behavior: 'smooth' })}><ChevronRight size={18} style={{ transform: 'rotate(180deg)' }} aria-hidden="true" /></button>
+        <div ref={tabsRef} role="tablist" aria-label="Secciones del expediente RUND" className="rund-review-tabs" onKeyDown={event => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
           const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
           const index = tabs.indexOf(event.target as HTMLButtonElement);
@@ -837,7 +1001,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
             : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
           tabs[next].focus();
           tabs[next].click();
-        }} style={{ display: 'flex', background: 'white', borderBottom: '1px solid #E5E7EB', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        }} style={{ display: 'flex', background: 'white', overflowX: 'scroll' }}>
           {sortedRundBloques.map(b => {
             const cfg = CATALOGO_BR039[b.bloque];
             if (!cfg) return null;
@@ -848,6 +1012,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
             return (
               <button
                 type="button" role="tab" aria-selected={isSelected} tabIndex={isSelected ? 0 : -1}
+                aria-label={`${cfg.label} · ${rundCarpetaSoportes(b.bloque)} ${rundCarpetaSoportes(b.bloque) === 1 ? 'soporte' : 'soportes'} · ${est.label}`}
                 id={`rund-tab-${tarjetaRund.docenteId}-${b.bloque}`} aria-controls={`rund-panel-${tarjetaRund.docenteId}`}
                 key={b.bloque}
                 onClick={() => toggleRundBloque(b.bloque)}
@@ -876,19 +1041,21 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                   {b.estado === 'Aprobado' ? <CheckCircle size={18} /> : cfg.letra}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: isSelected ? '#0F172A' : '#475569' }}>{cfg.label}</div>
-                  <div style={{ fontSize: '0.65rem', color: b.estado === 'Aprobado' ? '#047857' : isSelected ? cfg.color : '#94A3B8', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                    <EstIcon size={10} /> {b.bloque === 'CONTACTO' && ['Pendiente', 'Soporte faltante'].includes(b.estado) ? 'Sin soporte requerido' : est.label}
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: isSelected ? '#0F172A' : '#475569', whiteSpace: 'normal', maxWidth: 150 }}>{rundCarpeta(b.bloque)?.nombre || cfg.label}</div>
+                  <div title={est.label} style={{ fontSize: '0.65rem', color: b.estado === 'Aprobado' ? '#047857' : b.estado === 'Devuelto' ? '#B91C1C' : isSelected ? cfg.color : '#94A3B8', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <EstIcon size={10} /> {rundCarpetaSoportes(b.bloque)} {rundCarpetaSoportes(b.bloque) === 1 ? 'soporte' : 'soportes'}{b.estado === 'Devuelto' ? ' · Devuelto' : ''}
                   </div>
                 </div>
               </button>
             );
           })}
         </div>
+        <button type="button" className="rund-review-tabs-arrow" aria-label="Ver carpetas siguientes" onClick={() => tabsRef.current?.scrollBy?.({ left: 320, behavior: 'smooth' })}><ChevronRight size={18} aria-hidden="true" /></button>
+        </div>
 
         <div role="tabpanel" id={`rund-panel-${tarjetaRund.docenteId}`} aria-labelledby={`rund-tab-${tarjetaRund.docenteId}-${selectedRundBloque}`} style={{ flex: 1, background: '#FAFBFC', position: 'relative', minWidth: 0 }}>
         <header className="rund-review-section-intro">
-          <h4>{activeConfig.label}</h4>
+          <h4>{rundCarpeta(selectedRundBloque) && rundCarpeta(selectedRundBloque)!.codigo !== 'T' ? `${rundCarpeta(selectedRundBloque)!.codigo} · ${rundCarpeta(selectedRundBloque)!.nombre}` : activeConfig.label}</h4>
           <p>{activeConfig.subtitle}</p>
         </header>
         <nav className="rund-review-guide" aria-label="Pasos para revisar esta sección">
@@ -901,14 +1068,28 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
           </button>)}
         </nav>
 
+        <RundDatosCargaOriginal bloque={selectedRundBloque} datos={tarjetaRund.datos_carga_masiva} accesoCompleto={tarjetaRund.proteccion_datos?.acceso_completo === true} />
+
         {selectedRundBloque !== 'CONTACTO' && <RundDocumentManager
           key={tarjetaRund.docenteId}
           docenteId={tarjetaRund.docenteId}
           canManage={(canManageDocuments || canRegisterIncorporation && selectedRundBloque === 'VINCULACION') && !loadError}
           allowedSupportTypes={canRegisterIncorporation && !canManageDocuments ? [...RUND_INCORPORATION_SUPPORTS] : undefined}
           revision={documentRevision}
+          onSubirMasivo={subirSoporteMasivo}
           activeBlock={selectedRundBloque}
           activeBlockLabel={CATALOGO_BR039[selectedRundBloque]?.label}
+          renderSupportTable={({ accionesExtra }) => <RundSoportesCodificacion incrustada
+            grupos={supportGroups}
+            disabled={!!rundActionLoading || loadingRund || loadError}
+            accionesExtra={accionesExtra}
+            onUpload={(file, group, evidence, titulo) => handleUploadFile(file, group.field.tipoSoporte, group.uploadField.campo, evidence, titulo)}
+            onView={(evidence, group, number) => openDocViewer(evidence.documento_carpeta_id || evidence.documentoCarpetaId || evidence.url || '',
+              group.evidences.length > 1 ? group.field.documento + ' · Evidencia ' + number : group.field.documento,
+              group.field.campo, { support: evidence, block: selectedRundBloque, field: group.field as CampoDoc })}
+            onDelete={evidence => deleteEvidenceFromTable(evidence)}
+            onEditTitle={editarTituloFila}
+            onDeleteTitle={eliminarTituloFila} />}
           supportReview={{ groups: supportGroups, canValidate: canValidateRund,
             disabled: !!rundActionLoading || loadingRund || loadError, busy: rundActionLoading,
             onView: (evidence, group, number) => openDocViewer(evidence.documento_carpeta_id || evidence.documentoCarpetaId || evidence.url || '',
@@ -930,6 +1111,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
           onChanged={fetchRundData}
         />}
 
+        <RundConfirmarEliminacion confirmacion={confirmacionEliminar} onCancelar={() => setConfirmacionEliminar(null)} />
+
         {showSupportingTools && <details className="rund-review-tools rund-review-tools--after-documents" key={`tools-${selectedRundBloque}`}>
           <summary>
             <span className="rund-review-tools__icon" aria-hidden="true">{showExtraction ? <Sparkles size={21} /> : <BookOpen size={21} />}</span>
@@ -948,7 +1131,6 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
               key={tarjetaRund.docenteId} docenteId={tarjetaRund.docenteId} revision={documentRevision}
               activeBlock={selectedRundBloque} activeBlockLabel={activeConfig.label} activeBlockColor={activeConfig.color} canEdit={canEditRund} canAnalyze={canEditRund || canValidateRund}
               onView={openDocViewer} onConfirmed={fetchRundData} />}
-            <RundDatosCargaOriginal bloque={selectedRundBloque} datos={tarjetaRund.datos_carga_masiva} accesoCompleto={tarjetaRund.proteccion_datos?.acceso_completo === true} />
           </div>
         </details>}
 
@@ -998,7 +1180,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                     fields={tarjetaRund.bloques?.VINCULACION?.campos || []}
                     onSaved={async () => { await fetchRundData(); onUpdated?.(); }} />}
 
-                  {b.bloque === 'IDENTIDAD' && <RundPhotoPanel docenteId={docenteId}
+                  {b.bloque === 'IDENTIDAD' && !readOnlyRund && <RundPhotoPanel docenteId={docenteId}
                     name={docente?.nombre_completo || ''} canUpload={hasRundPermission(auth, PHOTO_MANAGE)}
                     canValidate={hasRundPermission(auth, PHOTO_VALIDATE)} onChanged={onUpdated} />}
 
@@ -1016,6 +1198,9 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                       const isDerived = c.obligatorio === 'Derivado';
                       const rowHasData = canUploadRundField(b.bloque, c, tarjetaRund);
                       const datoExtraido = getDatoExtraido(b.bloque, c.campo, tarjetaRund);
+                      // RUND-003: el título de la plantilla es la información precargada; los demás del nivel, información adicional.
+                      const nivelTitulo = b.bloque === 'FORMACION' ? nivelTituloDeFila(c.campo) : null;
+                      const titulosAdicionales = nivelTitulo ? titulosAdicionalesDeCampos(tarjetaRund?.bloques?.FORMACION?.campos, nivelTitulo) : [];
 
                       return (
                         <div key={idx} className="rund-checkpoint-row" data-state={isDerived ? 'Derivado' : dataState} style={{
@@ -1025,6 +1210,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                           <div className="rund-checkpoint-row__data">
                             <div className="rund-checkpoint-label">{c.campo}</div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: datoExtraido !== null ? '#0F172A' : '#64748B', overflowWrap: 'anywhere' }}>{datoExtraido ?? (c.tipoSoporte === 'autorizacion_habeas_data' ? 'Validación a criterio del revisor; soporte opcional' : c.tipoSoporte === 'convalidacion_men' ? 'Origen de los títulos no informado' : 'No registrado')}</div>
+                            {nivelTitulo && <TitulosOrigenFila nivel={c.campo} tienePrecargado={datoExtraido !== null} adicionales={titulosAdicionales} />}
                             {c.tipoSoporte === 'convalidacion_men' && <p style={{ margin: '6px 0 0', fontSize: 11, lineHeight: 1.5, color: '#64748B' }}>El perfil no indica si los títulos se obtuvieron en Colombia o en otro país. Tener un título registrado no confirma que sea del exterior.</p>}
                             {hasDoc && !rowHasData && c.tipoSoporte !== 'convalidacion_men' && <p style={{ margin: '6px 0 0', fontSize: 11, lineHeight: 1.5, color: '#92400E' }}>Hay un soporte previo, pero falta registrar el dato del perfil. La revisión del archivo se conserva.</p>}
                           </div>
@@ -1042,7 +1228,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
 
                           {/* Data decisions are separate from document admission. */}
                           <div className="rund-checkpoint-row__status" data-empty={!dataDecision?.requiereRevision && dataState === 'Pendiente'}>
-                            {isDerived?<span style={{fontSize:11,color:'#94A3B8'}}>Dato Automático</span>:<div className="rund-data-decision">
+                            {isDerived?<span style={{fontSize:11,color:'#94A3B8'}}>Dato Automático</span>:RUND_STANDALONE_SUPPORTS.includes(c.tipoSoporte)?<span style={{fontSize:11,color:'#94A3B8'}}>Solo soporte documental (opcional)</span>:<div className="rund-data-decision">
                               <strong data-state={dataState}>{dataState==='Aprobado'?'Dato validado':dataState==='Rechazado'?'Dato devuelto':dataDecision?.requiereRevision===false?'Sin dato para revisar':c.tipoSoporte&&!rowHasData?'Sin dato para soportar':'Pendiente de validar el dato'}</strong>
                               {dataDecision?.observacion&&<p>{dataDecision.observacion}</p>}
                               {dataDecision?.revisadoPorNombre&&<small>Revisado por {dataDecision.revisadoPorNombre}</small>}
@@ -1204,19 +1390,18 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
           </div>
         </div>
       )}
-      {isEditing && (
+      {/* Portal al body: dentro de la fila expandida el encabezado fijo de la tabla interceptaba los clics del modal. */}
+      {isEditing && createPortal(
         <BancoDocenteEditModal
-          docente={{
-            id: tarjetaRund.docenteId,
-            ...docente, // Usar datos del docente para prellenar si están disponibles
-          }}
+          docente={docenteEdicion}
           onClose={() => setIsEditing(false)}
           onSaved={() => {
             setIsEditing(false);
             fetchRundData();
             onUpdated?.();
           }}
-        />
+        />,
+        document.body,
       )}
     </div>
   );

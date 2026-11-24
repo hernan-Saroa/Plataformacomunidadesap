@@ -192,6 +192,19 @@ export class EstudioPrevioController {
     return this.service.devolver(id, dto.observaciones ?? '', getHiringAccess(req));
   }
 
+  @Post(':id/estudio-previo/devolver-desde-la-radicacion')
+  // En la 3.3 y no en la 3.1: quien devuelve aquí no es un escalón de la
+  // revisión sino quien tomó el proceso. Que lo haya tomado lo mira el servicio.
+  @Puede('editar', '3.3')
+  @ApiOperation({
+    summary: 'Devolver el estudio previo desde la radicación (numeral 3.3)',
+    description:
+      'Quien tomó el proceso se lo devuelve al área con observaciones, sin pasarlo a los abogados. Solo mientras está en revisión; la ronda de la cadena se cancela y empieza otra cuando el área lo reenvíe.',
+  })
+  devolverDesdeLaRadicacion(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RevisarDto, @Req() req: any) {
+    return this.service.devolverDesdeLaRadicacion(id, dto.observaciones ?? '', getHiringAccess(req));
+  }
+
   @Post(':id/estudio-previo/negar')
   @Puede('aprobar', '3.1')
   @ApiOperation({
@@ -238,7 +251,7 @@ export class EstudioPrevioController {
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
-    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    if (!file) throw new BadRequestException('Adjunta el archivo: no llegó ninguno');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
     return this.service.registrarAdjunto(id, file, hash, getHiringAccess(req));
   }
@@ -286,7 +299,7 @@ export class EstudioPrevioController {
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
-    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    if (!file) throw new BadRequestException('Adjunta el archivo: no llegó ninguno');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
     return this.service.reemplazarAdjunto(id, documentoId, file, hash, getHiringAccess(req));
   }

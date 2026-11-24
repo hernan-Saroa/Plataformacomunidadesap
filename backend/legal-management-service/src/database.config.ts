@@ -38,6 +38,7 @@ import { DocumentoOC } from './entities/documento-oc.entity';
 // Módulo de Riesgos
 import { Riesgo } from './entities/riesgo.entity';
 import { RiesgoHistorial } from './entities/riesgo-historial.entity';
+import { RiesgoControlSeguimiento } from './entities/riesgo-control-seguimiento.entity';
 import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
 
 // Planes de Mejoramiento
@@ -104,7 +105,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Comentarios y Documentos OC
         ComentarioOC, DocumentoOC,
         // Riesgos
-        Riesgo, RiesgoHistorial,
+        Riesgo, RiesgoHistorial, RiesgoControlSeguimiento,
         // Decisiones
         DecisionDisciplinaria,
         // Planes de Mejoramiento

@@ -3,11 +3,14 @@ import { CalendarDays, Loader2, Gauge, Search } from 'lucide-react';
 import { useRevisionProgramacion, invalidarProgramacion } from '../services/actualizacionProgramacion';
 import {
   getPeriodos, crearPeriodoPlataforma, getImpactoActivacion, activarPeriodoPlataforma,
+  getImpactoEliminacion, eliminarPeriodoPlataforma, type ImpactoEliminacion,
   type PeriodoPlataforma, type RespuestaPeriodos,
   type ImpactoActivacion,
 } from '../services/api/periodosApi';
 import { CargaAsignaturasPeriodo } from './CargaAsignaturasPeriodo';
 import { ModalConfirmacion } from './ModalConfirmacion';
+import { OPCIONES_ALCANCE, ReutilizarPeriodo } from './ReutilizarPeriodo';
+import type { AlcanceReutilizacion } from '../services/api/cargaProgramacionApi';
 
 import {
   getConsumoPorOferta,
@@ -44,6 +47,9 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
   const [sufijoPers, setSufijoPers] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [avisoAdmin, setAvisoAdmin] = useState('');
+  // Reutilizar los datos de otro periodo: al crear uno nuevo (opcional) o desde la tarjeta de un periodo.
+  const [reusoNuevo, setReusoNuevo] = useState<{ origen: string; alcance: AlcanceReutilizacion }>({ origen: '', alcance: 'catalogo' });
+  const [reutilizar, setReutilizar] = useState<{ id: string; origen?: string; alcance?: AlcanceReutilizacion; revisar?: boolean } | null>(null);
 
   // NUEVA-1 (EFDS-1937) — Publicación de la programación por periodo. El estado
   // por periodo se consulta y se refresca tras publicar/retirar.
@@ -57,6 +63,7 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
     | { tipo: 'excepcion'; id: string; idFranja: string }
     | { tipo: 'cierre'; periodo: PeriodoPlataforma }
     | { tipo: 'activacion'; id: string; impacto: ImpactoActivacion }
+    | { tipo: 'eliminacion'; impacto: ImpactoEliminacion }
     | null
   >(null);
   const [confirmando, setConfirmando] = useState(false);
@@ -164,7 +171,14 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
       const actualizados = await recargar();
       const periodoCreado = actualizados.periodos.find((p) => personalizado ? p.codigo === codigoPers : (p.anio === nuevo.anio && p.semestre === nuevo.semestre));
       if (personalizado) { setNombrePers(''); setSufijoPers(''); setPersonalizado(false); }
-      setImportarId(periodoCreado?.idPeriodo ?? null);
+      if (periodoCreado && reusoNuevo.origen) {
+        // Se abre la copia ya revisada: la persona ve qué se copiaría y confirma.
+        setReutilizar({ id: periodoCreado.idPeriodo, origen: reusoNuevo.origen, alcance: reusoNuevo.alcance, revisar: true });
+        setImportarId(null);
+        setReusoNuevo({ origen: '', alcance: 'catalogo' });
+      } else {
+        setImportarId(periodoCreado?.idPeriodo ?? null);
+      }
       setNuevo({ ...nuevo, fechaInicio: '', fechaFin: '' });
     } catch (err: any) {
       setAvisoAdmin(creado
@@ -182,6 +196,27 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
       setConfirmacion({ tipo: 'activacion', id, impacto });
     } catch (err: any) {
       setAvisoAdmin(err?.message || 'No se pudo consultar el impacto de la activación.');
+    }
+  };
+
+  // Bug QA 18-nov: eliminar un periodo. Primero se consulta el impacto y se muestra; el servidor decide si se puede.
+  const eliminar = async (id: string) => {
+    setAvisoAdmin('');
+    try {
+      const impacto = await getImpactoEliminacion(id);
+      if (!impacto.eliminable) { setAvisoAdmin(impacto.motivo || 'Este periodo no se puede eliminar.'); return; }
+      setConfirmacion({ tipo: 'eliminacion', impacto });
+    } catch (err: any) {
+      setAvisoAdmin(err?.message || 'No se pudo consultar qué se eliminaría.');
+    }
+  };
+  const confirmarEliminacion = async (impacto: ImpactoEliminacion) => {
+    try {
+      await eliminarPeriodoPlataforma(impacto.id);
+      setAvisoAdmin(`Periodo ${impacto.codigo} eliminado.`);
+      await recargar();
+    } catch (err: any) {
+      setAvisoAdmin(err?.message || 'No se pudo eliminar el periodo.');
     }
   };
 
@@ -206,6 +241,7 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
       if (actual.tipo === 'excepcion') await excepcion(actual.id, actual.idFranja);
       if (actual.tipo === 'cierre') await cerrar(actual.periodo);
       if (actual.tipo === 'activacion') await confirmarActivacion(actual.id);
+      if (actual.tipo === 'eliminacion') await confirmarEliminacion(actual.impacto);
     } finally { setConfirmando(false); setConfirmacion(null); }
   };
 
@@ -241,9 +277,11 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
       {confirmacion && (
         <ModalConfirmacion
           retornarFoco={disparadorConfirmacion.current}
-          titulo={confirmacion.tipo === 'activacion' ? `Activar periodo ${confirmacion.impacto.codigo}` : confirmacion.tipo === 'cierre' ? `Cerrar programación de ${confirmacion.periodo.codigo}` : 'Marcar franja como excepción'}
+          titulo={confirmacion.tipo === 'eliminacion' ? `Eliminar el periodo ${confirmacion.impacto.codigo}` : confirmacion.tipo === 'activacion' ? `Activar periodo ${confirmacion.impacto.codigo}` : confirmacion.tipo === 'cierre' ? `Cerrar programación de ${confirmacion.periodo.codigo}` : 'Marcar franja como excepción'}
           onCancelar={() => setConfirmacion(null)} onConfirmar={ejecutarConfirmacion} ocupado={confirmando}
-          advertencia={confirmacion.tipo === 'activacion'
+          advertencia={confirmacion.tipo === 'eliminacion'
+            ? 'Esta acción no se puede deshacer: se borra el periodo y todo lo que se programó en él.'
+            : confirmacion.tipo === 'activacion'
             ? (confirmacion.impacto.advertencia || 'La activación cambiará el estado de los periodos indicados.')
             : confirmacion.tipo === 'cierre'
               ? 'Esta acción no se puede deshacer. Después no se podrán crear grupos en esta programación.'
@@ -260,6 +298,19 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
               {activo && <p>El periodo activo actual <strong>{activo}</strong> {impacto.periodosAPlaneacion.includes(activo) ? 'pasará a planeación' : impacto.periodosACerrar.includes(activo) ? 'se cerrará' : 'dejará de estar activo'}.</p>}
               {impacto.periodosACerrar.length > 0 && <p>Se cerrarán: {impacto.periodosACerrar.join(', ')}.</p>}
               {impacto.periodosAPlaneacion.length > 0 && <p>Pasarán a planeación: {impacto.periodosAPlaneacion.join(', ')}.</p>}
+            </>;
+          })()}
+          {confirmacion.tipo === 'eliminacion' && (() => {
+            const i = confirmacion.impacto;
+            return <>
+              <p>Se eliminará el periodo <strong>{i.codigo}</strong> con todo lo que tiene:</p>
+              <ul className="list-disc space-y-1 pl-5" aria-label="Qué se elimina">
+                <li><strong>{i.ofertas}</strong> oferta(s) de programas por CETAP y {i.cetaps} activación(es) de CETAP</li>
+                <li><strong>{i.grupos}</strong> grupo(s) con <strong>{i.sesiones}</strong> sesión(es) y sus docentes asignados</li>
+                <li><strong>{i.concertaciones}</strong> concertación(es) de docencia</li>
+                {i.programas > 0 && <li>{i.programas} programa(s) creados para este periodo quedan sin periodo (no se borran)</li>}
+              </ul>
+              <p>No tiene PTA de docentes: por eso se puede eliminar.</p>
             </>;
           })()}
           {confirmacion.tipo === 'cierre' && <p>Se cerrará la programación del periodo <strong>{confirmacion.periodo.codigo}</strong>.</p>}
@@ -308,6 +359,15 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
                 </span>
                 {/* El PTA permite reactivar un periodo cerrado; el impacto se
                     confirma antes de cambiar el periodo activo. */}
+                {periodos?.permisos.crear && !o.esActivo && o.estadoPlataforma !== 'en_curso' && (
+                  <button
+                    type="button"
+                    onClick={(e) => { disparadorConfirmacion.current = e.currentTarget; eliminar(o.idPeriodo); }}
+                    className="px-2.5 py-1 rounded-lg border border-red-300 text-red-700 text-[11px] font-bold hover:bg-red-50 active:scale-95 transition-all"
+                  >
+                    Eliminar
+                  </button>
+                )}
                 {periodos?.permisos.activar && !o.esActivo && (
                   <button
                     type="button"
@@ -413,6 +473,18 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
               {importarId === o.idPeriodo && periodos?.permisos.importar && o.programable && (
                 <CargaAsignaturasPeriodo periodo={o} alTerminar={() => setAvisoAdmin(`Catálogo de ${o.codigo} actualizado.`)} />
               )}
+              {periodos?.permisos.crear && o.programable && (
+                <button type="button" onClick={() => setReutilizar(reutilizar?.id === o.idPeriodo ? null : { id: o.idPeriodo })}
+                  className="block text-xs font-bold text-[#003DA5] underline">
+                  {reutilizar?.id === o.idPeriodo ? 'Ocultar reutilizar' : 'Reutilizar datos de otro periodo'}
+                </button>
+              )}
+              {reutilizar?.id === o.idPeriodo && periodos && (
+                <ReutilizarPeriodo key={`${o.idPeriodo}-${reutilizar.origen ?? ''}-${reutilizar.alcance ?? ''}`} destino={o} periodos={periodos.periodos}
+                  origenInicial={reutilizar.origen} alcanceInicial={reutilizar.alcance} revisarAlAbrir={reutilizar.revisar}
+                  onCerrar={() => setReutilizar(null)}
+                  alTerminar={(r) => setAvisoAdmin(`Datos de ${r.origen.codigo} copiados en ${r.destino.codigo}.`)} />
+              )}
             </div>
           ))}
         </div>
@@ -482,6 +554,30 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
           </label>
           </div>
         </div>
+        {(periodos?.periodos.length ?? 0) > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-slate-500 uppercase">Reutilizar datos de (opcional)</span>
+              <select aria-label="Reutilizar datos de otro periodo" value={reusoNuevo.origen}
+                onChange={(e) => setReusoNuevo({ ...reusoNuevo, origen: e.target.value })}
+                className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
+                <option value="">No reutilizar: empezar vacío</option>
+                {periodos!.periodos.map((p) => <option key={p.idPeriodo} value={p.idPeriodo}>{p.codigo}</option>)}
+              </select>
+            </label>
+            {reusoNuevo.origen && (
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-bold text-slate-500 uppercase">Qué reutilizar</span>
+                <select aria-label="Qué reutilizar" value={reusoNuevo.alcance}
+                  onChange={(e) => setReusoNuevo({ ...reusoNuevo, alcance: e.target.value as AlcanceReutilizacion })}
+                  className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
+                  {OPCIONES_ALCANCE.map((o) => <option key={o.valor} value={o.valor}>{o.titulo}</option>)}
+                </select>
+                <span className="text-[11px] text-slate-500">{OPCIONES_ALCANCE.find((o) => o.valor === reusoNuevo.alcance)?.detalle} Antes de copiar verá qué se copiaría.</span>
+              </label>
+            )}
+          </div>
+        )}
         {avisoAdmin && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
             {avisoAdmin}

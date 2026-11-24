@@ -6,7 +6,7 @@ import { CampoFormulario, EstudioPrevio, RevisionEstudioPrevio } from '../../typ
 import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { VerSoportes } from '../shared/VerSoporte';
 import { ModalidadDelEstudioPrevio } from '../estudio-previo/ModalidadDelEstudioPrevio';
-import { fechaLarga } from '../shared/fechas';
+import { CAMPOS_PLAZO_EN_DIAS, fechaLarga, plazoEnMeses } from '../shared/fechas';
 
 const pesos = new Intl.NumberFormat('es-CO', {
   style: 'currency',
@@ -24,7 +24,10 @@ export function valorLegible(campo: CampoFormulario, valor: unknown): string | n
     }
     case 'numero': {
       const n = Number(valor);
-      return Number.isFinite(n) ? n.toLocaleString('es-CO') : String(valor);
+      if (!Number.isFinite(n)) return String(valor);
+      // Un plazo en días lleva al lado su equivalente en meses (AJU-002).
+      const meses = CAMPOS_PLAZO_EN_DIAS.includes(campo.codigo) ? plazoEnMeses(n) : null;
+      return meses ? `${n.toLocaleString('es-CO')} días (${meses})` : n.toLocaleString('es-CO');
     }
     case 'fecha':
       return /^\d{4}-\d{2}-\d{2}/.test(String(valor)) ? fechaLarga(String(valor).slice(0, 10)) : String(valor);

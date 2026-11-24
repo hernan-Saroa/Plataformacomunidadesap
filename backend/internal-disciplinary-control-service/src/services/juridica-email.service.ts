@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { MODULO_NOTIFICACIONES } from './notification-client.service';
 import { firstValueFrom } from 'rxjs';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -16,6 +17,20 @@ const MAX_ADJUNTOS_BYTES = 20 * 1024 * 1024;
 // Timeout para descargar un adjunto alojado en una URL externa.
 const DESCARGA_EXTERNA_TIMEOUT_MS = 15000;
 
+/**
+ * EFDS-2238 — lo que necesita el traslado a Judiciales para salir: el ambiente (Gestión Legal rechaza un
+ * traslado de otro ambiente) y el buzón judicial (Notificaciones no envía sin él). Devuelve qué falta o null.
+ */
+export function problemaDeTraslado(env: NodeJS.ProcessEnv = process.env): string | null {
+  const ambiente = env.MAIL_ENVIRONMENT?.trim();
+  if (!ambiente || !['dev', 'qa', 'pre', 'prod', 'local'].includes(ambiente)) {
+    return `MAIL_ENVIRONMENT inválido o ausente («${ambiente || ''}»; se espera dev, qa, pre, prod o local)`;
+  }
+  const judicial = env.JURIDICA_EMAIL?.trim();
+  if (!judicial || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(judicial)) return 'JURIDICA_EMAIL ausente o no es una dirección de correo';
+  return null;
+}
+
 @Injectable()
 export class JuridicaEmailService {
   private readonly logger = new Logger(JuridicaEmailService.name);
@@ -24,6 +39,18 @@ export class JuridicaEmailService {
     private readonly httpService: HttpService,
     private readonly storageService: StorageService,
   ) {}
+
+  onModuleInit() {
+    // EFDS-2238: sin buzón judicial, «Enviar a Jurídica» no llega a Judiciales (enviarCorreoJuridica lo
+    // omite). Se avisa al ARRANCAR y, en producción, el servicio no arranca: que se note en el despliegue.
+    const problema = problemaDeTraslado();
+    if (problema) {
+      const mensaje = `Falta la configuración de buzones: «Enviar a Jurídica» no llegará a Judiciales (${problema})`;
+      this.logger.error(mensaje);
+      if (process.env.MAIL_ENVIRONMENT === 'prod') throw new Error(`${mensaje}. Defina LEGAL_EMAIL_ACCOUNT_JUDICIAL en .env.prod (DEPLOY-bugs-qa.md, EFDS-2238, PASO 0).`);
+    }
+    this.logger.log(`Traslados: ambiente=${process.env.MAIL_ENVIRONMENT || 'sin configurar'} judicial=${process.env.JURIDICA_EMAIL || 'sin configurar'}`);
+  }
 
   /**
    * Envía correo a la oficina de jurídica usando el notifications-service.
@@ -48,7 +75,11 @@ export class JuridicaEmailService {
     },
     adjuntos: EmailAdjunto[] = [],
   ): Promise<boolean> {
-    const destinatario = process.env.JURIDICA_EMAIL || 'juridica@esap.edu.co';
+    const destinatario = process.env.JURIDICA_EMAIL?.trim();
+    if (!destinatario) {
+      this.logger.error(`Proceso ${processId}: JURIDICA_EMAIL sin configurar; correo omitido`);
+      return false;
+    }
     // Soporte para ambos nombres de variable de entorno
     const notificationsUrl =
       process.env.NOTIFICATIONS_SERVICE_URL ||
@@ -125,15 +156,21 @@ export class JuridicaEmailService {
     `;
 
     try {
-      await firstValueFrom(
+      const response = await firstValueFrom(
         this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
           to: destinatario,
           subject: `[PLIEGO DE CARGOS] Proceso ${datosConsolidados.radicado} - Traslado a Oficina Jurídica`,
           html,
+          modulo: MODULO_NOTIFICACIONES,
+          evento: 'PLIEGO_CARGOS_TRASLADO_JURIDICA',
           ...(adjuntos.length > 0 && { attachments: adjuntos }),
         }),
       );
 
+      if (response.data?.sent !== true) {
+        this.logger.warn(`Proceso ${processId}: notificación omitida (${response.data?.motivo || response.status})`);
+        return false;
+      }
       this.logger.log(
         `Correo enviado a jurídica para proceso ${processId} vía notifications-service (${adjuntos.length} adjunto(s))`,
       );
@@ -150,7 +187,7 @@ export class JuridicaEmailService {
       this.logger.error(
         `Error al enviar correo para proceso ${processId}: ${JSON.stringify(errorDetails, null, 2)}`,
       );
-      console.error('[JuridicaEmailService] Full error object:', error);
+
       return false;
     }
   }
@@ -449,6 +486,8 @@ export class JuridicaEmailService {
             to,
             subject: `[ENVÍO A JURÍDICA] Proceso ${radicado} - Enviado por ${nombreJefe}`,
             html,
+            modulo: MODULO_NOTIFICACIONES,
+            evento: 'ENVIO_A_JURIDICA',
           }),
         );
         this.logger.log(`Notificación de envío a jurídica enviada a ${to} para proceso ${radicado}`);
@@ -582,9 +621,9 @@ export class JuridicaEmailService {
         asunto: `[PLIEGO DE CARGOS] Proceso ${datosConsolidados.radicado} - Traslado a Oficina Jurídica`,
         remitente: {
           nombre: datosConsolidados.enviadoPorNombre || datosConsolidados.profesionalResponsable || 'Control Interno Disciplinario',
-          email: datosConsolidados.enviadoPorEmail || datosConsolidados.profesionalEmail || 'disciplinario@esap.edu.co',
+          email: datosConsolidados.enviadoPorEmail || datosConsolidados.profesionalEmail,
         },
-        destinatario: process.env.JURIDICA_EMAIL || 'juridica@esap.edu.co',
+        ambiente: process.env.MAIL_ENVIRONMENT,
         fechaEnvio: new Date().toISOString(),
         datosConsolidados,
         documentos,
@@ -601,12 +640,12 @@ export class JuridicaEmailService {
       );
 
       this.logger.log(
-        `Transferencia a Gestión Legal exitosa para proceso ${datosConsolidados.radicado}: ${JSON.stringify(resp?.data)}`,
+        `Transferencia a Gestión Legal del proceso ${processId} (${datosConsolidados.radicado}): HTTP ${resp.status}, ${documentos.length} documento(s)`,
       );
       return true;
     } catch (error: any) {
       this.logger.warn(
-        `No se pudo sincronizar directamente con legal-management-service (${legalUrl}): ${error?.message}. Se preserva el flujo principal.`,
+        `Falló el traslado del proceso ${processId} (${datosConsolidados.radicado}) a Gestión Legal: ${error?.message}`,
       );
       return false;
     }

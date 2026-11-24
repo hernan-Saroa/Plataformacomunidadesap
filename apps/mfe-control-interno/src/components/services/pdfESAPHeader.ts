@@ -292,12 +292,13 @@ export const DOCUMENTOS_PREDEFINIDOS = {
     titulo: 'PLAN ANUAL DE AUDITORÍA INTERNA',
     proceso: 'EVALUACIÓN CONTROL Y MEJORA'
   },
+  // Formato vigente EM-FO-003 versión 03 del 18/09/2025 (EFDS-2455)
   INFORME_AUDITORIA_OCI: {
     codigo: 'EM-FO-003',
-    version: 2,
-    fecha: '24/02/2025',
+    version: 3,
+    fecha: '18/09/2025',
     titulo: 'INFORME DE AUDITORIA INTERNA OCI',
-    proceso: 'EVALUACIÓN CONTROL Y MEJORA',
+    proceso: 'EVALUACIÓN, CONTROL Y MEJORA',
     documentoReferencia: 'Procedimiento Auditorías Internas basadas en riesgos EM-PT-004'
   },
   INFORME_EJECUTIVO_OCI: {

@@ -195,6 +195,9 @@ type OracleRequestSyncResult = {
   unchanged: number;
 };
 
+/** Código del módulo en la configuración de notificaciones (EFDS-2406). */
+const MODULO_NOTIFICACIONES = 'certificados-laborales';
+
 @Injectable()
 export class CertificatesService {
   private readonly logger = new Logger(CertificatesService.name);
@@ -3513,13 +3516,15 @@ export class CertificatesService {
     subject: string;
     text: string;
     html: string;
+    /** Clave en la configuración de notificaciones (EFDS-2406). */
+    evento: string;
   }): Promise<void> {
     const response = await fetch(
       `${this.resolveNotificationsBaseUrl()}/api/v1/emails/send`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, modulo: MODULO_NOTIFICACIONES }),
         signal: AbortSignal.timeout(CORRECTION_NOTIFICATION_TIMEOUT_MS),
       },
     );
@@ -3548,6 +3553,7 @@ export class CertificatesService {
       const to = this.resolveOutboundEmailRecipient(request.requester_email);
       await this.postCorrectionNotificationEmail({
         to,
+        evento: 'certificados_correccion_radicada',
         subject: `Solicitud de corrección ${requestNumber} radicada - Certificados Laborales ESAP`,
         text: `Recibimos tu solicitud de corrección ${requestNumber}. Será revisada por el equipo de Certificados Laborales en un plazo máximo de 15 días hábiles.`,
         html: this.buildCorrectionAcknowledgementEmailHtml(request, evidenceCount),
@@ -3583,6 +3589,7 @@ export class CertificatesService {
       alerts.map((alert) =>
         this.postCorrectionNotificationEmail({
           to: alert.to,
+          evento: 'certificados_correccion_nueva_para_gestores',
           subject: this.correctionAlertSubject(
             `Nueva solicitud de corrección ${requestNumber} - Certificados Laborales ESAP`,
             alert.intendedFor,
@@ -3776,6 +3783,7 @@ export class CertificatesService {
       alerts.map((alert) =>
         this.postCorrectionNotificationEmail({
           to: alert.to,
+          evento: 'certificados_correccion_resuelta_para_gestores',
           subject: this.correctionAlertSubject(
             `Resuelta: corrección ${requestNumber} ${decision} - Certificados Laborales ESAP`,
             alert.intendedFor,
@@ -3813,6 +3821,8 @@ export class CertificatesService {
       text: `Tu solicitud de corrección ${request.request_number} fue revisada y no fue aprobada. Descripción: ${request.resolution_description || ''}`,
       html: this.buildCorrectionRejectionEmailHtml(request, attachments.length),
       attachments,
+      modulo: MODULO_NOTIFICACIONES,
+      evento: 'certificados_correccion_no_aprobada',
     };
     const response = await fetch(`${this.resolveNotificationsBaseUrl()}/api/v1/emails/send`, {
       method: 'POST',

@@ -65,6 +65,16 @@ export class GenerarDefinitivoDto {
   @IsString()
   @MaxLength(1000)
   motivo?: string;
+
+  /**
+   * Por qué el definitivo cambia frente al preliminar (sesión de QA del 04/11):
+   * otro ganador, otro valor evaluado, una oferta descartada.
+   */
+  @ApiPropertyOptional({ description: 'Justificación de los cambios frente al informe preliminar' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  justificacionCambios?: string;
 }
 
 export class PublicarDefinitivoDto {

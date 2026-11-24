@@ -42,6 +42,7 @@ import {
 } from './modales';
 
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
+import { normasATexto } from './services/normatividad';
 import { InicioAuditoriaWizardWorldClass } from './InicioAuditoriaWizardWorldClass';
 import { ExpedienteAuditoriaCompleto } from './ExpedienteAuditoriaCompleto';
 import { LoadingSpinner, CardLoading } from '@esap-mfe/shared-ui/loading-spinner';
@@ -1142,6 +1143,7 @@ export function GestionAuditoriasKanbanSimple() {
         tipo: aud.tipo,
         prioridad: aud.prioridad,
         areaObjetivo: aud.areaObjetivo,
+        alcance: (aud as any).alcance || '', // EFDS-2453
         permiteCambiarObjetivos: aud.permiteCambiarObjetivos,
         equipoAuditores: aud.equipoAuditores,
         criterios: aud.criterios, // ✅ Incluir criterios del backend
@@ -1579,7 +1581,9 @@ export function GestionAuditoriasKanbanSimple() {
         presupuestoEstimado: data.presupuestoEstimado,
         objetivos: data.objetivos || [],
         criteriosAuditoria: data.criteriosAuditoria || [], // El backend usa criteriosAuditoria
-        normatividadAplicable: data.normatividadAplicable || [],
+        // El DTO solo acepta texto y no la guarda: la norma con su tipo va en la metadata (EFDS-2451)
+        normatividadAplicable: normasATexto(data.normatividadAplicable),
+        programaAnualMetadata: { normatividadAplicable: data.normatividadAplicable || [] },
         riesgosIdentificados: data.riesgosIdentificados || [],
         controlesAplicar: data.controlesAplicar || [],
         auditorLiderId: data.auditorLider || undefined,
@@ -3302,17 +3306,18 @@ export function GestionAuditoriasKanbanSimple() {
                 dependenciasAuditadas: data.dependenciasAuditadas ?? [],
                 alcance: data.alcance || data.descripcion,
                 calificacionRiesgo: data.nivelRiesgo,
-                // Cronograma 3 etapas
+                // Cronograma 3 etapas: una etapa sin fecha no se envía vacía (el backend pide ISO 8601)
                 fechaInicio: data.fechaInicioPlaneacion || data.fechaInicio,
-                fechaFinPlaneacion: data.fechaFinPlaneacion,
-                fechaInicioEjecucion: data.fechaInicioEjecucion,
-                fechaFinEjecucion: data.fechaFinEjecucion,
-                fechaInicioComunicacion: data.fechaInicioComunicacion,
+                fechaFinPlaneacion: data.fechaFinPlaneacion || undefined,
+                fechaInicioEjecucion: data.fechaInicioEjecucion || undefined,
+                fechaFinEjecucion: data.fechaFinEjecucion || undefined,
+                fechaInicioComunicacion: data.fechaInicioComunicacion || undefined,
                 fechaFin: data.fechaFinComunicacion || data.fechaFin,
                 semanasExcluidas: data.semanasExcluidas ?? [],
                 // Objetivos y Criterios
                 objetivos: data.objetivos,
-                criterios: data.criteriosAuditoria,
+                // Sin criterios: el formulario ya no los muestra y la lista no los trae, así que se
+                // enviaban vacíos y el backend borraba los registrados antes del cambio (EFDS-2454)
                 // Responsables
                 responsable: data.responsableArea?.nombre || '',
                 responsableAreaNombre: data.responsableArea?.nombre || '',

@@ -1,7 +1,7 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { BadRequestException, ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { In, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { PlanTrabajoAcademicoEntity } from '../entities/plan-trabajo-academico.entity';
 import { DocenteEntity } from '../entities/docente.entity';
 import { PersonaEntity } from '../entities/persona.entity';
@@ -9,6 +9,7 @@ import { ProgramaEntity } from '../entities/programa.entity';
 import { RundAccesoExternoEntity } from '../entities/rund-acceso-externo.entity';
 import { RundMacroDocenteConsultaLogEntity } from '../entities/rund-macro-docente-consulta-log.entity';
 import { PtaNotificationsService } from '../notifications/pta-notifications.service';
+import { cargarPersonasDocentes } from './macro-docente-personas';
 
 /** Ruta pública (a través del API Gateway) del endpoint de consulta externa. */
 const RUTA_PUBLICA_MACRO_DOCENTE = '/pta/api/v1/pta/macro-docente';
@@ -20,15 +21,42 @@ const RUTA_PUBLICA_MACRO_DOCENTE = '/pta/api/v1/pta/macro-docente';
  * aprobación. Misma lista que ESTADOS_PTA_RESTAURABLES_EDICION en
  * pta.service.ts (no se reexporta desde ahí para no acoplar los módulos).
  */
-const ESTADOS_PTA_FIRMES = [
+const ESTADOS_PTA_FIRMES_BASE = [
   'APROBADO',
   'APROBADO_DEF',
   'EN_FIRME',
   'RADICADO',
   'EN_EJECUCION',
+  'EN_EJECUCIÓN',
   'FINALIZADO',
   'TERMINADO',
 ];
+
+/**
+ * pta.estado se escribe en varias grafías según el flujo ('Aprobado',
+ * 'Finalizado', 'Terminado', 'En Firme', 'EN_FIRME'…) y el IN de Postgres
+ * distingue mayúsculas. Se expande cada estado a sus grafías (MAYÚSCULA_GUION,
+ * MAYÚSCULA con espacio y Título con espacio) para no perder PTAs firmes y
+ * conservar el uso del índice idx_pta_estado_periodo.
+ */
+function expandirEstados(bases: string[]): string[] {
+  const variantes = new Set<string>();
+  for (const base of bases) {
+    const conEspacio = base.replace(/_/g, ' ');
+    variantes.add(base);
+    variantes.add(conEspacio);
+    variantes.add(
+      conEspacio
+        .toLowerCase()
+        .split(' ')
+        .map((palabra) => palabra.charAt(0).toUpperCase() + palabra.slice(1))
+        .join(' '),
+    );
+  }
+  return [...variantes];
+}
+
+const ESTADOS_PTA_FIRMES = expandirEstados(ESTADOS_PTA_FIRMES_BASE);
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -93,6 +121,7 @@ export class MacroDocenteService {
     @InjectRepository(RundMacroDocenteConsultaLogEntity)
     private readonly consultaLogRepo: Repository<RundMacroDocenteConsultaLogEntity>,
     private readonly notifications: PtaNotificationsService,
+    @Optional() @InjectDataSource() private readonly dataSource?: DataSource,
   ) {}
 
   /**
@@ -141,6 +170,44 @@ export class MacroDocenteService {
     return this.buildHistorialRows({ docenteId, periodo });
   }
 
+  /**
+   * Catálogo para los filtros de la pantalla: períodos que tienen historial
+   * (PTAs firmes) y, acotado a un período y/o docente, los valores distintos
+   * de territorial, CETAP, programa y núcleo temático. Sin período ni docente
+   * solo devuelve períodos (evita recorrer todo el histórico).
+   */
+  async getOpciones(filters: { docenteId?: string; periodo?: string }): Promise<{
+    periodos: string[];
+    territoriales: string[];
+    cetaps: string[];
+    programas: string[];
+    nucleosTematicos: string[];
+  }> {
+    const periodosRaw = await this.ptaRepo
+      .createQueryBuilder('pta')
+      .select('pta.periodo', 'periodo')
+      .distinct(true)
+      .where('pta.estado IN (:...estados)', { estados: ESTADOS_PTA_FIRMES })
+      .getRawMany<{ periodo: string | null }>();
+    const ordenar = (valores: Array<string | null | undefined>, descendente = false) =>
+      [...new Set(valores.map((v) => String(v ?? '').trim()).filter(Boolean))].sort((a, b) =>
+        descendente ? b.localeCompare(a, 'es') : a.localeCompare(b, 'es'),
+      );
+    const periodos = ordenar(periodosRaw.map((r) => r.periodo), true);
+
+    if (!filters.docenteId && !filters.periodo) {
+      return { periodos, territoriales: [], cetaps: [], programas: [], nucleosTematicos: [] };
+    }
+    const rows = await this.buildHistorialRows({ docenteId: filters.docenteId, periodo: filters.periodo });
+    return {
+      periodos,
+      territoriales: ordenar(rows.map((r) => r.territorial)),
+      cetaps: ordenar(rows.map((r) => r.cetap)),
+      programas: ordenar(rows.map((r) => r.programa)),
+      nucleosTematicos: ordenar(rows.map((r) => r.nucleo_tematico)),
+    };
+  }
+
   private async buildHistorialRows(filters: MacroDocenteFilters): Promise<HistorialAsignaturaRow[]> {
     const qb = this.ptaRepo
       .createQueryBuilder('pta')
@@ -157,8 +224,11 @@ export class MacroDocenteService {
       ? await this.docenteRepo.find({ where: { id: In(docenteIds) } })
       : [];
     const personaIds = [...new Set(docentes.map((d) => d.personaId).filter(Boolean))];
-    const personas = personaIds.length
-      ? await this.personaRepo.find({ where: { id: In(personaIds) } })
+    // Fuente vigente: auth.personas. La tabla antigua Persona queda solo como respaldo para registros previos.
+    const personasAuth = await cargarPersonasDocentes(this.dataSource, personaIds);
+    const personaIdsLegado = personaIds.filter((id) => !personasAuth.has(String(id)));
+    const personas = personaIdsLegado.length
+      ? await this.personaRepo.find({ where: { id: In(personaIdsLegado) } })
       : [];
     const personaMap = new Map(personas.map((p) => [p.id, p]));
 
@@ -168,14 +238,16 @@ export class MacroDocenteService {
     >();
     for (const docente of docentes) {
       const persona = personaMap.get(docente.personaId);
+      const personaAuth = personasAuth.get(String(docente.personaId));
       const nombreCompleto = coalesceString(
+        personaAuth?.nombreCompleto,
         [persona?.primer_nombre, persona?.segundo_nombre, persona?.primer_apellido, persona?.segundo_apellido]
           .filter(Boolean)
           .join(' '),
       );
       docenteMap.set(docente.id, {
         nombreCompleto,
-        documento: coalesceString(persona?.identificacion),
+        documento: coalesceString(personaAuth?.documento, persona?.identificacion),
         nucleoTematico: coalesceString(docente.nucleoTematico),
       });
     }

@@ -126,26 +126,27 @@ export function laSesionCierra(decision: DecisionComite): boolean {
 /**
  * Si esta sesión tiene que decir qué objetó el comité.
  *
- * Observar y rechazar siempre: la primera para que haya qué corregir, la
- * segunda porque a quien le rechazan un proceso no le queda ocasión de
- * preguntar por qué. Y aprobar solo cuando además reabre algo, que si no le
- * llegaría a su responsable una actividad devuelta sin decir qué validar.
+ * Observar y rechazar: la primera para que haya qué corregir, la segunda
+ * porque a quien le rechazan un proceso no le queda ocasión de preguntar por
+ * qué. Aprobar no: si el comité aprobó, no objetó nada.
  *
  * Función pura para poder fijar la regla sin base de datos.
  */
-export function exigeObservaciones(decision: DecisionComite, reabreAlguna: boolean): boolean {
-  return decision === 'OBSERVADO' || decision === 'RECHAZADO' || reabreAlguna;
+export function exigeObservaciones(decision: DecisionComite): boolean {
+  return decision === 'OBSERVADO' || decision === 'RECHAZADO';
 }
 
 /**
  * Si la sesión puede reabrir actividades anteriores.
  *
- * Todas menos el rechazo. Un proceso rechazado queda negado, y una actividad
- * devuelta dentro de un expediente muerto es trabajo que se le pide a alguien
- * para nada: si lo que procede es corregir, el desenlace era observar.
+ * Solo observar. Si el comité aprueba —con o sin condiciones— es que el
+ * expediente está bien, y reabrir la 3.1 o las demás sería devolver trabajo
+ * que el propio comité acaba de avalar. Y un proceso rechazado queda negado:
+ * una actividad devuelta dentro de un expediente muerto es trabajo que se le
+ * pide a alguien para nada.
  */
 export function laSesionAdmiteReabrir(decision: DecisionComite): boolean {
-  return decision !== 'RECHAZADO';
+  return decision === 'OBSERVADO';
 }
 
 /**
@@ -161,9 +162,9 @@ export function laSesionAdmiteReabrir(decision: DecisionComite): boolean {
  * El «aprueba o no» son cuatro desenlaces y no tres. Al lado de la observación
  * —que devuelve para corregir— está el **rechazo**, que es el comité diciendo
  * que el proceso no sale al mercado: niega la actividad y termina el proceso,
- * como negar el estudio previo en la 3.4. Y cualquiera de los cuatro puede
- * **reabrir** actividades anteriores ya cerradas, para corregirlas cuando el
- * comité observa o para que se las validen cuando aprueba.
+ * como negar el estudio previo en la 3.4. Y la observación **reabre**
+ * actividades anteriores ya cerradas para que las corrijan; aprobar no reabre
+ * nada, porque si el comité aprobó es que todo estaba bien.
  *
  * El comité sesiona en la Dirección de Contratación y es un cuerpo colegiado:
  * la plataforma no lo reemplaza, transcribe lo que decidió y guarda el acta.
@@ -286,11 +287,10 @@ export class ComiteContratacionService {
    * el proceso, y tampoco hay etapa que celebrar: lo que terminó no es la
    * etapa, es la contratación.
    *
-   * Los cuatro desenlaces pueden traer actividades que reabrir. Al observar es
-   * obligatorio —una devolución sin nada editable donde aplicarla no sirve de
-   * nada—; al aprobar es opcional, y es el comité pidiendo que le validen un
-   * punto sin frenar el proceso. Al rechazar no se admite ninguna: no se
-   * reabre para corregir un expediente que acaba de quedar negado.
+   * Solo observar reabre actividades anteriores, y ahí es obligatorio —una
+   * devolución sin nada editable donde aplicarla no sirve de nada—. Al aprobar
+   * no se admite ninguna: lo aprobado está bien y no se vuelve a abrir. Al
+   * rechazar tampoco: no se reabre para corregir un expediente negado.
    */
   async registrar(
     procesoId: string,
@@ -307,7 +307,7 @@ export class ComiteContratacionService {
 
       if (proceso.estado !== 'EN_CURSO') {
         throw new ConflictException(
-          'El proceso ya no está en curso: lo que terminó no es la etapa, es la contratación',
+          'El proceso ya no está en curso: no admite registrar sesiones del comité',
         );
       }
 
@@ -329,12 +329,12 @@ export class ComiteContratacionService {
       }
       if (estadoActual === 'APROBADO') {
         throw new ConflictException(
-          'El comité ya aprobó este proceso: registrar otra sesión reescribiría una etapa que pudo cerrarse',
+          'El comité ya aprobó este proceso: no se registra otra sesión sobre una decisión ya tomada',
         );
       }
       if (estadoActual === 'NEGADO') {
         throw new ConflictException(
-          'El comité ya rechazó este proceso: lo que terminó no es la etapa, es la contratación',
+          'El comité ya rechazó este proceso: con el rechazo la contratación terminó y no admite otra sesión',
         );
       }
 
@@ -357,16 +357,14 @@ export class ComiteContratacionService {
       // le falta al formulario.
       if (dto.decision === 'APROBADO_CON_CONDICIONES' && !condiciones) {
         throw new BadRequestException(
-          'Di a qué queda condicionada la aprobación: sin condiciones, es una aprobación a secas',
+          'Escribe a qué queda condicionada la aprobación; si no tiene condiciones, regístrala como aprobada',
         );
       }
-      if (exigeObservaciones(dto.decision, numerales.length > 0) && !observaciones) {
+      if (exigeObservaciones(dto.decision) && !observaciones) {
         throw new BadRequestException(
           dto.decision === 'RECHAZADO'
-            ? 'Escribe por qué el comité rechaza el proceso: a quien se lo rechazan no le queda ocasión de preguntarlo corrigiendo'
-            : dto.decision === 'OBSERVADO'
-              ? 'Escribe las observaciones de fondo: sin ellas el proceso queda devuelto sin saber qué corregir'
-              : 'Escribe qué hay que validar: la actividad que reabres le llega a su responsable sin decirle qué mirar',
+            ? 'Escribe por qué el comité rechaza el proceso: el área necesita conocer el motivo'
+            : 'Escribe las observaciones de fondo: sin ellas el proceso queda devuelto sin saber qué corregir',
         );
       }
       // Qué actividades se reabren (EFDS-2068). Sin esto, observar devolvía la
@@ -374,15 +372,16 @@ export class ComiteContratacionService {
       // el comité no tenía dónde aplicarse.
       if (dto.decision === 'OBSERVADO' && numerales.length === 0) {
         throw new BadRequestException(
-          'Di a qué actividades vuelve el proceso: sin eso la corrección no tiene dónde aplicarse',
+          'Elige a qué actividades vuelve el proceso para que las corrijan',
         );
       }
-      // Y al rechazar no se reabre nada: el proceso queda negado, y una
-      // actividad devuelta dentro de un expediente muerto es trabajo que se le
-      // pide a alguien para nada.
+      // Ni al aprobar ni al rechazar se reabre nada: lo aprobado está bien, y
+      // un proceso negado no tiene nada que corregir.
       if (!laSesionAdmiteReabrir(dto.decision) && numerales.length > 0) {
         throw new BadRequestException(
-          'Un proceso rechazado no deja actividades que corregir: si lo que procede es devolver para corregir, el desenlace es observar',
+          dto.decision === 'RECHAZADO'
+            ? 'Un proceso rechazado no vuelve a ninguna actividad: si hay que corregir algo, la decisión es observar, no rechazar'
+            : 'Si el comité aprueba no se reabre ninguna actividad: si hay que corregir algo, la decisión es observar',
         );
       }
 
@@ -412,12 +411,8 @@ export class ComiteContratacionService {
           // alguien las escribió por error en el campo de al lado.
           condiciones: dto.decision === 'APROBADO_CON_CONDICIONES' ? condiciones : null,
           // Observar y rechazar son las dos formas de objetar, y las dos
-          // guardan aquí lo que el comité dijo; una aprobación solo lo guarda
-          // cuando reabrió algo, que es lo que esa actividad tendrá que
-          // validar.
-          observaciones: exigeObservaciones(dto.decision, numerales.length > 0)
-            ? observaciones
-            : null,
+          // guardan aquí lo que el comité dijo.
+          observaciones: exigeObservaciones(dto.decision) ? observaciones : null,
           actaDocumentoId: acta?.id ?? null,
           registradoPor: acceso.userName,
           registradoPorId: acceso.userId ?? null,
@@ -434,8 +429,8 @@ export class ComiteContratacionService {
       );
 
       // La decisión sobre la 3.7 no reabre por sí sola lo que el comité
-      // señaló: sin esto, corregir «lo que hay que cambiar» —o validar lo que
-      // pidió validar— no tenía ninguna actividad editable donde hacerse.
+      // señaló: sin esto, corregir «lo que hay que cambiar» no tenía ninguna
+      // actividad editable donde hacerse.
       for (const numeral of numerales) {
         await this.reabrirActividad(em, procesoId, numeral, observaciones!, acceso);
       }
@@ -505,11 +500,11 @@ export class ComiteContratacionService {
       const estadoActual = actividad?.estado ?? 'BORRADOR';
 
       if (estadoActual === 'NO_APLICA') {
-        throw new ConflictException('Ya está constando que este proceso no pasa por comité');
+        throw new ConflictException('Ya quedó constancia de que este proceso no pasa por comité');
       }
       if (estadoActual === 'APROBADO' || estadoActual === 'NEGADO') {
         throw new ConflictException(
-          'El comité ya se pronunció sobre este proceso: no puede constar que no fue',
+          'El comité ya decidió sobre este proceso: no se puede dejar constancia de que no pasó por él',
         );
       }
 
@@ -520,7 +515,7 @@ export class ComiteContratacionService {
         throw new ConflictException(
           noVa === 'MODALIDAD'
             ? 'Esta modalidad ya no pasa por comité según la matriz: no hay constancia que dejar'
-            : 'Este proceso sí pasa por comité: registra lo que decidió, no que no fue',
+            : 'Este proceso sí pasa por comité: registra la decisión de la sesión',
         );
       }
 
@@ -590,6 +585,48 @@ export class ComiteContratacionService {
     });
 
     return { cargada: true, numeral };
+  }
+
+  // -------------------------------------------------------- configuración --
+
+  /**
+   * Las modalidades con umbral propio, para la pantalla de Configuración.
+   *
+   * La cuantía general se edita ahí mismo, pero una fila propia manda sobre
+   * ella para su modalidad (126): sin verla, quien cambia la general cree que
+   * movió también la directa. Con el salario del año, para decir en pesos qué
+   * significa cada cifra.
+   */
+  async umbralesPorModalidad() {
+    const em = this.dataSource.manager;
+    const filas: {
+      modalidad: string;
+      nombre: string | null;
+      valor: string;
+      unidad: 'SMMLV' | 'PESOS';
+      fundamento: string | null;
+      confirmado: boolean;
+    }[] = await em.query(
+      `SELECT u.modalidad, m.nombre, u.valor, u.unidad, u.fundamento, u.confirmado
+         FROM hiring.umbrales_comite_contratacion u
+         LEFT JOIN hiring.modalidades m ON m.codigo = u.modalidad
+        ORDER BY m.orden NULLS LAST, u.modalidad`,
+    );
+
+    const anio = Number(this.hoy().slice(0, 4));
+    const salario = await em.getRepository(Smmlv).findOne({ where: { anio } });
+
+    return {
+      smmlv: salario ? { anio: salario.anio, valor: salario.valor, confirmado: salario.confirmado } : null,
+      umbrales: filas.map((f) => ({
+        modalidad: f.modalidad,
+        modalidadNombre: f.nombre ?? f.modalidad,
+        valor: Number(f.valor),
+        unidad: f.unidad,
+        fundamento: f.fundamento,
+        confirmado: f.confirmado,
+      })),
+    };
   }
 
   // ---------------------------------------------------------- auxiliares ---
@@ -686,7 +723,7 @@ export class ComiteContratacionService {
     acceso: HiringAccess,
   ) {
     const expediente = await em.findOne(Expediente, { where: { procesoId } });
-    if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+    if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
     return em.save(
       em.create(Documento, {
@@ -716,7 +753,7 @@ export class ComiteContratacionService {
     if (bloquear) consulta.setLock('pessimistic_write');
 
     const proceso = await consulta.getOne();
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

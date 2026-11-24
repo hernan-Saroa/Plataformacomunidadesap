@@ -162,6 +162,16 @@ export function useImportAsignaturas() {
     }
   }, []);
 
+  /** Cierra (cerrar) o devuelve a planeación (desactivar) un periodo, cuando quiera quien los crea. */
+  const cambiarEstadoPeriodo = useCallback(async (id: string, accion: 'cerrar' | 'desactivar') => {
+    try {
+      return await apiClient.post<any>(`/pta/api/v1/periodos-academicos/${id}/${accion}`, {});
+    } catch (err: any) {
+      setError(err.message || 'Error al cambiar el estado del periodo');
+      throw err;
+    }
+  }, []);
+
   const deletePeriodo = useCallback(async (id: string) => {
     setLoading(true);
     setError(null);
@@ -226,6 +236,7 @@ export function useImportAsignaturas() {
     createPeriodo,
     updatePeriodo,
     deletePeriodo,
+    cambiarEstadoPeriodo,
     getPeriodoDetalle,
     checkEstructuraStatus,
   };

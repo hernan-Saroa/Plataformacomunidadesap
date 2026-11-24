@@ -284,7 +284,7 @@ export class TrasladoService {
         : null;
       if (!plazo) {
         throw new ConflictException(
-          'Esta modalidad no tiene plazo de traslado parametrizado: confírmalo antes de trasladar (EFDS-1467)',
+          'Esta modalidad no tiene configurado el plazo de traslado: hay que definirlo antes de trasladar el informe',
         );
       }
 
@@ -302,6 +302,9 @@ export class TrasladoService {
 
       informe.estado = 'TRASLADADO';
       informe.evidenciaDocumentoId = doc.id;
+      informe.medioPublicacion = dto.medioPublicacion.trim();
+      informe.enlaceProceso = dto.enlaceProceso?.trim() || null;
+      informe.observacionesTraslado = dto.observaciones?.trim() || null;
       informe.trasladadoPor = acceso.userName;
       informe.trasladadoAt = new Date();
       informe.plazoDiasHabiles = plazo.diasHabiles;
@@ -313,6 +316,8 @@ export class TrasladoService {
         actividad: NUMERAL_TRASLADO,
         numero: informe.numero,
         medio: dto.medioPublicacion.trim(),
+        ...(dto.enlaceProceso?.trim() ? { enlaceProceso: dto.enlaceProceso.trim() } : {}),
+        ...(dto.observaciones?.trim() ? { observaciones: dto.observaciones.trim() } : {}),
         plazoDiasHabiles: plazo.diasHabiles,
         venceEl: informe.venceEl,
         // Que el plazo aplicado sea un supuesto del equipo queda en la traza:
@@ -405,6 +410,9 @@ export class TrasladoService {
       generadoAt: informe.generadoAt,
       trasladadoPor: informe.trasladadoPor,
       trasladadoAt: informe.trasladadoAt,
+      medioPublicacion: informe.medioPublicacion ?? null,
+      enlaceProceso: informe.enlaceProceso ?? null,
+      observacionesTraslado: informe.observacionesTraslado ?? null,
       plazoDiasHabiles: informe.plazoDiasHabiles,
       venceEl: informe.venceEl,
       diasRestantes,
@@ -566,7 +574,7 @@ export class TrasladoService {
     numeral: string = NUMERAL_TRASLADO,
   ) {
     const expediente = await em.findOne(Expediente, { where: { procesoId } });
-    if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+    if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
     return em.save(
       em.create(Documento, {
@@ -633,7 +641,7 @@ export class TrasladoService {
 
   protected async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

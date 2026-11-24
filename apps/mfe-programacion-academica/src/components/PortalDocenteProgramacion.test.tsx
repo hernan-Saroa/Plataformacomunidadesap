@@ -10,6 +10,7 @@ vi.mock('../services/api/catalogoApi', () => ({
   getDisponiblesPortal: vi.fn(), getMisFranjasPortal: vi.fn(), getAcumuladoPortal: vi.fn(),
   tomarFranja: vi.fn(), soltarFranja: vi.fn(),
 }));
+vi.mock('./HorarioGruposVirtuales', () => ({ HorarioGruposVirtuales: () => null }));
 vi.mock('../services/api/vistaApi', () => ({ getConfiguracionPortal: vi.fn(), getMiCalendario: vi.fn() }));
 vi.mock('../services/api/concertacionApi', () => ({
   getConfiguracionConcertacion: vi.fn(), getMiConcertacion: vi.fn(),

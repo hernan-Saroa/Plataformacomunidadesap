@@ -203,6 +203,14 @@ export class EvaluacionProceso {
   @Column({ name: 'creado_por', type: 'varchar', length: 255, nullable: true })
   creadoPor?: string;
 
+  /** Vigencia de la que se heredó al crear el Plan Anual; null si se registró directamente (EFDS-2450) */
+  @Column({ name: 'vigencia_origen', type: 'integer', nullable: true })
+  vigenciaOrigen?: number | null;
+
+  /** Evaluación de la vigencia anterior que se copió (EFDS-2450) */
+  @Column({ name: 'evaluacion_origen_id', type: 'uuid', nullable: true })
+  evaluacionOrigenId?: string | null;
+
   @Column({ type: 'boolean', default: true })
   activo: boolean;
 

@@ -29,7 +29,7 @@ function leerDias(dias?: string): number | null {
   if (dias === undefined || dias === '') return null;
   const n = Number(dias);
   if (!Number.isInteger(n) || n < 0) {
-    throw new BadRequestException('Los días deben ser un número entero no negativo');
+    throw new BadRequestException('Los días deben ser un número entero igual o mayor que cero');
   }
   return n;
 }
@@ -109,5 +109,23 @@ export class AlertasController {
   })
   guardarParametros(@Body() cambios: Record<string, number>, @Req() req: any) {
     return this.parametros.guardar(cambios, getHiringAccess(req));
+  }
+
+  @Get('correos')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
+  @ApiOperation({ summary: 'Buzones de la entidad que reciben copia de los correos del módulo' })
+  leerCorreos() {
+    return this.parametros.correos();
+  }
+
+  @Put('correos')
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_CONFIG_ADMINISTRAR)
+  @ApiOperation({
+    summary: 'Cambiar los buzones de la entidad',
+    description: 'Recibe { clave: correo }. Vacío o null deja el buzón sin configurar.',
+  })
+  guardarCorreos(@Body() cambios: Record<string, string | null>, @Req() req: any) {
+    return this.parametros.guardarCorreos(cambios, getHiringAccess(req));
   }
 }

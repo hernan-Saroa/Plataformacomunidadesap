@@ -279,13 +279,17 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
     const proceso = aviso.radicado ? `el proceso ${aviso.radicado}` : 'el proceso de contratación';
     const objeto = aviso.objeto ? `, cuyo objeto es «${aviso.objeto}»,` : '';
     try {
-      await new Campana(this.dataSource, this.logger).aCorreosExternos([aviso.correo], {
-        titulo: 'Adjudicación del proceso',
-        mensaje:
-          `La Escuela Superior de Administración Pública le informa que ${proceso}${objeto} ` +
-          'le fue adjudicado. Este correo es solo informativo: no reemplaza la notificación ' +
-          'oficial, que se surte con el acto administrativo de adjudicación.',
-      });
+      await new Campana(this.dataSource, this.logger).aCorreosExternos(
+        [aviso.correo],
+        {
+          titulo: 'Adjudicación del proceso',
+          mensaje:
+            `La Escuela Superior de Administración Pública le informa que ${proceso}${objeto} ` +
+            'le fue adjudicado. Este correo es solo informativo: no reemplaza la notificación ' +
+            'oficial, que se surte con el acto administrativo de adjudicación.',
+        },
+        'contratacion_adjudicacion_al_adjudicatario',
+      );
     } catch (error: any) {
       this.logger.warn(`No salió el correo al adjudicatario: ${error.message}`);
     }

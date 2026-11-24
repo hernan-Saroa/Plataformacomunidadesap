@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { PerfilDocenteCabezote } from './PerfilDocenteCabezote';
+import { AuthProvider } from '../../../contexts/AuthContext';
 vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn().mockResolvedValue({ id: null, url: null }) } }));
 
 // Sin `globals: true` en vitest.config.ts, @testing-library/react no desmonta
@@ -48,6 +49,17 @@ describe('REQ-RUND-F002 — cabezote del perfil docente', () => {
     expect(screen.getByText('145,5')).toBeTruthy();
     expect(screen.getByText('Sobresaliente 2025-2')).toBeTruthy();
     expect(screen.getByText('Registro RUND-001 · Periodo 2026-1')).toBeTruthy();
+  });
+
+  it('agrega la clase del docente (Planta o Cátedra) como tercera fila del encabezado', () => {
+    const { rerender } = render(<PerfilDocenteCabezote docente={{ ...PERFIL_GGP, clase_docente: 'PLANTA' }} />);
+    expect(screen.getByText('Clase de docente')).toBeTruthy();
+    const valor = () => screen.getByText('Clase de docente').closest('div')!.querySelector('dd')!.textContent;
+    expect(valor()).toContain('Planta');
+    rerender(<PerfilDocenteCabezote docente={{ ...PERFIL_GGP, clase_docente: 'CATEDRA' }} />);
+    expect(valor()).toContain('Cátedra');
+    rerender(<PerfilDocenteCabezote docente={{ ...PERFIL_GGP, clase_docente: null, horas_programables: 0 }} />);
+    expect(valor()).toContain('Cátedra');
   });
 
   it('es de solo lectura: no renderiza campos editables ni acciones', () => {
@@ -105,8 +117,9 @@ describe('REQ-RUND-F002 — cabezote del perfil docente', () => {
 
     const region = container.querySelector('section[aria-label="Cabezote del perfil docente"]');
     expect(region).toBeTruthy();
-    expect(container.querySelectorAll('dl > div > dt')).toHaveLength(6);
-    expect(container.querySelectorAll('dl > div > dd')).toHaveLength(6);
+    // 6 campos de vinculación + 3 de contacto (RUND-013).
+    expect(container.querySelectorAll('dl > div > dt')).toHaveLength(10);
+    expect(container.querySelectorAll('dl > div > dd')).toHaveLength(10);
   });
 
   it('no rompe la vista cuando el perfil llega incompleto', () => {
@@ -115,14 +128,48 @@ describe('REQ-RUND-F002 — cabezote del perfil docente', () => {
     expect(screen.getByRole('heading', { name: 'JUAN PEREZ' })).toBeTruthy();
     expect(screen.getByText('Perfil del Registro Único Nacional Docente')).toBeTruthy();
     // Sin metadatos de permisos el puntaje permanece restringido.
-    expect(screen.getAllByText('No registrado').length).toBe(3);
+    // 3 de vinculación + 3 de contacto sin dato.
+    expect(screen.getAllByText('No registrado').length).toBe(7);
     expect(screen.getByText('Información restringida')).toBeTruthy();
-    expect(container.querySelectorAll('dl > div')).toHaveLength(6);
+    expect(container.querySelectorAll('dl > div')).toHaveLength(10);
   });
 
   it('no renderiza nada sin perfil', () => {
     const { container } = render(<PerfilDocenteCabezote docente={null} />);
 
     expect(container.innerHTML).toBe('');
+  });
+});
+
+describe('HU 2426 — distintivo «Solo lectura» del perfil Consulta RUND', () => {
+  const conPermisos = (permisos: string[], isSuperUser = false) => render(
+    <AuthProvider userEmail="consulta@esap.edu.co" permisos={permisos} isSuperUser={isSuperUser}>
+      <PerfilDocenteCabezote docente={PERFIL_GGP} />
+    </AuthProvider>);
+
+  it('RN-05/CA-04: lo muestra al usuario de consulta', () => {
+    conPermisos(['banco-docentes.rund.consulta']);
+    expect(screen.getByTestId('rund-solo-lectura').textContent).toContain('Solo lectura');
+    expect(screen.getByText('MARIA LOPEZ RUIZ')).toBeTruthy();
+  });
+
+  it.each([
+    ['un perfil operativo', ['banco-docentes.rund.carga']],
+    ['consulta más edición', ['banco-docentes.rund.consulta', 'banco-docentes.rund.edit']],
+    ['un rol antiguo con solo view', ['banco-docentes.rund.view']],
+    ['sin permisos RUND', []],
+  ])('no lo muestra con %s', (_nombre, permisos) => {
+    conPermisos(permisos as string[]);
+    expect(screen.queryByTestId('rund-solo-lectura')).toBeNull();
+  });
+
+  it('no lo muestra al superusuario aunque tenga el perfil', () => {
+    conPermisos(['banco-docentes.rund.consulta'], true);
+    expect(screen.queryByTestId('rund-solo-lectura')).toBeNull();
+  });
+
+  it('sin proveedor de sesión (vista del propio docente) no lo muestra', () => {
+    render(<PerfilDocenteCabezote docente={PERFIL_GGP} />);
+    expect(screen.queryByTestId('rund-solo-lectura')).toBeNull();
   });
 });

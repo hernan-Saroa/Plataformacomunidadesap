@@ -178,6 +178,12 @@ export interface SolicitudMantenimiento {
   motivoRechazo?: string | null;
   __meta?: { warning?: string };
   sede?: Sede;
+  idDireccionTerritorial?: number | string | null;
+  idCetap?: number | string | null;
+  ubicacionAdicionalTexto?: string | null;
+  direccionTerritorialNombre?: string | null;
+  cetapNombre?: string | null;
+  nombreUbicacionDisplay?: string | null;
   espacio?: EspacioFisico;
   evidencias?: SolicitudEvidencia[];
   // ----- EFDS-1735 RF-INF-006 -----
@@ -225,6 +231,65 @@ export interface SolicitudMantenimiento {
   voboObservaciones?: string | null;
   voboUsuarioId?: string | null;
   voboFecha?: string | null;
+  // ----- RF-INF-014: Alarma 70% ANS y Emergencias Críticas -----
+  alerta70Emitida?: boolean;
+  fechaAlerta70?: string | null;
+  esEmergenciaCritica?: boolean;
+  emergenciaConfirmada?: boolean;
+  emergenciaConfirmadaPor?: string | null;
+  fechaConfirmacionEmergencia?: string | null;
+  notasConfirmacionEmergencia?: string | null;
+  // ----- RF-INF-013: Descentralización y Ejecución Territorial -----
+  ejecucionTerritorial?: SolicitudEjecucionTerritorial | null;
+}
+
+export interface SolicitudEjecucionTerritorial {
+  idSolicitud: string;
+  modalidadEjecutorTerritorial: 'CUADRILLA_CENTRAL_COMISION' | 'PROVEEDOR_LOCAL_CONTRATADO' | 'PERSONAL_PLANTA_TERRITORIAL';
+  proveedorLocalNombre?: string | null;
+  proveedorLocalNit?: string | null;
+  ordenCompraContratoLocal?: string | null;
+  voboCierreDtAprobado?: boolean | null;
+  voboCierreDtUsuarioId?: string | null;
+  voboCierreDtUsuario?: string | null;
+  voboCierreDtFecha?: string | null;
+  voboCierreDtObservaciones?: string | null;
+}
+
+export interface AmbitoTerritorialUsuario {
+  esCentral: boolean;
+  idDireccionTerritorial: number | null;
+  nombreTerritorial: string | null;
+  codigoTerritorial: string | null;
+  rolPrincipal?: string;
+  esJefaturaTerritorial: boolean;
+  puedeAsignarEnTerritorial: boolean;
+}
+
+export interface ConformidadConfig {
+  plazoValor: number;
+  plazoUnidad: 'DIAS_HABILES' | 'DIAS_CALENDARIO' | 'HORAS' | 'MINUTOS';
+  cierreAutomaticoActivo: boolean;
+  estadoDestino: string;
+  intervaloVerificacionSegundos: number;
+}
+
+export interface SolicitudPendienteConformidad {
+  idSolicitud: string;
+  codigo: string;
+  consecutivo?: string;
+  titulo: string;
+  estado: string;
+  nombreSede?: string;
+  nombreCategoria?: string;
+  fechaCompletada?: string;
+  fechaLimiteConformidad?: string;
+  vencida: boolean;
+  segundosRestantes?: number;
+  minutosRestantes: number;
+  horasRestantes: number;
+  diasRestantes: number;
+  tiempoRestanteTexto?: string;
 }
 
 export interface HistoricoAsignacionEntry {
@@ -353,7 +418,7 @@ export interface EvidenciaCierreFoto {
   url: string;
   bucket?: string;
   key?: string;
-  categoria?: 'EJECUCION_TECNICA' | 'SOPORTE_CONTRATACION' | 'ACTA_RECEPCION_INSUMOS' | string;
+  categoria?: 'EJECUCION_TECNICA' | 'SOPORTE_CONTRATACION' | 'ACTA_RECEPCION_INSUMOS' | 'ACTA_RECIBO_SATISFACCION' | string;
 }
 
 export interface CierreTecnicoPayload {
@@ -423,6 +488,7 @@ export interface ReporteGestionPorCategoriaItem {
   codigoCategoria?: string | null;
   nombreCategoria: string;
   radicados: number;
+  porcentaje?: number;
   completados: number;
   enCurso: number;
   vencidos: number;
@@ -453,6 +519,7 @@ export interface ReporteGestionPercepcionServicio {
   porDistribucion: DistribucionCalificacion;
   porCategoria: ConsolidadoCalificacionItem[];
   porTecnico: ConsolidadoCalificacionItem[];
+  porArea?: ConsolidadoCalificacionItem[];
 }
 export interface ReporteGestionRollupGeograficoItem {
   idSede: string | null;
@@ -478,7 +545,10 @@ export interface ReporteGestionDto {
 }
 
 export interface CreateMantenimientoPayload {
-  idSede: string;
+  idSede?: string;
+  idDireccionTerritorial?: number;
+  idCetap?: number;
+  ubicacionAdicionalTexto?: string;
   idEspacio?: string;
   nombreAreaSolicitante: string;
   idAreaSolicitante?: string;
@@ -493,6 +563,7 @@ export interface CreateMantenimientoPayload {
   tipoAtencion: 'FISICA' | 'TECNOLOGICA';
   idCategoria?: number;
   idSubcategoria?: number;
+  fechaProgramada?: string;
   // ===== Fase 3 =====
   esBienAsignadoFuncionario?: boolean;
   nombreFuncionarioBienAsignado?: string;
@@ -540,6 +611,11 @@ export interface AprobarAsignarPayload {
   observaciones?: string | null;
   clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
   requiereContratacion?: boolean;
+  modalidadEjecutorTerritorial?: 'CUADRILLA_CENTRAL_COMISION' | 'PROVEEDOR_LOCAL_CONTRATADO' | 'PERSONAL_PLANTA_TERRITORIAL';
+  proveedorLocalNombre?: string | null;
+  proveedorLocalNit?: string | null;
+  ordenCompraContratoLocal?: string | null;
+  fechaProgramada?: string | null;
 }
 
 export interface RechazarPayload {
@@ -717,6 +793,10 @@ const FE_LEGACY_MAP: Record<string, string[]> = {
     'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
     'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
     'INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM',
+  ],
+  COORDINADOR_ADMINISTRATIVO_DT: [
+    'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
+    'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
   ],
   P3: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
   P2: ['INFRA_ANALISTA_ASIGNADOR_OPERATIVO'],
@@ -1109,13 +1189,22 @@ export const infraestructuraService = {
     }
   },
 
-  async getMantenimientos(params?: { incluirTI?: boolean; estado?: string; prioridad?: string; idCategoria?: number }): Promise<SolicitudMantenimiento[]> {
+  async getMantenimientos(params?: {
+    incluirTI?: boolean;
+    estado?: string;
+    prioridad?: string;
+    idCategoria?: number;
+    idDireccionTerritorial?: number;
+    idCetap?: number;
+  }): Promise<SolicitudMantenimiento[]> {
     try {
       const q = new URLSearchParams();
       if (params?.incluirTI === true) q.append('incluirTI', 'true');
       if (params?.estado) q.append('estado', params.estado);
       if (params?.prioridad) q.append('prioridad', params.prioridad);
       if (Number.isInteger(params?.idCategoria)) q.append('idCategoria', String(params?.idCategoria));
+      if (params?.idDireccionTerritorial) q.append('idDireccionTerritorial', String(params.idDireccionTerritorial));
+      if (params?.idCetap) q.append('idCetap', String(params.idCetap));
       const qs = q.toString() ? ('?' + q.toString()) : '';
       const res = await fetch(`${API_BASE_URL}/mantenimiento${qs}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Error al obtener mantenimientos');
@@ -1124,6 +1213,25 @@ export const infraestructuraService = {
       console.warn('[infraestructuraService] getMantenimientos falló, retornando []:', err);
       return [];
     }
+  },
+
+  async getAmbitoTerritorial(): Promise<AmbitoTerritorialUsuario> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/auth/ambito-territorial`, {
+        credentials: 'include',
+      });
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn('[infraestructuraService] getAmbitoTerritorial falló:', err);
+    }
+    return {
+      esCentral: true,
+      idDireccionTerritorial: null,
+      nombreTerritorial: null,
+      codigoTerritorial: null,
+      esJefaturaTerritorial: false,
+      puedeAsignarEnTerritorial: false,
+    };
   },
 
   async getRemisiones(idSolicitud: string): Promise<Array<Record<string, any>>> {
@@ -1371,6 +1479,31 @@ export const infraestructuraService = {
     } catch (err) {
       console.warn('[infra] getJerarquiaSedesDemo falló:', err);
       return { sedesActuales: [], territorialesNacionales: [] };
+    }
+  },
+
+  async getTerritorialesConCetaps(): Promise<{
+    sedesNivelCentral: any[];
+    direccionesTerritoriales: any[];
+  }> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/sedes/territoriales-cetaps`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] getTerritorialesConCetaps falló:', err);
+      return { sedesNivelCentral: [], direccionesTerritoriales: [] };
+    }
+  },
+
+  async getBloquesPorCetap(idCetap: number | string): Promise<any[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/sedes/cetap/${idCetap}/bloques`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn(`[infra] getBloquesPorCetap(${idCetap}) falló:`, err);
+      return [];
     }
   },
 
@@ -2000,6 +2133,34 @@ export const infraestructuraService = {
     return data;
   },
 
+  async registrarVoBoCierreDt(
+    idSolicitud: string,
+    payload: {
+      aprobado?: boolean;
+      voboCierreDtAprobado?: boolean;
+      observaciones?: string;
+      voboCierreDtObservaciones?: string;
+    },
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/vobo-cierre-dt`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al registrar VoBo de cierre por Dirección Territorial';
+      try {
+        const b = await res.json();
+        if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message);
+      } catch {}
+      throw new Error(m);
+    }
+    const data = await res.json();
+    notificarEventoFrontend('VOBO_CIERRE_DT', idSolicitud, payload);
+    return data;
+  },
+
   async listarValoracionesPorSolicitud(idSolicitud: string): Promise<SolicitudValoracion[]> {
     try {
       const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/valoraciones`, {
@@ -2117,6 +2278,45 @@ export const infraestructuraService = {
     const data = await res.json();
     notificarEventoFrontend('RECHAZAR_CONFORMIDAD', idSolicitud, payload);
     return data;
+  },
+
+  async getConformidadConfig(): Promise<ConformidadConfig> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/conformidad-config`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error obteniendo configuración de conformidad';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async actualizarConformidadConfig(payload: Partial<ConformidadConfig>): Promise<ConformidadConfig> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/conformidad-config`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando configuración de conformidad';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async listarPendientesConformidad(): Promise<SolicitudPendienteConformidad[]> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/conformidad/pendientes`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error obteniendo solicitudes pendientes de conformidad';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
   },
 
   async ejecutarCierresSinRespuesta(): Promise<{ actualizadas: number; ids: string[] }> {
@@ -2438,10 +2638,12 @@ export const infraestructuraService = {
   async vincularTramiteContractual(
     idSolicitud: string,
     payload: {
-      procesoContractual: string;
+      procesoContractual?: string;
       radicadoOrfeo?: string;
       presupuestoEstimadoCop?: number;
       observaciones?: string;
+      anexoNombre?: string;
+      anexoUrl?: string;
     },
   ): Promise<SolicitudMantenimiento> {
     const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/tramite-contractual`, {
@@ -2478,6 +2680,50 @@ export const infraestructuraService = {
     const data = await res.json();
     notificarEventoFrontend('VALORACION_GUARDADA', idSolicitud, payload);
     return data;
+  },
+
+  // ----- RF-INF-014: Alarma 70% ANS y Emergencias Críticas -----
+  async confirmarEmergenciaCritica(
+    idSolicitud: string,
+    payload: { notas?: string },
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/confirmar-emergencia`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.ok) {
+      let m = 'Error al confirmar la emergencia crítica';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    const data = await res.json();
+    notificarEventoFrontend('EMERGENCIA_CONFIRMADA', idSolicitud, payload);
+    return data;
+  },
+
+  async obtenerEmergenciasPendientes(): Promise<SolicitudMantenimiento[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/alertas/emergencias-pendientes`, {
+        credentials: 'include',
+      });
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  async evaluarAlertas70ANS(): Promise<{ evaluadas: number; alertasEmitidas: number; ids: string[] }> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/alertas/evaluar-70-ans`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      throw new Error('Error al evaluar alertas de 70% ANS.');
+    }
+    return res.json();
   },
 };
 

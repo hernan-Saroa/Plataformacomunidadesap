@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
+import { ESTADOS_VIVOS } from '../../entities/proceso.entity';
 import { Accion } from '../../auth/alcance';
 import { AlcanceService } from '../../auth/alcance.service';
 import { HiringAccess } from '../../auth/hiring-access';
@@ -44,8 +45,16 @@ export interface VersionFlujo {
   createdAt: string;
   activadaPor: string | null;
   activadaAt: string | null;
-  /** Procesos en curso que corren con ella. */
+  /** Procesos vivos —en curso o adjudicados, en ejecución— que corren con ella. */
   procesosEnCurso: number;
+}
+
+/** Lo que dejó la activación en los procesos vivos. */
+export interface ResultadoActivacion {
+  activada: true;
+  version: number;
+  /** Los procesos vivos que pasaron a la versión nueva. */
+  procesosActualizados: number;
 }
 
 /**
@@ -53,8 +62,10 @@ export interface VersionFlujo {
  * actividad, por modalidad.
  *
  * Se edita el borrador —nunca la activa— y se activa de una vez, después de
- * validar las once modalidades. Cada proceso corre con la versión con la que
- * nació, y Contratación puede pasarlo a la activa con un motivo.
+ * validar las once modalidades. Al activarla, los procesos vivos pasan a ella:
+ * cambia quién hace, quién aprueba y cuándo empieza lo que les falta, no lo que
+ * ya hicieron (ver `activar`). Contratación todavía puede pasar a mano un
+ * proceso que se haya quedado en una versión anterior.
  *
  * Lo que se guarda aquí es lo mismo que leen el guard, las cadenas y los
  * avisos (`flujo/lectura.ts`): el diagrama no es una representación aparte,
@@ -73,10 +84,11 @@ export class FlujoService {
     const filas = await this.dataSource.query(
       `SELECT v.id::text AS id, v.numero, v.estado, v.nota, v.creada_por AS "creadaPor", v.created_at AS "createdAt",
               v.activada_por AS "activadaPor", v.activada_at AS "activadaAt",
-              (SELECT count(*) FROM hiring.procesos p WHERE p.flujo_version_id = v.id AND p.estado = 'EN_CURSO')::int
+              (SELECT count(*) FROM hiring.procesos p WHERE p.flujo_version_id = v.id AND p.estado = ANY($1::text[]))::int
                 AS "procesosEnCurso"
          FROM hiring.flujo_versiones v
         ORDER BY v.numero DESC`,
+      [ESTADOS_VIVOS],
     );
     return filas;
   }
@@ -117,15 +129,29 @@ export class FlujoService {
    * Activa el borrador. No se deja si alguna actividad, en alguna modalidad,
    * queda sin quién la haga o sin quién la apruebe: se responde con la lista
    * exacta de lo que hay que corregir.
+   *
+   * Los procesos vivos pasan a la versión nueva en la misma transacción: si
+   * se quedaran con la suya, el cambio solo lo verían los procesos que se
+   * creen después. Lo que cambia es lo que les falta:
+   *
+   * - Lo terminado (aprobado, negado, que no aplica) no se toca: ni se reabre
+   *   ni cambia quién lo hizo; su historia queda en la trazabilidad.
+   * - Lo que está en revisión sigue con la copia de la cadena que se guardó
+   *   al enviarlo (`aprobacion_escalones`); la cadena nueva rige si se
+   *   devuelve y se reenvía.
+   * - Lo que está en borrador o devuelto conserva lo que lleva escrito; desde
+   *   ya lo edita quien diga la versión nueva.
+   * - Un puesto que la versión nueva pide y el proceso no tiene ocupado sale
+   *   en «Puestos del proceso» y en la alerta de actividad sin responsable.
    */
-  async activar(acceso: HiringAccess, nota?: string) {
+  async activar(acceso: HiringAccess, nota?: string): Promise<ResultadoActivacion> {
     return this.dataSource.transaction(async (em) => {
       const borrador = await versionBorrador(em);
       if (!borrador) throw new NotFoundException('No hay un borrador del flujo que activar');
       const errores = (await this.validar(borrador, em)).filter((p) => p.gravedad === 'ERROR');
       if (errores.length) {
         throw new ConflictException({
-          message: `El flujo no se puede activar: ${errores.length === 1 ? 'hay 1 actividad' : `hay ${errores.length} problemas`} por corregir`,
+          message: `El flujo no se puede activar: ${errores.length === 1 ? 'hay 1 problema' : `hay ${errores.length} problemas`} por corregir`,
           problemas: errores,
         });
       }
@@ -138,7 +164,19 @@ export class FlujoService {
           WHERE id::text = $1`,
         [borrador, acceso.userName, nota?.trim() || null],
       );
-      return { activada: true };
+      const [{ numero }] = await em.query(`SELECT numero FROM hiring.flujo_versiones WHERE id::text = $1`, [borrador]);
+
+      const motivo = `Se activó la versión ${numero} del flujo${nota?.trim() ? `: ${nota.trim()}` : ''}`;
+      const procesos: { id: string; de: number | null }[] = await em.query(
+        `SELECT p.id::text AS id, v.numero AS de
+           FROM hiring.procesos p LEFT JOIN hiring.flujo_versiones v ON v.id = p.flujo_version_id
+          WHERE p.estado = ANY($2::text[]) AND p.flujo_version_id IS DISTINCT FROM $1::uuid`,
+        [borrador, ESTADOS_VIVOS],
+      );
+      for (const p of procesos) {
+        await this.pasarProceso(em, p.id, borrador, { de: p.de, a: numero, motivo, automatico: true }, acceso);
+      }
+      return { activada: true, version: numero, procesosActualizados: procesos.length };
     });
   }
 
@@ -320,6 +358,9 @@ export class FlujoService {
          JOIN auth."user" u ON u.id_user = ur.id_user AND u.is_active
         WHERE ur.is_active`,
     );
+    const nombresRol = new Map<string, string>(
+      (await em.query(`SELECT code, name FROM auth.role`)).map((f: any) => [f.code, f.name]),
+    );
     const cuentas: { persona: string; id: string }[] = await em.query(
       `SELECT id_person::text AS persona, id_user::text AS id FROM auth."user" WHERE is_active AND id_person IS NOT NULL`,
     );
@@ -338,6 +379,7 @@ export class FlujoService {
       orden: actividades.map((a) => a.numeral),
       pueden: (accion, numeral) => permisos.get(`${accion}|${numeral}`) ?? new Set(),
       conRol: (rol) => new Set(roles.filter((r) => r.code === rol).map((r) => r.id)),
+      nombreRol: (rol) => nombresRol.get(rol) ?? rol,
       cuentaDe: (persona) => cuentas.find((c) => c.persona === persona)?.id ?? null,
       puestos,
       cadenas,
@@ -349,7 +391,7 @@ export class FlujoService {
     const aplicanEn = (modalidad: string | null) =>
       actividades.filter((a) => aplica(a.numeral, modalidad) && !SIN_PANEL.has(a.numeral));
 
-    return { actividades, modalidades, filas, datos, aplica, aplicanEn, puestos, cadenas, roles };
+    return { actividades, modalidades, filas, datos, aplica, aplicanEn, puestos, cadenas, roles, nombresRol };
   }
 
   // ---------------------------------------------------------------- diagrama --
@@ -366,9 +408,7 @@ export class FlujoService {
     const ctx = await this.contexto(em, version);
     const problemas = validarModalidad({ ...ctx.datos, actividades: ctx.aplicanEn(modalidad), modalidad });
 
-    const nombresRol = new Map<string, string>(
-      (await em.query(`SELECT code, name FROM auth.role`)).map((f: any) => [f.code, f.name]),
-    );
+    const { nombresRol } = ctx;
     const idsPersona = [
       ...new Set(
         ctx.filas.flatMap((f) => [
@@ -465,7 +505,7 @@ export class FlujoService {
         WHERE p.id::text = $1`,
       [procesoId],
     );
-    if (!fila) throw new NotFoundException('El proceso no existe');
+    if (!fila) throw new NotFoundException('El proceso no existe o fue eliminado');
     return {
       version: fila.version as number | null,
       activa: fila.activa as number | null,
@@ -478,6 +518,9 @@ export class FlujoService {
    * Pasa el proceso a la versión activa. Lo hace quien lo lleva o quien
    * reparte, con motivo: cambia quién hace y quién aprueba lo que falta. Lo
    * que ya está en revisión sigue con su cadena hasta que se reenvíe.
+   *
+   * Activar una versión ya pasa a todos los procesos vivos; esto queda para
+   * el que se haya quedado atrás.
    */
   async actualizarProceso(procesoId: string, motivo: string, acceso: HiringAccess) {
     if ((motivo ?? '').trim().length < 10) throw new BadRequestException('Explica por qué el proceso pasa a la versión nueva');
@@ -490,15 +533,32 @@ export class FlujoService {
         `SELECT v.numero FROM hiring.procesos p LEFT JOIN hiring.flujo_versiones v ON v.id = p.flujo_version_id WHERE p.id::text = $1`,
         [procesoId],
       );
-      await em.query(`UPDATE hiring.procesos SET flujo_version_id = $2::uuid WHERE id::text = $1`, [procesoId, activa]);
       const [ahora] = await em.query(`SELECT numero FROM hiring.flujo_versiones WHERE id::text = $1`, [activa]);
-      await em.query(
-        `INSERT INTO hiring.trazabilidad (proceso_id, entidad_id, entidad, accion, detalle, usuario_nombre, usuario_id)
-         VALUES ($1::uuid, $1::uuid, 'flujo_version', 'ACTUALIZAR', $2::jsonb, $3, $4)`,
-        [procesoId, JSON.stringify({ de: antes?.numero ?? null, a: ahora?.numero ?? null, motivo: motivo.trim() }), acceso.userName, acceso.userId],
+      await this.pasarProceso(
+        em,
+        procesoId,
+        activa,
+        { de: antes?.numero ?? null, a: ahora?.numero ?? null, motivo: motivo.trim() },
+        acceso,
       );
     });
     return this.deProceso(procesoId, acceso);
+  }
+
+  /** Cambia la versión con la que corre el proceso y lo deja en su trazabilidad. */
+  private async pasarProceso(
+    em: EntityManager,
+    procesoId: string,
+    versionId: string | null,
+    detalle: { de: number | null; a: number | null; motivo: string; automatico?: boolean },
+    acceso: HiringAccess,
+  ) {
+    await em.query(`UPDATE hiring.procesos SET flujo_version_id = $2::uuid WHERE id::text = $1`, [procesoId, versionId]);
+    await em.query(
+      `INSERT INTO hiring.trazabilidad (proceso_id, entidad_id, entidad, accion, detalle, usuario_nombre, usuario_id)
+       VALUES ($1::uuid, $1::uuid, 'flujo_version', 'ACTUALIZAR', $2::jsonb, $3, $4)`,
+      [procesoId, JSON.stringify(detalle), acceso.userName, acceso.userId],
+    );
   }
 
   private async puedeActualizar(procesoId: string, acceso: HiringAccess): Promise<boolean> {

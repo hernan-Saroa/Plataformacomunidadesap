@@ -281,6 +281,7 @@ export class LegalizacionDisparadorService {
       }
       if (sol.comisionado_email) {
         await this.notificationClient.sendEmail({
+          evento: 'VIATICOS_LEGALIZACION_ABIERTA',
           to: sol.comisionado_email,
           subject: `Legalización pendiente de la comisión ${sol.consecutivo_unico}`,
           text: mensaje,

@@ -61,3 +61,14 @@ export function getHiringAccess(req: any): HiringAccess {
     roles,
   };
 }
+
+/**
+ * Si quien actúa es el super administrador.
+ *
+ * No es una regla de negocio: marca los atajos que existen para las pruebas
+ * internas y no deben quedar al alcance de la operación, como corregir a mano
+ * el cierre de ofertas sin adenda.
+ */
+export function esSuperAdmin(acceso?: Pick<HiringAccess, 'roles'> | null): boolean {
+  return (acceso?.roles ?? []).includes('SUPER_ADMIN');
+}

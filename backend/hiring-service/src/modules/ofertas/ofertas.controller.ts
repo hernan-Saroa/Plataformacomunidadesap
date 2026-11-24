@@ -18,13 +18,22 @@ import { join } from 'path';
 import { unlink } from 'fs/promises';
 
 import { OfertasService } from './ofertas.service';
+import { CargasService } from '../cargas/cargas.service';
+import { revisarZip } from '../cargas/zip';
 import { FijarPlazoOfertasDto, RegistrarOferenteDto } from './dto/ofertas.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
 
-import { MIME_DOCUMENTOS, MIME_ZIP, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import {
+  MAX_BYTES_OFERTA,
+  MIME_DOCUMENTOS,
+  MIME_ZIP,
+  opcionesDeCarga,
+  sha256Archivo,
+  STORAGE_PATH,
+} from '../archivos';
 
 /**
  * Recepción de ofertas — actividad 6.1 (EFDS-1155).
@@ -36,7 +45,10 @@ import { MIME_DOCUMENTOS, MIME_ZIP, opcionesDeCarga, sha256Archivo, STORAGE_PATH
 @ApiTags('Etapa 6 · Cierre del proceso y recepción de ofertas')
 @Controller('procesos/:id/ofertas')
 export class OfertasController {
-  constructor(private readonly service: OfertasService) {}
+  constructor(
+    private readonly service: OfertasService,
+    private readonly cargas: CargasService,
+  ) {}
 
   @Get()
   @Puede('ver', '6.1')
@@ -45,8 +57,8 @@ export class OfertasController {
     description:
       'Si la modalidad recibe ofertas, cuándo vence el plazo, cuántos días hábiles faltan y qué oferentes van registrados.',
   })
-  estado(@Param('id', ParseUUIDPipe) procesoId: string) {
-    return this.service.estado(procesoId);
+  estado(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.service.estado(procesoId, getHiringAccess(req));
   }
 
   @Put('plazo')
@@ -54,7 +66,7 @@ export class OfertasController {
   @ApiOperation({
     summary: 'Fijar o corregir el vencimiento del plazo',
     description:
-      'Hace falta cuando la modalidad no tiene plazo parametrizado, y cuando el cronograma fija una hora distinta del final del día que calcula la plataforma. Solo con la recepción abierta.',
+      'Fijarlo hace falta cuando la modalidad no tiene plazo parametrizado. Corregir uno ya fijado queda para las pruebas internas del super administrador: en la operación el cierre se mueve con una adenda de cronograma. Solo con la recepción abierta.',
   })
   fijarPlazo(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -69,10 +81,12 @@ export class OfertasController {
   @UseInterceptors(
     FileInterceptor(
       'file',
-      // Ofimáticos o un .zip con todos los documentos de la oferta (EFDS-1155).
+      // Ofimáticos o un .zip con todos los documentos de la oferta (EFDS-1155),
+      // de hasta 200 MB.
       opcionesDeCarga(
         [...MIME_DOCUMENTOS, ...MIME_ZIP],
         'El soporte de la oferta se carga en PDF, Word, Excel o un .zip con todos sus documentos',
+        MAX_BYTES_OFERTA,
       ),
     ),
   )
@@ -88,17 +102,28 @@ export class OfertasController {
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
+    const acceso = getHiringAccess(req);
+
+    // El soporte subido por partes (BUG-004): ya está unido, con su hash y el
+    // .zip revisado. Si el registro falla, la carga sigue ahí para reintentar
+    // sin volver a subirla; se borra solo cuando la oferta quedó guardada.
+    if (!file && dto.cargaId) {
+      const carga = await this.cargas.tomar(procesoId, '6.1', dto.cargaId, acceso);
+      const resultado = await this.service.registrar(procesoId, dto, carga.archivo, carga.hash, acceso);
+      await this.cargas.consumir(dto.cargaId);
+      return resultado;
+    }
+
     if (!file) throw new BadRequestException('Adjunta el soporte de la oferta recibida');
 
     const ruta = join(STORAGE_PATH, file.filename);
     try {
-      return await this.service.registrar(
-        procesoId,
-        dto,
-        file,
-        await sha256Archivo(ruta),
-        getHiringAccess(req),
-      );
+      // El .zip que llega entero pasa por la misma revisión que el que llega por partes.
+      if (file.originalname?.toLowerCase().endsWith('.zip') || MIME_ZIP.includes(file.mimetype)) {
+        const revision = await revisarZip(ruta);
+        if (revision.problema) throw new BadRequestException(revision.problema);
+      }
+      return await this.service.registrar(procesoId, dto, file, await sha256Archivo(ruta), acceso);
     } catch (error) {
       await unlink(ruta).catch(() => undefined);
       throw error;

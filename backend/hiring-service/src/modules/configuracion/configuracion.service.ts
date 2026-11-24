@@ -23,6 +23,7 @@ import {
   NUMERAL_ESTUDIO_PREVIO,
   ProcesoActividad,
 } from '../../entities/proceso-actividad.entity';
+import { ESTADOS_VIVOS } from '../../entities/proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import {
   ActualizarActividadDto,
@@ -72,6 +73,33 @@ export function estadoConLaModalidad(
 
 function sinDatos(datos: Record<string, any> | null | undefined): boolean {
   return !datos || Object.keys(datos).length === 0;
+}
+
+/** Si alguien ya trabajó la actividad: la envió, la decidió o le escribió algo. */
+function empezada(actividad: Pick<ProcesoActividad, 'estado' | 'datos'>): boolean {
+  if (actividad.estado === 'NO_APLICA') return false;
+  return actividad.estado !== 'BORRADOR' || !sinDatos(actividad.datos);
+}
+
+/**
+ * El estado de una actividad de un proceso vivo cuando Configuración cambia si
+ * aplica en su modalidad.
+ *
+ * Lo mismo que `estadoConLaModalidad`, con una diferencia: lo que el proceso
+ * ya dejó atrás no se vuelve a abrir. Si una actividad posterior ya se
+ * trabajó, la que empieza a aplicar quedaría pendiente en medio de lo hecho y
+ * detendría el riel desde ahí: se queda como no aplica para ese proceso.
+ *
+ * `yaPasada`: alguna actividad posterior en el orden de la matriz está empezada.
+ */
+export function estadoAlCambiarAplicabilidad(
+  actividad: Pick<ProcesoActividad, 'estado' | 'datos'>,
+  excluida: boolean,
+  yaPasada: boolean,
+): EstadoActividad {
+  const nuevo = estadoConLaModalidad(actividad, excluida);
+  if (actividad.estado === 'NO_APLICA' && nuevo !== 'NO_APLICA' && yaPasada) return 'NO_APLICA';
+  return nuevo;
 }
 
 /**
@@ -416,21 +444,100 @@ export class ConfiguracionService {
    *
    * Solo se guardan los NO: marcar que aplica es borrar la fila, porque la
    * ausencia ya significa que aplica.
+   *
+   * El cambio llega también a los procesos vivos de esa modalidad: el riel de
+   * cada uno se decidió al crearlo (`instanciarActividades`) y sin esto solo lo
+   * verían los procesos nuevos. Ver `reflejarAplicabilidad`.
    */
-  async cambiarAplicabilidad(numeral: string, dto: AplicabilidadDto) {
+  async cambiarAplicabilidad(numeral: string, dto: AplicabilidadDto, acceso: { userName: string; userId: string } = SISTEMA) {
     const actividad = await this.dataSource.getRepository(Actividad).findOne({
       where: { numeral },
     });
     if (!actividad) throw new NotFoundException(`La actividad ${numeral} no existe`);
 
-    const repo = this.dataSource.getRepository(ActividadExcluida);
-    if (dto.aplica) {
-      await repo.delete({ numeral, modalidad: dto.modalidad });
-      return { numeral, modalidad: dto.modalidad, aplica: true };
-    }
+    return this.dataSource.transaction(async (em) => {
+      const repo = em.getRepository(ActividadExcluida);
+      if (dto.aplica) await repo.delete({ numeral, modalidad: dto.modalidad });
+      else await repo.save({ numeral, modalidad: dto.modalidad, motivo: dto.motivo ?? null });
 
-    await repo.save({ numeral, modalidad: dto.modalidad, motivo: dto.motivo ?? null });
-    return { numeral, modalidad: dto.modalidad, aplica: false, motivo: dto.motivo ?? null };
+      const procesos = await this.reflejarAplicabilidad(em, numeral, dto.modalidad, dto.aplica, acceso);
+      return dto.aplica
+        ? { numeral, modalidad: dto.modalidad, aplica: true, procesos }
+        : { numeral, modalidad: dto.modalidad, aplica: false, motivo: dto.motivo ?? null, procesos };
+    });
+  }
+
+  /**
+   * Lleva a los procesos vivos de la modalidad el cambio de si la actividad
+   * aplica, sin perder nada de lo hecho:
+   *
+   * - Deja de aplicar: pasa a «no aplica» solo si nadie la ha empezado. Si ya
+   *   tiene algo escrito, se envió o se decidió, se queda como está.
+   * - Empieza a aplicar: se abre solo si el proceso todavía no la dejó atrás
+   *   (ver `estadoAlCambiarAplicabilidad`); lo que el propio proceso excluye
+   *   —la 7.1.1 fuera de obra pública— sigue excluido.
+   *
+   * Cada cambio queda en la trazabilidad del proceso. Devuelve cuántos
+   * procesos cambiaron y cuáles se dejaron como estaban porque ya iban más
+   * adelante.
+   */
+  private async reflejarAplicabilidad(
+    em: EntityManager,
+    numeral: string,
+    modalidad: string,
+    aplica: boolean,
+    acceso: { userName: string; userId: string },
+  ) {
+    const procesos: { id: string; radicado: string }[] = await em.query(
+      `SELECT id::text AS id, radicado FROM hiring.procesos WHERE modalidad = $1 AND estado = ANY($2::text[])`,
+      [modalidad, ESTADOS_VIVOS],
+    );
+    if (!procesos.length) return { actualizados: 0, yaLaPasaron: [] as string[] };
+
+    const orden = new Map<string, number>(
+      (await em.find(Actividad, { order: { etapa: 'ASC', orden: 'ASC' } })).map((a, i) => [a.numeral, i]),
+    );
+    const lugar = orden.get(numeral) ?? -1;
+
+    let actualizados = 0;
+    const yaLaPasaron: string[] = [];
+    for (const proceso of procesos) {
+      const propias = await em.find(ProcesoActividad, { where: { procesoId: proceso.id } });
+      const actividad = propias.find((a) => a.numeral === numeral);
+      if (!actividad) continue;
+
+      const excluida = !aplica || (await excluidasPorElProceso(em, proceso.id)).has(numeral);
+      const yaPasada = propias.some((a) => (orden.get(a.numeral) ?? -1) > lugar && empezada(a));
+      const nuevo = estadoAlCambiarAplicabilidad(actividad, excluida, yaPasada);
+      if (nuevo === actividad.estado) {
+        if (aplica && !excluida && actividad.estado === 'NO_APLICA') yaLaPasaron.push(proceso.radicado);
+        continue;
+      }
+
+      const antes = actividad.estado;
+      actividad.estado = nuevo;
+      await em.save(ProcesoActividad, actividad);
+      await em.query(
+        `INSERT INTO hiring.trazabilidad (proceso_id, entidad_id, entidad, accion, detalle, usuario_nombre, usuario_id)
+         VALUES ($1::uuid, $2::uuid, 'actividad', 'APLICABILIDAD', $3::jsonb, $4, $5)`,
+        [
+          proceso.id,
+          actividad.id,
+          JSON.stringify({
+            numeral,
+            de: antes,
+            a: nuevo,
+            motivo: aplica
+              ? `La ${numeral} empezó a aplicar en la modalidad desde Configuración`
+              : `La ${numeral} dejó de aplicar en la modalidad desde Configuración`,
+          }),
+          acceso.userName,
+          acceso.userId || null,
+        ],
+      );
+      actualizados++;
+    }
+    return { actualizados, yaLaPasaron };
   }
 
   /** Crea una regla vigente desde ahora. */
@@ -881,8 +988,9 @@ export class ConfiguracionService {
 
   /**
    * Fija quién aprueba la actividad, o retira la exigencia, en el borrador
-   * del flujo (111). Rige cuando se active la versión; los procesos en curso
-   * siguen con la suya. Con `usarGeneral`, la modalidad vuelve a heredar.
+   * del flujo (111). Rige cuando se active la versión, también en los
+   * procesos en curso (ver `FlujoService.activar`). Con `usarGeneral`, la
+   * modalidad vuelve a heredar.
    */
   async guardarAprobacion(numeral: string, dto: GuardarAprobacionDto, acceso?: { userName: string; userId: string; roles: string[] }) {
     const modalidad = dto.modalidad || null;

@@ -1,6 +1,7 @@
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { toast } from 'sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -120,6 +121,25 @@ describe('FlujoVisual', () => {
     expect(await screen.findByRole('button', { name: /Activar versión 2/ })).toBeDisabled();
     await userEvent.click(screen.getByRole('button', { name: /1 cosa por corregir/ }));
     expect(screen.getByRole('button', { name: /3\.6 · Causal — Nadie puede ocupar/ })).toHaveTextContent('Mínima Cuantía');
+  });
+
+  it('al activar dice cuántos procesos en curso pasaron a la versión nueva', async () => {
+    vi.spyOn(contratacionService, 'validacionFlujo').mockResolvedValue([] as never);
+    const activar = vi
+      .spyOn(contratacionService, 'activarFlujo')
+      .mockResolvedValue({ activada: true, version: 2, procesosActualizados: 3 });
+    render(<FlujoVisual />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Activar versión 2/ }));
+    expect(screen.getByText(/los que están en curso o en ejecución/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /^Activar$/ }));
+
+    await waitFor(() => expect(activar).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('La versión 2 quedó activa', {
+        description: '3 procesos en curso pasaron a esta versión.',
+      }),
+    );
   });
 
   it('los puestos del proceso se ven y se crean desde el flujo', async () => {

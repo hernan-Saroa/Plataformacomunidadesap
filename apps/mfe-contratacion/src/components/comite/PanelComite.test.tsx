@@ -70,7 +70,7 @@ describe('PanelComite · actividad 6.2', () => {
     servicio.comite.mockResolvedValue(estado());
   });
 
-  it('designa sin memorando y llama al rol «Financiera y económica»', async () => {
+  it('designa sin memorando y llama al rol «Evaluador financiero y económico»', async () => {
     const usuario = userEvent.setup();
     servicio.designarComite.mockResolvedValue(sinMemorando);
     render(<PanelComite procesoId="p-1" />);
@@ -83,7 +83,7 @@ describe('PanelComite · actividad 6.2', () => {
     await usuario.click(screen.getByRole('button', { name: 'Elegir a Ana' }));
     await usuario.selectOptions(screen.getByLabelText('Dimensión que evalúa'), 'FINANCIERO');
     expect(
-      screen.getByRole('option', { name: 'Evaluación financiera y económica' }),
+      screen.getByRole('option', { name: 'Evaluador financiero y económico' }),
     ).toBeInTheDocument();
     await usuario.click(screen.getByRole('button', { name: /^Agregar$/ }));
     await usuario.click(screen.getByRole('button', { name: /Designar comité/i }));
@@ -102,7 +102,7 @@ describe('PanelComite · actividad 6.2', () => {
     const { container } = render(<PanelComite procesoId="p-1" />);
 
     expect(await screen.findByText('Falta el memorando de designación')).toBeInTheDocument();
-    expect(screen.getByText(/Evaluación financiera y económica/i)).toBeInTheDocument();
+    expect(screen.getByText(/Evaluador financiero y económico/i)).toBeInTheDocument();
 
     const archivo = new File(['m'], 'memorando.pdf', { type: 'application/pdf' });
     await usuario.upload(container.querySelector('input[type="file"]') as HTMLInputElement, archivo);

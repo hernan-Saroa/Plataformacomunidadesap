@@ -54,6 +54,12 @@ const MODO: Record<ModoAsignacion, { Icono: typeof User; nombre: string; ayuda: 
  * se deja mientras algo, en alguna modalidad, quede sin quién lo haga o lo
  * apruebe.
  */
+/** Cuántos procesos vivos pasaron a la versión que se acaba de activar. */
+function procesosQuePasaron(n: number): string {
+  if (n === 0) return 'No había procesos en curso con otra versión.';
+  return n === 1 ? '1 proceso en curso pasó a esta versión.' : `${n} procesos en curso pasaron a esta versión.`;
+}
+
 export function FlujoVisual() {
   const [versiones, setVersiones] = useState<VersionFlujo[] | null>(null);
   const [diagrama, setDiagrama] = useState<DiagramaFlujo | null>(null);
@@ -107,11 +113,11 @@ export function FlujoVisual() {
   const nodoElegido = nodos.find((n) => n.numeral === elegido) ?? null;
   const viendoBorrador = diagrama?.version.estado === 'BORRADOR';
 
-  const hacer = async (accion: () => Promise<unknown>, exito: string) => {
+  const hacer = async <T,>(accion: () => Promise<T>, exito: string, detalle?: (r: T) => string) => {
     setOcupado(true);
     try {
-      await accion();
-      toast.success(exito);
+      const r = await accion();
+      toast.success(exito, detalle ? { description: detalle(r) } : undefined);
       setCual(undefined);
       await leer();
     } catch (e: any) {
@@ -128,14 +134,18 @@ export function FlujoVisual() {
     const nota = await dialogo.pedirMotivo({
       titulo: `Activar la versión ${borrador.numero} del flujo`,
       descripcion:
-        'Desde ahora la toman los procesos nuevos. Los que están en curso siguen con su versión hasta que Contratación los pase a esta.',
+        'La toman los procesos nuevos y los que están en curso o en ejecución, para lo que les falta. Lo terminado no cambia, y lo que está en revisión sigue con su cadena hasta que se devuelva y se reenvíe.',
       etiqueta: 'Qué cambia en esta versión',
       placeholder: 'Por ejemplo: el estudio previo lo revisa el abogado revisor y después la jefe',
       opcional: true,
       confirmar: 'Activar',
     });
     if (nota === null) return;
-    await hacer(() => contratacionService.activarFlujo(nota || undefined), `La versión ${borrador.numero} quedó activa`);
+    await hacer(
+      () => contratacionService.activarFlujo(nota || undefined),
+      `La versión ${borrador.numero} quedó activa`,
+      (r) => procesosQuePasaron(r.procesosActualizados),
+    );
   };
 
   const descartar = async () => {

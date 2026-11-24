@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotificationsService } from './notifications.service';
 import { Notification } from './entities/notification.entity';
+import { CompuertaService } from '../configuracion/compuerta.service';
 
 describe('NotificationsService', () => {
   let service: NotificationsService;
@@ -26,6 +27,16 @@ describe('NotificationsService', () => {
       providers: [
         NotificationsService,
         { provide: getRepositoryToken(Notification), useValue: mockRepo },
+        // La compuerta deja pasar todo: estas pruebas son de la campana, no de la configuración.
+        {
+          provide: CompuertaService,
+          useValue: {
+            evaluar: jest.fn(async (e: any) => ({
+              permitido: true, modulo: 'pta', clave: e.clave, prioridad: e.prioridad ?? 'Media', canal: 'ambos', evento: null,
+            })),
+            destinatariosAdicionales: jest.fn(async () => []),
+          },
+        },
       ],
     }).compile();
 
@@ -33,6 +44,63 @@ describe('NotificationsService', () => {
   });
 
   afterEach(() => jest.clearAllMocks());
+
+  describe('desvío de la campana (EFDS-2406)', () => {
+    const dto = { id_usuario_destinatario: 'u1', tipo_notificacion: 'v_x', titulo: 'Título', mensaje: 'Mensaje', modulo: 'viaticos' };
+    const armar = (decision: any) => {
+      const compuerta: any = {
+        evaluar: jest.fn().mockResolvedValue({ modulo: 'viaticos', modulo_nombre: 'Viáticos', clave: 'v_x', prioridad: 'Media', canal: 'ambos', evento: null, ...decision }),
+        destinatariosAdicionales: jest.fn(async () => []),
+        resolverCorreoDeUsuario: jest.fn().mockResolvedValue('u1@esap.edu.co'),
+      };
+      const repo: any = { create: jest.fn((v) => v), save: jest.fn(async (v) => v) };
+      const correos: any = { enviarDesviado: jest.fn().mockResolvedValue(undefined) };
+      return { service: new NotificationsService(repo, compuerta, correos), repo, correos, compuerta };
+    };
+
+    it('no crea la campana, manda el correo al buzón y responde omitida/desviado', async () => {
+      const { service, repo, correos } = armar({ permitido: false, motivo: 'modulo_inactivo', desvio: 'buzon@esap.edu.co' });
+      const r = await service.create(dto);
+      expect(r).toEqual({ omitida: true, motivo: 'desviado', modulo: 'viaticos', tipo_notificacion: 'v_x', desviado_a: 'buzon@esap.edu.co' });
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(correos.enviarDesviado).toHaveBeenCalledWith(expect.objectContaining({
+        destinatario: 'u1@esap.edu.co', canal: 'campana', asunto: 'Título', texto: 'Mensaje',
+        decision: expect.objectContaining({ desvio: 'buzon@esap.edu.co' }),
+      }));
+    });
+
+    it('si el usuario no se resuelve, el aviso nombra el id', async () => {
+      const { service, correos, compuerta } = armar({ permitido: false, motivo: 'evento_inactivo', desvio: 'buzon@esap.edu.co' });
+      compuerta.resolverCorreoDeUsuario.mockResolvedValue(null);
+      await service.create(dto);
+      expect(correos.enviarDesviado).toHaveBeenCalledWith(expect.objectContaining({ destinatario: 'u1' }));
+    });
+
+    it('un motivo de canal (sin desvío) se omite sin mandar nada', async () => {
+      const { service, correos } = armar({ permitido: false, motivo: 'canal_solo_correo' });
+      expect(await service.create(dto)).toMatchObject({ omitida: true, motivo: 'canal_solo_correo' });
+      expect(correos.enviarDesviado).not.toHaveBeenCalled();
+    });
+
+    it('un aviso permitido (p. ej. obligatorio) se guarda y no se desvía', async () => {
+      const { service, repo, correos } = armar({ permitido: true });
+      await service.create(dto);
+      expect(repo.save).toHaveBeenCalled();
+      expect(correos.enviarDesviado).not.toHaveBeenCalled();
+    });
+
+    it('si el correo de desvío falla, no tumba al emisor', async () => {
+      const { service, correos } = armar({ permitido: false, motivo: 'modulo_inactivo', desvio: 'buzon@esap.edu.co' });
+      correos.enviarDesviado.mockRejectedValue(new Error('SMTP'));
+      await expect(service.create(dto)).resolves.toMatchObject({ omitida: true });
+    });
+
+    it('en el envío masivo cuenta las desviadas dentro de las omitidas', async () => {
+      const { service, correos } = armar({ permitido: false, motivo: 'modulo_inactivo', desvio: 'buzon@esap.edu.co' });
+      expect(await service.createBulk([dto, { ...dto, id_usuario_destinatario: 'u2' }])).toEqual({ success: true, created: 0, omitidas: 2, desviadas: 2 });
+      expect(correos.enviarDesviado).toHaveBeenCalledTimes(2);
+    });
+  });
 
   describe('getUserNotifications() — orden del panel lateral', () => {
     it('ordena por fecha_creacion DESC para que la notificación más nueva quede primero', async () => {

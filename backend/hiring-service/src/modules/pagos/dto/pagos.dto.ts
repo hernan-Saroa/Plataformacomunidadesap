@@ -31,11 +31,11 @@ export const TIPOS_SOPORTE: TipoSoportePago[] = [
  */
 export class RadicarPagoDto {
   @ApiProperty({ description: 'Inicio del periodo que se cobra (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'El inicio del periodo debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'El inicio del periodo debe tener el formato AAAA-MM-DD' })
   periodoDesde: string;
 
   @ApiProperty({ description: 'Fin del periodo que se cobra (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'El fin del periodo debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'El fin del periodo debe tener el formato AAAA-MM-DD' })
   periodoHasta: string;
 
   /** Multipart manda todo como texto: hay que convertirlo antes de validar. */
@@ -48,7 +48,7 @@ export class RadicarPagoDto {
 
 /** Aval del supervisor sobre una cuenta radicada. */
 export class AvalarPagoDto {
-  @ApiPropertyOptional({ description: 'Observación del supervisor al avalar' })
+  @ApiPropertyOptional({ description: 'Observación del supervisor en su aval' })
   @IsOptional()
   @IsString()
   @MaxLength(2000)

@@ -4,6 +4,7 @@ function buildController(overrides: Partial<Record<string, any>> = {}) {
   const service = {
     getHistorial: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 50, pages: 1 }),
     getConsultaPuntual: jest.fn().mockResolvedValue([]),
+    getOpciones: jest.fn().mockResolvedValue({ periodos: ['2026-2'], territoriales: [], cetaps: [], programas: [], nucleosTematicos: [] }),
     crearAccesoExterno: jest.fn().mockResolvedValue({ id: 'acc-1', token: 'tok-1' }),
     listarAccesosExternos: jest.fn().mockResolvedValue([{ id: 'acc-1' }]),
     listarBitacora: jest.fn().mockResolvedValue([{ id: 'log-1' }]),
@@ -217,6 +218,18 @@ describe('MacroDocenteController - getHistorialExterno (acceso público por toke
 
     await expect(controller.getHistorialExterno('tok-malo', undefined, undefined, undefined, reqExterno)).rejects.toThrow('Enlace inválido');
     expect(service.getHistorialParaAccesoExterno).not.toHaveBeenCalled();
+    expect(service.logConsulta).not.toHaveBeenCalled();
+  });
+});
+
+describe('MacroDocenteController - getOpciones (EFDS-1364 v2)', () => {
+  it('entrega el catálogo de filtros sin registrar una consulta en la bitácora', async () => {
+    const { controller, service } = buildController();
+
+    const result = await controller.getOpciones(undefined, '2026-2');
+
+    expect(service.getOpciones).toHaveBeenCalledWith({ docenteId: undefined, periodo: '2026-2' });
+    expect(result).toEqual({ success: true, periodos: ['2026-2'], territoriales: [], cetaps: [], programas: [], nucleosTematicos: [] });
     expect(service.logConsulta).not.toHaveBeenCalled();
   });
 });

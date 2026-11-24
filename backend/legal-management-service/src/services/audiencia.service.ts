@@ -138,6 +138,9 @@ export class AudienciaService {
             try {
                 const mailPayload = {
                     to: dto.abogadoEmail,
+                    // Identidad para la configuración de notificaciones (EFDS-2406)
+                    modulo: 'gestion-legal',
+                    evento: 'AUDIENCIA_PROGRAMADA',
                     subject: `Nueva audiencia programada: ${dto.titulo}`,
                     html: `
                         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">

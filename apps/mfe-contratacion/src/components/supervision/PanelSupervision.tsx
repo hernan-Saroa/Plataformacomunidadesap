@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import {
-  CandidatoAPuesto,
   DatosReasignacion,
   DatosSupervisor,
   EstadoSupervision,
@@ -47,7 +46,11 @@ function avisarDelCorreo(correo: ResultadoCorreoSupervisor | undefined, hecho: s
     return;
   }
   if (correo.enviado) {
-    toast.success(`${hecho}; se le envió el correo a ${correo.para}`);
+    toast.success(
+      `${hecho}; se le envió el correo a ${correo.para}${
+        correo.copias?.length ? `, con copia a ${correo.copias.join(', ')}` : ''
+      }`,
+    );
     if (correo.quedanFuera.length) {
       toast.warning(
         `No cupieron en el correo (25 MB): ${correo.quedanFuera.join(', ')}. Quedan en el expediente.`,
@@ -59,9 +62,28 @@ function avisarDelCorreo(correo: ResultadoCorreoSupervisor | undefined, hecho: s
 }
 
 const VACIO = {
+  nombre: '',
   cargo: '',
+  email: '',
   fechaDesignacion: hoyEnBogota(),
 };
+
+type DatosDelFormulario = typeof VACIO;
+
+/** Lo que dice el acto sobre el supervisor, escrito a mano (136). */
+const delFormulario = (datos: DatosDelFormulario) => ({
+  nombre: datos.nombre.trim(),
+  fechaDesignacion: datos.fechaDesignacion,
+  ...(datos.cargo.trim() ? { cargo: datos.cargo.trim() } : {}),
+  email: datos.email.trim(),
+});
+
+/**
+ * Un correo con forma de correo; el servidor tiene la última palabra. Vacío
+ * no se marca como error mientras se escribe, pero no deja guardar: desde la
+ * sesión de QA del 04/11 el correo es obligatorio.
+ */
+const correoValido = (email: string) => !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
 /**
  * Actividad 8.2 · Designación del supervisor (EFDS-1165).
@@ -69,6 +91,10 @@ const VACIO = {
  * Mismo patrón que la designación del comité evaluador: el acto administrativo
  * y la persona viajan juntos, porque una designación a medias no existe —es el
  * nombre y el acto que lo nombra, o no hay supervisor—.
+ *
+ * El supervisor no entra a la aplicación (136): se registra con lo que dice el
+ * acto, y lo que hace en las etapas 9 y 10 lo registran por él el abogado
+ * estructurador y el gestor de archivo y supervisión.
  */
 export function PanelSupervision({ procesoId, onCambio }: Props) {
   const firmaDesignacion = useFirma(NUMERAL_SUPERVISOR, 'Designar el supervisor');
@@ -80,8 +106,6 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
 
   const [designando, setDesignando] = useState(false);
   const [reasignando, setReasignando] = useState(false);
-  /** La cuenta elegida (121): ocupa el puesto que avala la 9.4. */
-  const [elegido, setElegido] = useState('');
   const [datos, setDatos] = useState(VACIO);
   const [acto, setActo] = useState<File | null>(null);
   const [motivo, setMotivo] = useState('');
@@ -92,6 +116,9 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
   const [reenviando, setReenviando] = useState(false);
   /** El motivo del último correo que no salió, para decirlo junto al aviso pendiente. */
   const [correoFallido, setCorreoFallido] = useState<string | null>(null);
+  /** La evidencia de que se le avisó por fuera: obligatoria (sesión de QA del 04/11). */
+  const [comunicando, setComunicando] = useState(false);
+  const [evidenciaAviso, setEvidenciaAviso] = useState<File | null>(null);
 
   const leer = () =>
     contratacionService
@@ -109,7 +136,6 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
   }, [procesoId]);
 
   const limpiar = () => {
-    setElegido('');
     setDatos(VACIO);
     setActo(null);
     setMotivo('');
@@ -128,12 +154,10 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
   };
 
   const designar = async (firmaOtp?: EvidenciaFirmaOtp) => {
-    if (!elegido || !acto) return;
+    if (!acto) return;
 
     const cuerpo: DatosSupervisor = {
-      usuarioId: elegido,
-      fechaDesignacion: datos.fechaDesignacion,
-      ...(datos.cargo.trim() ? { cargo: datos.cargo.trim() } : {}),
+      ...delFormulario(datos),
       ...(mensaje.trim() ? { mensaje: mensaje.trim() } : {}),
       firma: firmaOtp,
     };
@@ -158,13 +182,11 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
    * quien lo vigile mientras tanto.
    */
   const reasignar = async (firmaOtp?: EvidenciaFirmaOtp) => {
-    if (!elegido || !acto) return;
+    if (!acto) return;
 
     const cuerpo: DatosReasignacion = {
-      usuarioId: elegido,
-      fechaDesignacion: datos.fechaDesignacion,
+      ...delFormulario(datos),
       motivo: motivo.trim(),
-      ...(datos.cargo.trim() ? { cargo: datos.cargo.trim() } : {}),
       ...(mensaje.trim() ? { mensaje: mensaje.trim() } : {}),
       firma: firmaOtp,
     };
@@ -197,10 +219,13 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
   };
 
   const avisar = async () => {
+    if (!evidenciaAviso) return;
     setGuardando(true);
     try {
-      setEstado(await contratacionService.avisarSupervisor(procesoId));
+      setEstado(await contratacionService.avisarSupervisor(procesoId, evidenciaAviso));
       setCorreoFallido(null);
+      setComunicando(false);
+      setEvidenciaAviso(null);
       toast.success('Queda constancia de que se le comunicó');
       onCambio?.();
     } catch (err: any) {
@@ -228,7 +253,12 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
     );
   }
 
-  const completo = elegido && acto && datos.fechaDesignacion;
+  const completo =
+    !!datos.nombre.trim() &&
+    !!datos.email.trim() &&
+    !!acto &&
+    !!datos.fechaDesignacion &&
+    correoValido(datos.email);
 
   return (
     <Marco>
@@ -296,7 +326,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
                       : 'No hay constancia de que le haya llegado el correo.'}{' '}
                     {estado.supervisor.email
                       ? `Reenvíaselo a ${estado.supervisor.email} o, si le avisaste por fuera, deja constancia.`
-                      : 'Su cuenta no tiene correo: avísale por fuera y deja constancia.'}
+                      : 'No se registró su correo: avísale por fuera y deja constancia.'}
                   </p>
                 </div>
               </div>
@@ -310,14 +340,46 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
                     Reenviar el correo
                   </BotonSecundario>
                 ) : null}
-                <BotonSecundario
-                  icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
-                  disabled={guardando}
-                  onClick={avisar}
-                >
-                  Ya se le comunicó por fuera
-                </BotonSecundario>
+                {!comunicando ? (
+                  <BotonSecundario
+                    icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                    disabled={guardando}
+                    onClick={() => setComunicando(true)}
+                  >
+                    Ya se le comunicó por fuera
+                  </BotonSecundario>
+                ) : null}
               </div>
+              {comunicando ? (
+                <div className="space-y-2.5">
+                  <SelectorArchivo
+                    id="sup-evidencia-aviso"
+                    etiqueta="Evidencia de la notificación"
+                    ayuda="El correo enviado por fuera, o la constancia de que se le comunicó. Es obligatoria."
+                    archivo={evidenciaAviso}
+                    onElegir={setEvidenciaAviso}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Boton
+                      icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                      disabled={guardando || !evidenciaAviso}
+                      onClick={avisar}
+                    >
+                      Guardar la constancia
+                    </Boton>
+                    <BotonSecundario
+                      icono={<Undo2 className="w-3.5 h-3.5" />}
+                      disabled={guardando}
+                      onClick={() => {
+                        setComunicando(false);
+                        setEvidenciaAviso(null);
+                      }}
+                    >
+                      Cancelar
+                    </BotonSecundario>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : (
             <Aviso tono="ok" titulo="El supervisor ya fue notificado">
@@ -325,6 +387,11 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
               {estado.supervisor.alertaEnviadaAt
                 ? ` el ${momento(estado.supervisor.alertaEnviadaAt)}`
                 : ''}
+              {estado.supervisor.evidenciaAviso
+                ? `, con evidencia (${estado.supervisor.evidenciaAviso.nombre})`
+                : estado.supervisor.email
+                  ? ` por correo a ${estado.supervisor.email}, desde la cuenta de notificaciones de la plataforma`
+                  : ''}
               .
             </Aviso>
           )}
@@ -420,48 +487,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
             mismo acto.
           </p>
 
-          <div>
-            <label htmlFor="rea-persona" className="block text-xs font-bold text-gray-600 mb-1.5">
-              Nuevo supervisor <span className="text-red-600">*</span>
-            </label>
-            <SelectorSupervisor
-              id="rea-persona"
-              procesoId={procesoId}
-              puesto={estado.puesto ?? null}
-              excluir={estado.supervisor.usuarioId}
-              value={elegido}
-              onChange={setElegido}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5">
-            <div>
-              <label htmlFor="rea-cargo" className="block text-xs font-bold text-gray-600 mb-1.5">
-                Cargo
-              </label>
-              <input
-                id="rea-cargo"
-                type="text"
-                value={datos.cargo}
-                onChange={(e) => setDatos((p) => ({ ...p, cargo: e.target.value }))}
-                placeholder="Profesional especializado"
-                className={campo}
-              />
-            </div>
-            <div>
-              <label htmlFor="rea-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
-                Fecha del memorando <span className="text-red-600">*</span>
-              </label>
-              <input
-                id="rea-fecha"
-                type="date"
-                value={datos.fechaDesignacion}
-                max={hoyEnBogota()}
-                onChange={(e) => setDatos((p) => ({ ...p, fechaDesignacion: e.target.value }))}
-                className={campo}
-              />
-            </div>
-          </div>
+          <CamposDelSupervisor prefijo="rea" etiqueta="Nuevo supervisor" datos={datos} onCambio={setDatos} />
 
           <div>
             <label htmlFor="rea-motivo" className="block text-xs font-bold text-gray-600 mb-1.5">
@@ -496,7 +522,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
           <div className="flex items-center gap-2 pt-1">
             <Boton
               icono={<UserCheck className="w-3.5 h-3.5" />}
-              disabled={!elegido || !acto || motivo.trim().length < 10 || guardando}
+              disabled={!completo || motivo.trim().length < 10 || guardando}
               onClick={() => firmaReasignacion.conFirma(reasignar)}
             >
               {guardando ? 'Reasignando…' : 'Reasignar'}
@@ -540,48 +566,9 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
 
       {estado.puedeDesignar && designando ? (
         <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
-          <p className="text-[12.5px] font-bold text-slate-800 m-0">Nuevo supervisor</p>
+          <p className="text-[12.5px] font-bold text-slate-800 m-0">Supervisor del contrato</p>
 
-          <div>
-            <label htmlFor="sup-persona" className="block text-xs font-bold text-gray-600 mb-1.5">
-              Quién supervisa <span className="text-red-600">*</span>
-            </label>
-            <SelectorSupervisor
-              id="sup-persona"
-              procesoId={procesoId}
-              puesto={estado.puesto ?? null}
-              value={elegido}
-              onChange={setElegido}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5">
-            <div>
-              <label htmlFor="sup-cargo" className="block text-xs font-bold text-gray-600 mb-1.5">
-                Cargo
-              </label>
-              <input
-                id="sup-cargo"
-                type="text"
-                value={datos.cargo}
-                onChange={(e) => setDatos((p) => ({ ...p, cargo: e.target.value }))}
-                placeholder="Profesional especializado"
-                className={campo}
-              />
-            </div>
-            <div>
-              <label htmlFor="sup-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
-                Fecha del memorando <span className="text-red-600">*</span>
-              </label>
-              <input
-                id="sup-fecha"
-                type="date"
-                value={datos.fechaDesignacion}
-                onChange={(e) => setDatos((p) => ({ ...p, fechaDesignacion: e.target.value }))}
-                className={campo}
-              />
-            </div>
-          </div>
+          <CamposDelSupervisor prefijo="sup" datos={datos} onCambio={setDatos} />
 
           <SelectorArchivo
             id="sup-acto"
@@ -675,74 +662,92 @@ function CorreoAlSupervisor({
 }
 
 /**
- * A quién se designa: las cuentas que pueden ocupar el puesto que avala la 9.4
- * (121), no cualquier persona del directorio.
+ * Quién es el supervisor, como lo dice el acto (136).
  *
- * Con el directorio se guardaba la persona y la 9.4 la comparaba con la cuenta
- * que inicia sesión: nunca coincidían y el supervisor designado no podía
- * avalar. Elegir la cuenta es lo que hace que la designación sirva.
+ * Escrito a mano y no elegido entre las cuentas: el supervisor no entra a la
+ * aplicación. El correo es a donde le llega el acto; sin él, se le avisa por
+ * fuera y se deja constancia.
  */
-function SelectorSupervisor({
-  id,
-  procesoId,
-  puesto,
-  excluir,
-  value,
-  onChange,
+function CamposDelSupervisor({
+  prefijo,
+  datos,
+  onCambio,
+  etiqueta = 'Supervisor del contrato',
 }: {
-  id: string;
-  procesoId: string;
-  puesto: { id: string; nombre: string } | null;
-  excluir?: string | null;
-  value: string;
-  onChange: (usuarioId: string) => void;
+  prefijo: string;
+  /** «Supervisor del contrato» al designar; «Nuevo supervisor» al reasignar (sesión de QA del 04/11). */
+  etiqueta?: string;
+  datos: DatosDelFormulario;
+  onCambio: (cambiar: (previos: DatosDelFormulario) => DatosDelFormulario) => void;
 }) {
-  const [candidatos, setCandidatos] = useState<CandidatoAPuesto[] | null>(null);
-
-  useEffect(() => {
-    contratacionService
-      .candidatosASupervisor(procesoId)
-      .then(setCandidatos)
-      .catch(() => setCandidatos([]));
-  }, [procesoId]);
-
-  // Los menos cargados primero, como al repartir los puestos en la 3.3.
-  const opciones = (candidatos ?? [])
-    .filter((c) => c.usuarioId !== excluir)
-    .sort((x, y) => x.procesosEnElPuesto - y.procesosEnElPuesto || x.nombre.localeCompare(y.nombre));
-
   return (
     <>
-      <select
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={campo}
-        disabled={candidatos === null}
-      >
-        <option value="">{candidatos === null ? 'Cargando…' : 'Elige a quién…'}</option>
-        {opciones.map((c) => (
-          <option key={c.usuarioId} value={c.usuarioId}>
-            {c.nombre}
-            {puesto
-              ? ` · ${c.procesosEnElPuesto === 1 ? '1 proceso' : `${c.procesosEnElPuesto} procesos`} como supervisor`
-              : ''}
-          </option>
-        ))}
-      </select>
-      {candidatos !== null && opciones.length === 0 ? (
-        <p className="text-[11.5px] text-slate-500 m-0 mt-1">
-          {puesto
-            ? `Ninguna cuenta tiene todos los permisos del puesto ${puesto.nombre}: dáselos a un rol en Permisos por etapa.`
-            : 'Ninguna cuenta puede avalar las cuentas de cobro de la 9.4: dale ese permiso a un rol en Permisos por etapa.'}
-        </p>
-      ) : (
+      <div>
+        <label htmlFor={`${prefijo}-nombre`} className="block text-xs font-bold text-gray-600 mb-1.5">
+          {etiqueta} <span className="text-red-600">*</span>
+        </label>
+        <input
+          id={`${prefijo}-nombre`}
+          type="text"
+          maxLength={200}
+          value={datos.nombre}
+          onChange={(e) => onCambio((p) => ({ ...p, nombre: e.target.value }))}
+          placeholder="Como figura en el memorando"
+          className={campo}
+        />
         <p className="text-[11px] text-slate-500 m-0 mt-1">
-          {puesto
-            ? `Ocupará el puesto ${puesto.nombre}: avala las cuentas de cobro de la 9.4.`
-            : 'La 9.4 no nombra un puesto en el flujo: avala cualquiera con el permiso.'}
+          El supervisor no entra a la aplicación: su aval y su informe los cargan el gestor de archivo y
+          supervisión y el abogado estructurador.
         </p>
-      )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2.5">
+        <div>
+          <label htmlFor={`${prefijo}-cargo`} className="block text-xs font-bold text-gray-600 mb-1.5">
+            Cargo
+          </label>
+          <input
+            id={`${prefijo}-cargo`}
+            type="text"
+            maxLength={200}
+            value={datos.cargo}
+            onChange={(e) => onCambio((p) => ({ ...p, cargo: e.target.value }))}
+            placeholder="Profesional especializado"
+            className={campo}
+          />
+        </div>
+        <div>
+          <label htmlFor={`${prefijo}-email`} className="block text-xs font-bold text-gray-600 mb-1.5">
+            Correo <span className="text-red-600">*</span>
+          </label>
+          <input
+            id={`${prefijo}-email`}
+            type="email"
+            maxLength={200}
+            value={datos.email}
+            onChange={(e) => onCambio((p) => ({ ...p, email: e.target.value }))}
+            placeholder="nombre@esap.edu.co"
+            className={campo}
+          />
+          {!correoValido(datos.email) ? (
+            <p className="text-[11px] text-red-600 m-0 mt-1">Ese correo no es válido.</p>
+          ) : null}
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor={`${prefijo}-fecha`} className="block text-xs font-bold text-gray-600 mb-1.5">
+          Fecha del memorando <span className="text-red-600">*</span>
+        </label>
+        <input
+          id={`${prefijo}-fecha`}
+          type="date"
+          value={datos.fechaDesignacion}
+          max={hoyEnBogota()}
+          onChange={(e) => onCambio((p) => ({ ...p, fechaDesignacion: e.target.value }))}
+          className={campo}
+        />
+      </div>
     </>
   );
 }

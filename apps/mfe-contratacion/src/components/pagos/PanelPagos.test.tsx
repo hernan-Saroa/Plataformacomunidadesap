@@ -36,17 +36,20 @@ const conCuenta = (estado: string) => ({
   admitePagos: true,
   motivoNoAdmite: null,
   contrato: { numero: 'CTO-1', objeto: 'Vigilancia', estado: 'EN_EJECUCION', valor: 60000000, fechaInicio: '2026-07-01' },
-  supervisor: { nombre: 'Diana Castro', cargo: null, personaId: 'per-1' },
+  supervisor: { nombre: 'Diana Castro', cargo: null, email: null },
   puedeRadicar: true,
-  esSupervisor: true,
+  puedeAvalar: true,
+  puedeTramitar: false,
   integracionClick: false,
   pagos: [pago(estado)],
   resumen: { cobrado: 5000000, tramitado: 0, saldo: 55000000, advertencia: null },
 });
 
 /**
- * La cuenta de cobro se avala o se devuelve solo en la pantalla de revisión
- * (9.4). Devolver una ya avalada corrige un aval dado y se queda en el panel.
+ * El aval del supervisor se carga o la cuenta se devuelve solo en la pantalla
+ * de revisión (9.4). Devolver una ya avalada corrige un aval dado y se queda
+ * en el panel. El supervisor no entra a la aplicación (136): su aval firmado
+ * lo carga quien puede aprobar la 9.4.
  */
 describe('PanelPagos · el aval del supervisor', () => {
   beforeEach(() => vi.restoreAllMocks());
@@ -62,10 +65,10 @@ describe('PanelPagos · el aval del supervisor', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /Abrir la revisión/ }));
     expect(abrirRevision).toHaveBeenCalledWith('9.4');
-    expect(screen.queryByRole('button', { name: /^Avalar$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Cargar el aval/ })).toBeNull();
   });
 
-  it('en la revisión avala o devuelve, y lo demás sigue en solo lectura', async () => {
+  it('en la revisión carga el aval o devuelve, y lo demás sigue en solo lectura', async () => {
     vi.spyOn(contratacionService, 'pagos').mockResolvedValue(conCuenta('RADICADO') as never);
     render(
       <LugarDeDecision enLaRevision>
@@ -75,10 +78,50 @@ describe('PanelPagos · el aval del supervisor', () => {
       </LugarDeDecision>,
     );
 
-    expect(await screen.findByRole('button', { name: /^Avalar$/ })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: /Cargar el aval/ })).toBeEnabled();
     expect(screen.getByRole('button', { name: /^Devolver$/ })).toBeEnabled();
     // Quien revisa no radica ni anula.
     expect(screen.getByRole('button', { name: /Anular/ })).toBeDisabled();
+  });
+
+  it('el aval lleva el documento que firmó el supervisor', async () => {
+    vi.spyOn(contratacionService, 'pagos').mockResolvedValue(conCuenta('RADICADO') as never);
+    const avalar = vi
+      .spyOn(contratacionService, 'avalarPago')
+      .mockResolvedValue(conCuenta('AVALADO') as never);
+    const { container } = render(
+      <LugarDeDecision enLaRevision>
+        <SoloLectura motivo="Estás revisando lo que se envió">
+          <PanelPagos procesoId="p-1" />
+        </SoloLectura>
+      </LugarDeDecision>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /Cargar el aval/ }));
+    const registrar = screen.getByRole('button', { name: /Registrar el aval/ });
+    // Sin el documento firmado no hay aval.
+    expect(registrar).toBeDisabled();
+
+    const firmado = new File(['aval'], 'aval-supervisor.pdf', { type: 'application/pdf' });
+    await userEvent.upload(container.querySelector('#aval-archivo-pg-1') as HTMLInputElement, firmado);
+    await userEvent.click(registrar);
+
+    expect(avalar).toHaveBeenCalledWith('p-1', 'pg-1', firmado, undefined);
+  });
+
+  it('a quien no puede aprobar la 9.4 no le ofrece el aval', async () => {
+    vi.spyOn(contratacionService, 'pagos').mockResolvedValue({
+      ...conCuenta('RADICADO'),
+      puedeAvalar: false,
+    } as never);
+    render(
+      <LugarDeDecision enLaRevision>
+        <PanelPagos procesoId="p-1" />
+      </LugarDeDecision>,
+    );
+
+    expect(await screen.findByText(/Pago 3/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Cargar el aval/ })).toBeNull();
   });
 
   it('devolver una cuenta ya avalada se queda en el panel', async () => {
@@ -94,10 +137,7 @@ describe('PanelPagos · el aval del supervisor', () => {
   });
 });
 
-/**
- * Tramitar el pago lo registra Contratación o el supervisor de este contrato
- * (migración 133): a quien no puede, el botón no se le ofrece.
- */
+/** Tramitar el pago lo registra quien puede decidir la 9.4: a quien no, el botón no se le ofrece. */
 describe('PanelPagos · el trámite del pago', () => {
   beforeEach(() => vi.restoreAllMocks());
 
@@ -114,7 +154,7 @@ describe('PanelPagos · el trámite del pago', () => {
   it('no lo ofrece a quien no puede registrarlo', async () => {
     vi.spyOn(contratacionService, 'pagos').mockResolvedValue({
       ...conCuenta('AVALADO'),
-      esSupervisor: false,
+      puedeAvalar: false,
       puedeTramitar: false,
     } as never);
     render(<PanelPagos procesoId="p-1" />);

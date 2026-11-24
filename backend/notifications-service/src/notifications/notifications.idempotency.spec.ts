@@ -1,19 +1,21 @@
 import { ConflictException } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
+// La compuerta deja pasar todo: aquí se prueba la idempotencia, no la configuración.
+const compuerta:any={evaluar:jest.fn(async(e:any)=>({permitido:true,modulo:'pta',clave:e.clave,prioridad:e.prioridad??'Media',canal:'ambos',evento:null})),destinatariosAdicionales:jest.fn(async()=>[])};
 describe('Entrega idempotente opcional',()=>{
   const dto={id_usuario_destinatario:'user',tipo_notificacion:'rund_extraccion_finalizada',titulo:'RUND',mensaje:'Finalizó'};
   function fixture(saved:any={...dto,id_notificacion:'event',leida:true}){
     const builder:any={};for(const key of ['insert','into','values','onConflict'])builder[key]=jest.fn(()=>builder);
     builder.execute=jest.fn().mockResolvedValue({});
     const repo={create:jest.fn(v=>({...v})),save:jest.fn().mockResolvedValue(dto),createQueryBuilder:jest.fn(()=>builder),findOneByOrFail:jest.fn().mockResolvedValue(saved)};
-    return {repo,builder,service:new NotificationsService(repo as any)};
+    return {repo,builder,service:new NotificationsService(repo as any,compuerta)};
   }
   it('conserva la creación existente cuando no se proporciona clave',async()=>{
     const {repo,service}=fixture();await service.create(dto);expect(repo.save).toHaveBeenCalledTimes(1);expect(repo.createQueryBuilder).not.toHaveBeenCalled();
   });
   it('un reintento usa ON CONFLICT y conserva lectura e identidad del aviso anterior',async()=>{
     const {builder,service}=fixture();const value=await service.create({...dto,clave_idempotencia:'event'});
-    expect(builder.onConflict).toHaveBeenCalledWith('("id_notificacion") DO NOTHING');expect(value.leida).toBe(true);
+    expect(builder.onConflict).toHaveBeenCalledWith('("id_notificacion") DO NOTHING');expect((value as any).leida).toBe(true);
   });
   it('no reutiliza una clave de otro destinatario',async()=>{
     const {service}=fixture({...dto,id_usuario_destinatario:'otro'});

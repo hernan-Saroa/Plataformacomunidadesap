@@ -44,11 +44,11 @@ import { ExpedienteDelProceso } from './ExpedienteDelProceso';
 import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
-import { AvisoSoloLectura, SoloLectura } from '../shared/SoloLectura';
+import { AvisoSoloLectura, AvisoSoloVer, CamposDeSoloVer, SoloLectura, SoloVer } from '../shared/SoloLectura';
 import { LugarDeDecision } from '../shared/LugarDeDecision';
 import { Modal } from '../shared/Modal';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
-import { esSoloPresupuesto, useAlcance } from '../../auth/alcance';
+import { esSoloPresupuesto, soloPuedeVer, useAlcance } from '../../auth/alcance';
 import { useResponsables } from '../../auth/responsables';
 import { EntradaSituacion, situacionDelProceso } from './situacionDelProceso';
 import { FranjaSituacion } from './FranjaSituacion';
@@ -755,6 +755,24 @@ export function DetalleProceso({
       : null;
 
   /**
+   * Si quien mira solo puede ver la actividad abierta: no tiene ninguna de las
+   * acciones con que se trabaja su panel. Entonces no se le muestran las
+   * opciones de modificar —antes llenaba el formulario y al guardar le decían
+   * «no tienes permiso»— y los campos quedan de solo lectura. Quien aprueba o
+   * decide en la revisión también cae aquí: lo suyo lo hace en esa pantalla.
+   *
+   * Solo con el alcance ya leído: mientras llega, `puede` responde que sí, y
+   * esconder por una duda dejaría la pantalla vacía sin explicación.
+   */
+  const soloVer =
+    !!actividadSeleccionada && alcanceCargado && soloPuedeVer(actividadSeleccionada.numeral, puede);
+  /** Si además le toca aprobar o decidir en la revisión, el aviso se lo dice. */
+  const decideEnLaRevision =
+    soloVer &&
+    !!actividadSeleccionada &&
+    (puede('aprobar', actividadSeleccionada.numeral) || puede('decidir', actividadSeleccionada.numeral));
+
+  /**
    * Qué etapa se mira.
    *
    * Con el recorrido recortado, la etapa del proceso puede no estar en él —un
@@ -1143,6 +1161,8 @@ export function DetalleProceso({
               la revisión en vez de enseñar sus botones. */}
           <LugarDeDecision abrirRevision={onRevisar}>
           <SoloLectura motivo={motivoSoloLectura}>
+          <SoloVer activo={soloVer}>
+          <CamposDeSoloVer activo={soloVer}>
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               {actividadSeleccionada ? (
                 <EncabezadoActividad
@@ -1153,7 +1173,13 @@ export function DetalleProceso({
 
               {/* Un panel con todos los botones apagados y sin una línea que lo
                   explique se lee como una pantalla rota. */}
-              {motivoSoloLectura ? <AvisoSoloLectura motivo={motivoSoloLectura} /> : null}
+              {/* Sin permiso de editar, eso es lo que se dice: el orden de la
+                  secuencia ya no importa a quien nunca la va a trabajar. */}
+              {soloVer ? (
+                <AvisoSoloVer decideEnLaRevision={decideEnLaRevision} />
+              ) : motivoSoloLectura ? (
+                <AvisoSoloLectura motivo={motivoSoloLectura} />
+              ) : null}
 
               <PanelDeLaActividad
                 numeral={actividadSeleccionada?.numeral ?? null}
@@ -1172,13 +1198,16 @@ export function DetalleProceso({
                 devuelta={fueDevuelta}
                 recargarToken={tokenExpediente}
                 onRevisar={onRevisar}
+                // Solo si la modalidad tiene adendas: es a donde salta la 6.1
+                // para extender el cierre (EFDS-1155).
+                onIrA={adendas ? trabajarEn : undefined}
               />
             </div>
 
             {/* La lista de documentos de la actividad, debajo del panel: primero
                 se trabaja, después se adjunta. Es la misma para las sesenta y
-                tres —sale de lo que Configuración le pide a cada una— y no se
-                pinta donde la actividad no pide ni tiene documentos. */}
+                tres —sale de lo que Configuración le pide a cada una— y, aunque
+                no pida nada, deja adjuntar varios soportes a quien puede cargar. */}
             {actividadSeleccionada &&
             !NUMERALES_CON_LISTA_PROPIA.includes(actividadSeleccionada.numeral) ? (
               <div className="mt-3">
@@ -1190,6 +1219,8 @@ export function DetalleProceso({
                 />
               </div>
             ) : null}
+          </CamposDeSoloVer>
+          </SoloVer>
           </SoloLectura>
           </LugarDeDecision>
 

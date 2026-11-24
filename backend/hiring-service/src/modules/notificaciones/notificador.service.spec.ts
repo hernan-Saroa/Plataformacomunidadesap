@@ -157,16 +157,6 @@ describe('NotificadorService · despachar', () => {
   });
 
   describe('a quien le toca', () => {
-    it('«el supervisor del contrato» es el de la supervisión vigente de ese proceso', async () => {
-      const f = fetchOk();
-      const { srv, query } = conBase([], { supervisor: [{ id: 'u-supervisora' }] });
-
-      expect(await srv.despachar([{ ...adjunto, evento: 'HABILITADA', numeral: '9.2' }])).toBe(1);
-      expect(cuerpo(f)[0].id_usuario_destinatario).toBe('u-supervisora');
-      const sql = String(query.mock.calls.find(([s]) => String(s).includes('supervisiones_contrato'))?.[0]);
-      expect(sql).toContain("s.estado = 'VIGENTE'");
-    });
-
     it('«el equipo financiero» son las cuentas que pueden editar la 4.2', async () => {
       // Por alcance (083) y no por `presupuesto.gestionar`: un rol creado
       // desde el backoffice con editar en la 4.2 también recibe el aviso.

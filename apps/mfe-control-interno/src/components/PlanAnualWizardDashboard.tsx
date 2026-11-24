@@ -37,7 +37,7 @@ import { VistaAprobadorPlanAnual } from './VistaAprobadorPlanAnual';
 
 // a️ IMPORTACIN OBLIGATORIA DE REGLAS DE NEGOCIO Y CUMPLIMIENTO NORMATIVO
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
-import { normalizarRolOcigOperativo } from '../config/roles-ocig-operativos';
+import { ROL_OCI_JEFE, cumpleConAlgunRolOci, normalizarRolOcigOperativo, tieneRolOci } from '../config/roles-ocig-operativos';
 import { createPortal } from 'react-dom';
 // Hook para sincronizar evidencias con backend y API de auditores
 import {
@@ -85,6 +85,8 @@ interface Auditor {
   idPerson?: string;
   idTercero?: string;
   configId?: string;
+  /** Roles además del principal (cargo), p. ej. el Jefe OCI que también audita (EFDS-2452) */
+  rolesAdicionales?: string[];
 }
 
 const NOMBRES_PERSONA_INVALIDOS = new Set(['usuario sin nombre', 'sin nombre']);
@@ -221,6 +223,7 @@ function mapearProfesionalesOCIGDesdeApi(data: any[]): Auditor[] {
       idTercero: id,
       nombre: String(config.nombre).trim(),
       cargo: String(normalizarRolOcigOperativo(config.rolOcig || config.rolOCI || config.cargo)),
+      rolesAdicionales: Array.isArray(config.rolesAdicionales) ? config.rolesAdicionales : [],
       email: config.email || '',
       configId: config.id,
     });
@@ -2129,7 +2132,9 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
         
         // Filtrar solo los que son Jefe OCI
         const jefes = profesionales.filter((a: Auditor) => 
-          a.cargo === 'Jefe OCI' || a.cargo.toLowerCase().includes('jefe')
+          a.cargo === 'Jefe OCI' || a.cargo.toLowerCase().includes('jefe') ||
+          // También quien tiene Jefe OCI como rol adicional (EFDS-2452)
+          cumpleConAlgunRolOci(a, (rol) => tieneRolOci(rol, ROL_OCI_JEFE))
         );
         setJefesOCI(jefes.length > 0 ? jefes : profesionales);
         
@@ -3796,7 +3801,8 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             // Solo mostrar profesionales con base en las reglas de negocio y perfil normativo
             const responsablesAutorizados = auditores.filter((a: any) =>
               nombreProfesionalOCIVisible(a.nombre) &&
-              REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esAutorizadoParaResponsablePlan(a.cargo)
+              // Con el rol principal o con uno adicional (EFDS-2452)
+              cumpleConAlgunRolOci(a, REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esAutorizadoParaResponsablePlan)
             );
             const opcionesResponsable = [...responsablesAutorizados];
             if (

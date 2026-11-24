@@ -21,10 +21,12 @@ import type { PapelAviso } from './eventos';
  * - La **Dirección Financiera** expide el CDP y el RP, y cierra financieramente.
  * - El **ordenador del gasto** designa el comité evaluador y el supervisor, y
  *   reasigna la supervisión.
- * - El **comité evaluador** evalúa las ofertas y responde lo que se observe de
- *   su evaluación.
- * - Los **supervisores** firman el inicio, vigilan la ejecución, tramitan pagos
- *   y piden las modificaciones.
+ * - El **comité evaluador** evalúa las ofertas por fuera; su informe lo carga
+ *   quien tenga la 6.3 en el flujo, y la 6.2 solo identifica a sus integrantes.
+ * - Los **supervisores** firman el inicio, vigilan la ejecución, avalan pagos
+ *   y piden las modificaciones, pero no entran a la aplicación (136): lo suyo
+ *   lo registran el abogado estructurador y el gestor de archivo y
+ *   supervisión, así que el aviso va a quien hace la actividad.
  * - El **archivo de gestión** custodia el expediente.
  *
  * Todo esto es un punto de partida: la Dirección lo cambia en la ficha de cada
@@ -46,19 +48,16 @@ const POR_ACTIVIDAD: Record<string, Destino> = {
 
   // Aún no hay comité: le toca a quien puede designarlo.
   '6.2': papel('DESIGNA_COMITE_Y_SUPERVISOR'),
-  '6.3': papel('COMITE_EVALUADOR'),
-  '6.6': papel('COMITE_EVALUADOR'),
-  '6.7': papel('COMITE_EVALUADOR'),
-  '6.8': papel('COMITE_EVALUADOR'),
-  '7.2': papel('COMITE_EVALUADOR'),
+  // La evaluación (6.3, 6.6 a 6.8 y 7.2) va con la regla de su etapa, a quien
+  // la hace según el flujo: integrar el comité no da acceso al proceso, así
+  // que avisarle «te toca» sería mandarlo a una puerta cerrada. Si se quiere
+  // avisar al comité, el papel sigue disponible en la ficha del aviso.
 
   '8.2': papel('DESIGNA_COMITE_Y_SUPERVISOR'),
   '8.3': papel('EQUIPO_FINANCIERO'),
-  '8.7': papel('SUPERVISOR'),
 
   '9.3': papel('REASIGNA_SUPERVISION'),
 
-  '10.1': papel('SUPERVISOR'),
   '10.3': papel('EQUIPO_FINANCIERO'),
   '10.4': papel('ARCHIVA_EXPEDIENTE'),
 };
@@ -73,7 +72,7 @@ const POR_ETAPA: Record<string, Destino> = {
   '6': papel('QUIEN_LA_HACE'),
   '7': papel('QUIEN_LA_HACE'),
   '8': papel('QUIEN_LA_HACE'),
-  '9': papel('SUPERVISOR'),
+  '9': papel('QUIEN_LA_HACE'),
   '10': papel('QUIEN_LA_HACE'),
 };
 

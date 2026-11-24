@@ -9,9 +9,8 @@ import { useDialogo } from '../shared/useDialogo';
 /**
  * Con qué versión del flujo corre el proceso (migración 111).
  *
- * Cada proceso termina con la versión con la que nació: cambiar quién hace o
- * quién revisa a mitad de camino lo dejaría con medio flujo viejo y medio
- * nuevo. Si hay una versión más nueva, quien lo lleva puede pasarlo a ella con
+ * Activar una versión ya pasa a ella los procesos vivos, para lo que les
+ * falta. Si alguno se quedó en una anterior, quien lo lleva puede pasarlo con
  * un motivo.
  */
 export function VersionDelFlujo({ procesoId, onCambio }: { procesoId: string; onCambio?: () => void }) {

@@ -248,7 +248,8 @@ describe('eventosDeActividad · «le toca a alguien»', () => {
       papeles: ['EQUIPO_FINANCIERO'],
       roles: [],
     });
-    expect(avisoQueRige('HABILITADA', undefined, '9.4')).toMatchObject({ papeles: ['SUPERVISOR'] });
+    // El supervisor no entra a la aplicación (136): avisa a quien la registra.
+    expect(avisoQueRige('HABILITADA', undefined, '9.4')).toMatchObject({ papeles: ['QUIEN_LA_HACE'] });
     expect(avisoQueRige('HABILITADA', undefined, '6.2')).toMatchObject({
       papeles: ['DESIGNA_COMITE_Y_SUPERVISOR'],
       roles: [],

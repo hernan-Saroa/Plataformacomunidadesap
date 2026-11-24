@@ -195,6 +195,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [solicitudesPendientes023, setSolicitudesPendientes023] = useState<SolicitudPendiente023[]>([]);
   const [consultando, setConsultando] = useState(false);
   const [errorConsulta, setErrorConsulta] = useState<string | null>(null);
+  const [alertaDependencia, setAlertaDependencia] = useState<string | null>(null);
   const [errorValidacion, setErrorValidacion] = useState<string | null>(null);
   const [habeasPendiente, setHabeasPendiente] = useState(false);
   const [habeasMarcado, setHabeasMarcado] = useState(false);
@@ -1218,6 +1219,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
     setConsultando(true);
     setErrorConsulta(null);
+    setAlertaDependencia(null);
     setComisionado(null);
     setSolicitudesPendientes023([]);
     setHabeasPendiente(false);
@@ -1235,11 +1237,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         return;
       }
 
-      // Restricción estricta de dependencia para enlaces: verificar que pertenezca a su misma dependencia
+      // Advertencia preventiva de dependencia (no bloqueante):
+      let alertaDep: string | null = resultado.alertaDependencia || null;
       if (!esAdmin && idDependenciaUsuario != null) {
         if (
           resultado.idDependencia != null &&
-          resultado.idDependencia !== '' &&
           Number(resultado.idDependencia) !== Number(idDependenciaUsuario)
         ) {
           const depComisionado = dependencias.find((d) => Number(d.idDependencia) === Number(resultado.idDependencia));
@@ -1249,18 +1251,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           const nomDepComisionado = depComisionado?.nomDependencia || `Dependencia ${resultado.idDependencia}`;
           const nomDepUsuario = depUsuario?.nomDependencia || 'su dependencia';
 
-          setErrorConsulta(
-            `El funcionario con documento ${documento} (${formatearNombreComisionado(resultado)}) pertenece a otra dependencia (${nomDepComisionado}). Como enlace de ${nomDepUsuario}, solo puede consultar y comisionar personal de su propia dependencia.`,
-          );
-          setComisionado(null);
-          return;
+          alertaDep =
+            alertaDep ||
+            `Atención: El funcionario con documento ${documento} (${formatearNombreComisionado(resultado)}) pertenece a otra dependencia (${nomDepComisionado}). Podrá continuar con el diligenciamiento, pero la solicitud estará sujeta a la revisión y visto bueno de los validadores y aprobadores institucionales.`;
         }
 
         // Si no tiene dependencia en BD, asignarla a la del enlace
-        if (resultado.idDependencia == null || resultado.idDependencia === '') {
+        if (resultado.idDependencia == null) {
           resultado.idDependencia = Number(idDependenciaUsuario);
         }
       }
+      setAlertaDependencia(alertaDep);
 
       setComisionado(resultado);
       const pendientes = resultado.solicitudesPendientes || [];
@@ -2880,6 +2881,16 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   </p>
                 )}
               </div>
+
+              {alertaDependencia && (
+                <div className="border border-amber-300 bg-amber-50 rounded-2xl p-4 shadow-xs flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="min-w-0 text-xs text-amber-900">
+                    <p className="font-bold text-amber-950 mb-0.5">Advertencia de Dependencia</p>
+                    <p>{alertaDependencia}</p>
+                  </div>
+                </div>
+              )}
 
               {comisionado && !habeasPendiente && (
                 <div className="border border-emerald-200 bg-emerald-50/70 rounded-2xl p-5 shadow-xs space-y-3">

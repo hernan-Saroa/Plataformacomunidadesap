@@ -266,6 +266,7 @@ const NOMBRE_DE_LA_MODIFICACION: Record<TipoModificacion, string> = {
   SUSPENSION: 'Suspensiones',
   REANUDACION: 'Reanudaciones',
   TERMINACION_ANTICIPADA: 'Terminaciones anticipadas',
+  OTRO: 'Otras modificaciones',
 };
 
 /** En el orden en que una cuenta avanza, que es como se lee la fila. */

@@ -122,8 +122,11 @@ export class NotificadorService implements OnApplicationBootstrap {
       aviso,
     );
 
+    // La misma clave para la campana y para los correos: así la consola de
+    // notificaciones apaga o enciende el evento completo.
+    const clave = `contratacion_${ocurrido.evento.toLowerCase()}`;
     const correosExternos = externos.length
-      ? await this.campana.aCorreosExternos(externos, { titulo, mensaje })
+      ? await this.campana.aCorreosExternos(externos, { titulo, mensaje }, clave)
       : 0;
     if (!destinatarios.length) return correosExternos;
 
@@ -134,7 +137,7 @@ export class NotificadorService implements OnApplicationBootstrap {
     const resultado = await this.campana.enviar(
       destinatarios.map((id) => ({
         id_usuario_destinatario: id,
-        tipo_notificacion: `contratacion_${ocurrido.evento.toLowerCase()}`,
+        tipo_notificacion: clave,
         titulo,
         mensaje,
         prioridad,

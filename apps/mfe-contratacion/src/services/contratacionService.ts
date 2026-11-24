@@ -9,6 +9,7 @@ import {
   PlazoDeActividad,
   SoporteDeDevolucion,
   CamposFaltantesError,
+  ArchivoPaaRechazadoError,
   EstadoAdendas,
   EstadoApertura,
   EstadoAudienciaRiesgos,
@@ -70,6 +71,7 @@ import {
   EstadoModificaciones,
   DatosAdicion,
   DatosAclaratorio,
+  DatosOtraModificacion,
   DatosCesion,
   DatosProrroga,
   DatosReanudacion,
@@ -86,6 +88,13 @@ import {
   ConfiguracionAvisos,
   EventoAviso,
   ParametroAlerta,
+  CorreoInstitucional,
+  CambioCronogramaAdenda,
+  CronogramaPorEtapas,
+  CronogramaPredeterminado,
+  PredeterminadoDelProceso,
+  PropiaPredeterminada,
+  ResumenPredeterminado,
   EstadisticasGestion,
   FiltrosEstadisticas,
   ExpedienteAuditoria,
@@ -107,6 +116,7 @@ import {
   EstadoRespaldo,
   CdpDelEstudioPrevio,
   CdpAntesDeRadicar,
+  UmbralesComite,
   EstudioPrevio,
   Expediente,
   SimulacionFormulario,
@@ -120,6 +130,10 @@ import {
   Dependencia,
   EtapaConActividades,
   TipologiaConfigurable,
+  TipoPolizaConfigurable,
+  TipoAmparoConfigurable,
+  GuardarTipoPoliza,
+  GuardarTipoAmparo,
   GuardarTipologia,
   Modalidad,
   GuardarRegla,
@@ -157,10 +171,13 @@ import {
   DiagramaFlujo,
   AsignacionFlujo,
   SecuenciaDelPaso,
+  CambioDeAplicabilidad,
   FlujoDelProceso,
+  ResultadoActivacionFlujo,
   ProblemaFlujo,
   VersionFlujo,
   LaHaceConfig,
+  PermisosCompletados,
   ProblemaDePuestos,
   Puesto,
   PuestosDelProceso,
@@ -176,12 +193,35 @@ const SERVICE_PREFIX = '/hiring/api/v1';
  * de leer el cuerpo del 422 (camposFaltantes), que un `throw new Error(status)`
  * descartaría.
  */
+/**
+ * El mensaje del servidor, si es uno que se le pueda mostrar a una persona.
+ *
+ * Los errores de validación llegan como lista. Los que el servidor no escribió
+ * («Internal server error», «Cannot GET /…») llegan en inglés y no dicen nada
+ * que sirva: se descartan para que salga el texto propio de cada caso.
+ */
+export function textoDelError(mensaje: unknown): string | null {
+  const texto = Array.isArray(mensaje) ? mensaje.filter(Boolean).join('. ') : typeof mensaje === 'string' ? mensaje.trim() : '';
+  if (!texto) return null;
+  if (/file too large/i.test(texto)) return 'El archivo es demasiado grande para subirlo';
+  if (/^(internal server error|cannot (get|post|put|patch|delete) |bad request|not found|forbidden|unauthorized|bad gateway|service unavailable|gateway timeout|payload too large|unprocessable entity)/i.test(texto)) {
+    return null;
+  }
+  return texto;
+}
+
 async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${ruta}`, {
-    credentials: 'include',
-    headers: init?.body instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
-    ...init,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${ruta}`, {
+      credentials: 'include',
+      headers: init?.body instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
+      ...init,
+    });
+  } catch (err) {
+    if ((err as Error)?.name === 'AbortError') throw err;
+    throw new Error('No se pudo conectar con el servidor: revisa tu conexión a internet e inténtalo de nuevo');
+  }
 
   if (res.ok) {
     const texto = await res.text();
@@ -203,17 +243,93 @@ async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
       Array.isArray(cuerpo.documentosDeLaLista) ? cuerpo.documentosDeLaLista : [],
     );
   }
+  const mensaje = textoDelError(cuerpo?.message);
+  if (res.status === 400 && Array.isArray(cuerpo?.hallazgos)) {
+    throw new ArchivoPaaRechazadoError(
+      textoDelError(cuerpo.motivo) ?? mensaje ?? 'El archivo no se pudo cargar',
+      cuerpo.hallazgos,
+      Array.isArray(cuerpo.advertencias) ? cuerpo.advertencias : [],
+    );
+  }
   if (res.status === 409) {
-    throw new ConflictoError(cuerpo?.message ?? 'El estudio previo cambió en otra sesión');
+    throw new ConflictoError(
+      mensaje ?? 'Alguien más cambió esto mientras lo tenías abierto: recarga la página e inténtalo de nuevo',
+    );
   }
   if (res.status === 401) {
     throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
   }
   if (res.status === 403) {
-    throw new Error(cuerpo?.message ?? 'No tienes permisos para realizar esta acción');
+    throw new Error(mensaje ?? 'No tienes permiso para hacer esta acción');
+  }
+  if (res.status === 413) {
+    throw new Error('El archivo es demasiado grande para subirlo');
+  }
+  // Un 5xx no trae nada que la persona pueda corregir: se dice qué pasó y qué hacer.
+  if (res.status >= 500) {
+    throw new Error(
+      'El servicio de Contratación tuvo un problema y no pudo completar la acción. Inténtalo de nuevo en unos minutos; si sigue igual, avisa a soporte',
+    );
+  }
+  if (res.status === 404) {
+    throw new Error(mensaje ?? 'No se encontró lo que buscabas: puede que ya no exista. Recarga la página');
   }
 
-  throw new Error(cuerpo?.message ?? `Error ${res.status}`);
+  throw new Error(mensaje ?? 'No se pudo completar la acción: revisa los datos e inténtalo de nuevo');
+}
+
+/** Un error de una parte que vale la pena reintentar: la red, el servidor o una parte cortada. */
+export class ParteFallidaError extends Error {
+  constructor(
+    mensaje: string,
+    readonly reintentable: boolean,
+  ) {
+    super(mensaje);
+    this.name = 'ParteFallidaError';
+  }
+}
+
+/**
+ * Una parte de una carga, por `XMLHttpRequest` y no por `fetch` (BUG-004).
+ *
+ * `fetch` no avisa cuánto lleva enviado, y la barra de carga necesita moverse
+ * dentro de cada parte de 5 MB, no a saltos de una parte entera.
+ */
+export function subirParte(
+  ruta: string,
+  parte: Blob,
+  onEnviado: (bytes: number) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${ruta}`);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (e) => onEnviado(e.loaded);
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve();
+      let mensaje: string | null = null;
+      try {
+        mensaje = textoDelError(JSON.parse(xhr.responseText)?.message);
+      } catch {
+        /* sin cuerpo JSON */
+      }
+      if (xhr.status === 401) return reject(new ParteFallidaError('Tu sesión expiró. Vuelve a iniciar sesión.', false));
+      const reintentable =
+        xhr.status >= 500 || xhr.status === 408 || xhr.status === 429 || /incompleta/i.test(mensaje ?? '');
+      reject(new ParteFallidaError(mensaje ?? `La parte no se pudo subir (error ${xhr.status})`, reintentable));
+    };
+    xhr.onerror = () => reject(new ParteFallidaError('Se perdió la conexión mientras subía el archivo', true));
+    xhr.ontimeout = () => reject(new ParteFallidaError('El servidor tardó demasiado en recibir el archivo', true));
+    xhr.onabort = () => reject(new DOMException('Carga cancelada', 'AbortError'));
+    signal?.addEventListener('abort', () => xhr.abort(), { once: true });
+    // Una parte de 5 MB que no termina en dos minutos está colgada: se corta y se reintenta.
+    xhr.timeout = 120_000;
+
+    const cuerpo = new FormData();
+    cuerpo.append('parte', parte, 'parte');
+    xhr.send(cuerpo);
+  });
 }
 
 /**
@@ -279,6 +395,10 @@ function cuerpoDelInforme(datos: RegistrarResultado, informe: File[]) {
   return cuerpo;
 }
 
+
+/** De qué pliego son las observaciones: la 5.6 o la 5.12.1 (138). */
+export type RutaObservaciones = 'observaciones' | 'observaciones-definitivo';
+
 export const contratacionService = {
   listarProcesos: () => pedir<ProcesoResumen[]>('/procesos'),
 
@@ -338,6 +458,28 @@ export const contratacionService = {
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/cargue`, { method: 'POST', body: cuerpo });
   },
 
+  /** Corrige el CDP de la 4.2 retirada o devuelta y la vuelve a enviar (BUG-001). El certificado es opcional. */
+  corregirCdp: (
+    procesoId: string,
+    datos: {
+      rubro: string;
+      numero: string;
+      valor: number;
+      fechaExpedicion: string;
+      firma?: EvidenciaFirmaOtp;
+    },
+    archivo: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (archivo) cuerpo.append('file', archivo);
+    cuerpo.append('rubro', datos.rubro);
+    cuerpo.append('numero', datos.numero);
+    cuerpo.append('valor', String(datos.valor));
+    cuerpo.append('fechaExpedicion', datos.fechaExpedicion);
+    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
+    return pedir<Cdp>(`/procesos/${procesoId}/cdp/cargue`, { method: 'PUT', body: cuerpo });
+  },
+
   // ---------------------------------- el CDP desde el estudio previo (100) --
 
   cdpDelEstudioPrevio: (procesoId: string) =>
@@ -369,6 +511,9 @@ export const contratacionService = {
 
   cdpAntesDeRadicar: () => pedir<CdpAntesDeRadicar[]>('/configuracion/cdp-antes-de-radicar'),
 
+  /** Las modalidades con umbral propio para el comité; la cuantía general va en los parámetros. */
+  umbralesComite: () => pedir<UmbralesComite>('/configuracion/umbrales-comite'),
+
   guardarCdpAntesDeRadicar: (
     modalidad: string,
     datos: { obligatorio: boolean; fundamento?: string; confirmado?: boolean },
@@ -398,7 +543,15 @@ export const contratacionService = {
    */
   emitirAdenda: (
     procesoId: string,
-    datos: { tipo: 'FONDO' | 'CRONOGRAMA'; objeto: string; vencimientoNuevo?: string },
+    datos: {
+      tipo: 'FONDO' | 'CRONOGRAMA';
+      objeto: string;
+      vencimientoNuevo?: string;
+      /** HH:MM del nuevo cierre de ofertas; sin ella se conserva la del cronograma. */
+      horaNueva?: string;
+      /** Otras fechas del cronograma de la 5.2 que mueve; se aplican al publicarla (139). */
+      cambiosCronograma?: CambioCronogramaAdenda[];
+    },
     documento: File,
   ) => {
     const cuerpo = new FormData();
@@ -406,6 +559,10 @@ export const contratacionService = {
     cuerpo.append('tipo', datos.tipo);
     cuerpo.append('objeto', datos.objeto);
     if (datos.vencimientoNuevo) cuerpo.append('vencimientoNuevo', datos.vencimientoNuevo);
+    if (datos.horaNueva) cuerpo.append('horaNueva', datos.horaNueva);
+    if (datos.cambiosCronograma?.length) {
+      cuerpo.append('cambiosCronograma', JSON.stringify(datos.cambiosCronograma));
+    }
 
     return pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas`, {
       method: 'POST',
@@ -466,10 +623,12 @@ export const contratacionService = {
       fechaRadicacion: string;
       valorOfertado?: number;
     },
-    soporte: File,
+    /** El archivo, o el id de la carga por partes que ya lo subió (BUG-004). */
+    soporte: File | { cargaId: string },
   ) => {
     const cuerpo = new FormData();
-    cuerpo.append('file', soporte);
+    if (soporte instanceof File) cuerpo.append('file', soporte);
+    else cuerpo.append('cargaId', soporte.cargaId);
     cuerpo.append('nombre', datos.nombre);
     cuerpo.append('identificacion', datos.identificacion);
     cuerpo.append('fechaRadicacion', datos.fechaRadicacion);
@@ -482,6 +641,31 @@ export const contratacionService = {
       body: cuerpo,
     });
   },
+
+  // ------------------------------------------ cargas por partes (BUG-004) --
+
+  iniciarCarga: (procesoId: string, numeral: string, archivo: File) =>
+    pedir<{ id: string; partes: number; tamanoParte: number }>(
+      `/procesos/${procesoId}/actividades/${numeral}/cargas`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ nombre: archivo.name, tipo: archivo.type, tamano: archivo.size }),
+      },
+    ),
+
+  rutaDeParte: (procesoId: string, numeral: string, cargaId: string, n: number) =>
+    `/procesos/${procesoId}/actividades/${numeral}/cargas/${cargaId}/partes/${n}`,
+
+  completarCarga: (procesoId: string, numeral: string, cargaId: string) =>
+    pedir<{ id: string; nombre: string; tamano: number; archivos: number | null }>(
+      `/procesos/${procesoId}/actividades/${numeral}/cargas/${cargaId}/completar`,
+      { method: 'POST' },
+    ),
+
+  cancelarCarga: (procesoId: string, numeral: string, cargaId: string) =>
+    pedir<{ cancelada: boolean }>(`/procesos/${procesoId}/actividades/${numeral}/cargas/${cargaId}`, {
+      method: 'DELETE',
+    }),
 
   /** Retira una oferta registrada por error; solo antes del cierre. */
   retirarOferente: (procesoId: string, oferenteId: string) =>
@@ -635,6 +819,7 @@ export const contratacionService = {
     cuerpo.append('evidencia', evidencia);
     cuerpo.append('aseguradora', datos.aseguradora);
     cuerpo.append('numeroPoliza', datos.numeroPoliza);
+    cuerpo.append('tipoPoliza', datos.tipoPoliza);
     cuerpo.append('amparos', JSON.stringify(datos.amparos));
     cuerpo.append('fechaAprobacionSecop', datos.fechaAprobacionSecop);
 
@@ -891,6 +1076,16 @@ export const contratacionService = {
       body: JSON.stringify({}),
     }),
 
+  /**
+   * Quien tomó el proceso le devuelve el estudio previo al área con
+   * observaciones, sin pasarlo a los abogados. Solo mientras está en revisión.
+   */
+  devolverDesdeLaRadicacion: (procesoId: string, observaciones: string) =>
+    pedir<{ estado: string }>(`/procesos/${procesoId}/estudio-previo/devolver-desde-la-radicacion`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
   // -------------------------------------- puestos del proceso (109) ------
 
   /** Los puestos del proceso, quién ocupa cada uno y qué le impide actuar. */
@@ -922,10 +1117,6 @@ export const contratacionService = {
   /** Quién supervisa el contrato, si ya se le avisó y quiénes lo hicieron antes. */
   supervision: (procesoId: string) =>
     pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision`),
-
-  /** A quién se puede designar: los candidatos del puesto que avala la 9.4 (121). */
-  candidatosASupervisor: (procesoId: string, q = '') =>
-    pedir<CandidatoAPuesto[]>(`/procesos/${procesoId}/supervision/candidatos?q=${encodeURIComponent(q)}`),
 
   /**
    * Designa al supervisor con el acto administrativo que lo nombra. Le sale un
@@ -995,12 +1186,18 @@ export const contratacionService = {
     });
   },
 
-  /** Deja constancia de que se le comunicó la designación por fuera (matriz 8.2). */
-  avisarSupervisor: (procesoId: string) =>
-    pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/aviso`, {
+  /**
+   * Deja constancia de que se le comunicó la designación por fuera (matriz
+   * 8.2), con la evidencia obligatoria (sesión de QA del 04/11).
+   */
+  avisarSupervisor: (procesoId: string, evidencia: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    return pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/aviso`, {
       method: 'POST',
-      body: JSON.stringify({}),
-    }),
+      body: cuerpo,
+    });
+  },
 
   // ---------------------- etapa 9 · reunión y acta de inicio (9.1) ----------
 
@@ -1124,12 +1321,19 @@ export const contratacionService = {
     });
   },
 
-  /** El aval del supervisor sobre una cuenta radicada. */
-  avalarPago: (procesoId: string, pagoId: string, observacion?: string) =>
-    pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/avalar`, {
+  /**
+   * Carga el aval firmado del supervisor sobre una cuenta radicada. El
+   * supervisor no entra a la aplicación (136): el documento es su aval.
+   */
+  avalarPago: (procesoId: string, pagoId: string, aval: File, observacion?: string) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', aval);
+    if (observacion) cuerpo.append('observacion', observacion);
+    return pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/avalar`, {
       method: 'POST',
-      body: JSON.stringify(observacion ? { observacion } : {}),
-    }),
+      body: cuerpo,
+    });
+  },
 
   /** Devuelve la cuenta al contratista para que la corrija. */
   devolverPago: (procesoId: string, pagoId: string, motivo: string) =>
@@ -1411,6 +1615,13 @@ export const contratacionService = {
 
   solicitarAclaratorio: (procesoId: string, datos: DatosAclaratorio) =>
     pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/aclaratorios`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Otra modificación, con descripción libre (138). */
+  solicitarOtraModificacion: (procesoId: string, datos: DatosOtraModificacion) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/otras`, {
       method: 'POST',
       body: JSON.stringify(datos),
     }),
@@ -1752,9 +1963,15 @@ export const contratacionService = {
 
   // ------------------------------- etapa 5 · observaciones al pliego (5.6) ---
 
-  /** Observaciones del proceso con el resumen que decide si la actividad cumple. */
-  observaciones: (procesoId: string) =>
-    pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones`),
+  /**
+   * Observaciones del proceso con el resumen que decide si la actividad cumple.
+   *
+   * `ruta` elige el pliego: `observaciones` es la 5.6 (proyecto) y
+   * `observaciones-definitivo` la 5.12.1 (pliego definitivo, 138). Las dos se
+   * llevan igual.
+   */
+  observaciones: (procesoId: string, ruta: RutaObservaciones = 'observaciones') =>
+    pedir<EstadoObservaciones>(`/procesos/${procesoId}/${ruta}`),
 
   /**
    * Registra una observación recibida, con su soporte si lo hubo.
@@ -1774,6 +1991,7 @@ export const contratacionService = {
       contenido: string;
     },
     archivos: File[],
+    ruta: RutaObservaciones = 'observaciones',
   ) => {
     const cuerpo = new FormData();
     archivos.forEach((a) => cuerpo.append('files', a));
@@ -1781,7 +1999,7 @@ export const contratacionService = {
     cuerpo.append('fechaPresentacion', datos.fechaPresentacion);
     cuerpo.append('contenido', datos.contenido);
 
-    return pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones`, {
+    return pedir<EstadoObservaciones>(`/procesos/${procesoId}/${ruta}`, {
       method: 'POST',
       body: cuerpo,
     });
@@ -1793,6 +2011,7 @@ export const contratacionService = {
     datos: { respuesta?: string; modificoPliego?: boolean },
     archivos: File[],
     firma?: EvidenciaFirmaOtp,
+    ruta: RutaObservaciones = 'observaciones',
   ) => {
     const cuerpo = new FormData();
     archivos.forEach((a) => cuerpo.append('files', a));
@@ -1800,7 +2019,7 @@ export const contratacionService = {
     if (datos.modificoPliego !== undefined) cuerpo.append('modificoPliego', String(datos.modificoPliego));
     if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
-    return pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones/responder-todas`, {
+    return pedir<EstadoObservaciones>(`/procesos/${procesoId}/${ruta}/responder-todas`, {
       method: 'POST',
       body: cuerpo,
     });
@@ -1811,15 +2030,29 @@ export const contratacionService = {
     observacionId: string,
     datos: { respuesta: string; modificoPliego?: boolean },
     firma?: EvidenciaFirmaOtp,
-  ) =>
-    pedir<EstadoObservaciones>(
-      `/procesos/${procesoId}/observaciones/${observacionId}/responder`,
-      { method: 'POST', body: JSON.stringify({ ...datos, firma }) },
-    ),
+    ruta: RutaObservaciones = 'observaciones',
+    archivos: File[] = [],
+  ) => {
+    // Multipart: la respuesta a un solo interesado también lleva archivos.
+    const cuerpo = new FormData();
+    archivos.forEach((a) => cuerpo.append('files', a));
+    cuerpo.append('respuesta', datos.respuesta);
+    if (datos.modificoPliego !== undefined) cuerpo.append('modificoPliego', String(datos.modificoPliego));
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
+
+    return pedir<EstadoObservaciones>(
+      `/procesos/${procesoId}/${ruta}/${observacionId}/responder`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
 
   /** Da por cumplida la actividad cuando venció el plazo y no llegó ninguna. */
-  cerrarSinObservaciones: (procesoId: string, firma?: EvidenciaFirmaOtp) =>
-    pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones/cerrar`, {
+  cerrarSinObservaciones: (
+    procesoId: string,
+    firma?: EvidenciaFirmaOtp,
+    ruta: RutaObservaciones = 'observaciones',
+  ) =>
+    pedir<EstadoObservaciones>(`/procesos/${procesoId}/${ruta}/cerrar`, {
       method: 'POST',
       body: JSON.stringify({ firma }),
     }),
@@ -1959,6 +2192,19 @@ export const contratacionService = {
   // -------------------------------------------- Plan Anual de Adquisiciones --
 
   paa: {
+    /**
+     * La guía del formato del Excel, en memoria para pintarla en pantalla.
+     *
+     * Por `fetch` con la cookie, como `contenidoDocumento`: el `src` de un
+     * visor que apunta al gateway no siempre lleva la sesión.
+     */
+    formato: async (): Promise<Blob> => {
+      const res = await fetch(`${getApiGatewayBaseUrl()}${SERVICE_PREFIX}/paa/formato.pdf`, { credentials: 'include' });
+      if (res.status === 401) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+      if (!res.ok) throw new Error(`No se pudo abrir la guía del formato (error ${res.status})`);
+      return res.blob();
+    },
+
     opcionesDeCreacion: () => pedir<OpcionesDeCreacionPaa>('/paa/opciones-de-creacion'),
 
     buscarLineas: (region: string, q: string, pagina = 1, anio?: number) => {
@@ -2178,6 +2424,42 @@ export const contratacionService = {
       body: JSON.stringify({}),
     }),
 
+  // ------------- configuración · tipos de póliza y de amparo (8.4, 145) -----
+
+  /** Los tipos de póliza, incluidos los retirados. */
+  tiposPoliza: () => pedir<TipoPolizaConfigurable[]>('/configuracion/tipos-poliza'),
+
+  /** Crea un tipo de póliza o ajusta el que ya existe con ese código. */
+  guardarTipoPoliza: (datos: GuardarTipoPoliza) =>
+    pedir<TipoPolizaConfigurable>('/configuracion/tipos-poliza', {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Lo deja de ofrecer; las garantías que lo usaron lo conservan. */
+  retirarTipoPoliza: (codigo: string) =>
+    pedir<TipoPolizaConfigurable>(`/configuracion/tipos-poliza/${encodeURIComponent(codigo)}/retirar`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
+    }),
+
+  /** Los tipos de amparo (coberturas), incluidos los retirados. */
+  tiposAmparo: () => pedir<TipoAmparoConfigurable[]>('/configuracion/tipos-amparo'),
+
+  /** Crea un tipo de amparo o ajusta el que ya existe con ese código. */
+  guardarTipoAmparo: (datos: GuardarTipoAmparo) =>
+    pedir<TipoAmparoConfigurable>('/configuracion/tipos-amparo', {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Lo deja de ofrecer; los amparos ya registrados lo conservan. */
+  retirarTipoAmparo: (codigo: string) =>
+    pedir<TipoAmparoConfigurable>(`/configuracion/tipos-amparo/${encodeURIComponent(codigo)}/retirar`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
+    }),
+
   /** Actividades marcadas según apliquen o no a la modalidad. */
   actividadesDeModalidad: (modalidad: string) =>
     pedir<ActividadAplicable[]>(`/configuracion/actividades/modalidad/${modalidad}`),
@@ -2203,12 +2485,12 @@ export const contratacionService = {
       body: JSON.stringify(datos),
     }),
 
-  /** Marca si la actividad aplica a una modalidad. */
+  /** Marca si la actividad aplica a una modalidad; llega también a los procesos vivos. */
   cambiarAplicabilidad: (
     numeral: string,
     datos: { modalidad: string; aplica: boolean; motivo?: string },
   ) =>
-    pedir<ActividadAplicable>(`/configuracion/actividades/${numeral}/aplicabilidad`, {
+    pedir<CambioDeAplicabilidad>(`/configuracion/actividades/${numeral}/aplicabilidad`, {
       method: 'PUT',
       body: JSON.stringify(datos),
     }),
@@ -2414,10 +2696,14 @@ export const contratacionService = {
     medioPublicacion: string,
     evidencia: File,
     firma?: EvidenciaFirmaOtp,
+    /** Enlace del proceso y observaciones del traslado (138). */
+    extra: { enlaceProceso?: string; observaciones?: string } = {},
   ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', evidencia);
     cuerpo.append('medioPublicacion', medioPublicacion);
+    if (extra.enlaceProceso?.trim()) cuerpo.append('enlaceProceso', extra.enlaceProceso.trim());
+    if (extra.observaciones?.trim()) cuerpo.append('observaciones', extra.observaciones.trim());
     if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoTraslado>(`/procesos/${procesoId}/traslado/trasladar`, {
@@ -2574,10 +2860,22 @@ export const contratacionService = {
     informe: File | null,
     motivo?: string,
     /** La ganadora se decide en el definitivo (EFDS-1157). */
-    decision: { oferenteId?: string; valorEvaluado?: number; justificacion?: string } = {},
+    decision: {
+      oferenteId?: string;
+      valorEvaluado?: number;
+      justificacion?: string;
+      /** Por qué cambia frente al preliminar (138). */
+      justificacionCambios?: string;
+    } = {},
+    /** Documentos adicionales, opcionales (138). */
+    anexos: File[] = [],
   ) => {
     const cuerpo = new FormData();
     if (informe) cuerpo.append('file', informe);
+    for (const anexo of anexos) cuerpo.append('anexos', anexo);
+    if (decision.justificacionCambios?.trim()) {
+      cuerpo.append('justificacionCambios', decision.justificacionCambios.trim());
+    }
     // Actualizar un informe que ya existe pide motivo (EFDS-1159).
     if (motivo?.trim()) cuerpo.append('motivo', motivo.trim());
     if (decision.oferenteId) cuerpo.append('oferenteId', decision.oferenteId);
@@ -2886,8 +3184,95 @@ export const contratacionService = {
   /** Anticipación, tolerancia y hora del aviso diario (EFDS-1183). */
   parametrosAlerta: () => pedir<ParametroAlerta[]>('/alertas/parametros'),
 
+  /** Cronograma por etapas macro de la 5.2 (135). */
+  cronograma: (procesoId: string) =>
+    pedir<CronogramaPorEtapas>(`/procesos/${procesoId}/cronograma`),
+
+  /** Guarda el cronograma entero; las etapas sin fecha de fin se quitan. */
+  guardarCronograma: (
+    procesoId: string,
+    etapas: { etapa: number; fechaInicio: string | null; fechaFin: string | null; nota: string | null }[],
+  ) =>
+    pedir<CronogramaPorEtapas>(`/procesos/${procesoId}/cronograma`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ etapas }),
+    }),
+
+  /**
+   * Guarda el cronograma por actividad entero (138); lo del flujo que va sin
+   * fecha de fin se quita, y las propias que no van se borran (139).
+   */
+  guardarCronogramaActividades: (
+    procesoId: string,
+    actividades: {
+      /** Las del flujo; una propia va sin numeral, con nombre y etapa (139). */
+      numeral?: string | null;
+      id?: string | null;
+      nombre?: string | null;
+      etapa?: number | null;
+      fechaInicio: string | null;
+      fechaFin: string | null;
+      diasAntes: number | null;
+      avisarA: string[];
+      canal: string;
+      correos: string[];
+      nota: string | null;
+    }[],
+    origen: { adendaId?: string; motivo?: string } = {},
+  ) =>
+    pedir<CronogramaPorEtapas>(`/procesos/${procesoId}/cronograma/actividades`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        actividades,
+        ...(origen.adendaId ? { adendaId: origen.adendaId } : {}),
+        ...(origen.motivo?.trim() ? { motivo: origen.motivo.trim() } : {}),
+      }),
+    }),
+
+  /** Cuántas etapas y actividades salen en el cronograma predeterminado de cada modalidad (144). */
+  resumenCronogramaPredeterminado: () =>
+    pedir<ResumenPredeterminado[]>('/configuracion/cronograma-predeterminado'),
+
+  /** Qué etapas y actividades salen por defecto en el cronograma de una modalidad (140). */
+  cronogramaPredeterminado: (modalidad: string) =>
+    pedir<CronogramaPredeterminado>(`/configuracion/cronograma-predeterminado/${modalidad}`),
+
+  /** Reemplaza el cronograma predeterminado de la modalidad entero (144). */
+  guardarCronogramaPredeterminado: (
+    modalidad: string,
+    datos: { etapas: number[]; numerales: string[]; propias: PropiaPredeterminada[] },
+  ) =>
+    pedir<CronogramaPredeterminado>(`/configuracion/cronograma-predeterminado/${modalidad}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(datos),
+    }),
+
+  /** Lo que sale por defecto en el cronograma del proceso, según su modalidad (144). */
+  predeterminadoDelProceso: (procesoId: string) =>
+    pedir<PredeterminadoDelProceso>(`/procesos/${procesoId}/cronograma/predeterminado`),
+
+  /** Marca o desmarca cumplida una actividad propia del cronograma (139). */
+  marcarCumplidaCronograma: (procesoId: string, actividadId: string, cumplida: boolean) =>
+    pedir<CronogramaPorEtapas>(`/procesos/${procesoId}/cronograma/actividades/${actividadId}/cumplida`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cumplida }),
+    }),
+
   guardarParametrosAlerta: (cambios: Record<string, number>) =>
     pedir<ParametroAlerta[]>('/alertas/parametros', {
+      method: 'PUT',
+      body: JSON.stringify(cambios),
+    }),
+
+  /** Buzones de la entidad que reciben copia de los correos del módulo (138). */
+  correosInstitucionales: () => pedir<CorreoInstitucional[]>('/alertas/correos'),
+
+  guardarCorreosInstitucionales: (cambios: Record<string, string | null>) =>
+    pedir<CorreoInstitucional[]>('/alertas/correos', {
       method: 'PUT',
       body: JSON.stringify(cambios),
     }),
@@ -3037,9 +3422,9 @@ export const contratacionService = {
   /** Lo que impide activar: del borrador si lo hay, si no de la activa. */
   validacionFlujo: () => pedir<ProblemaFlujo[]>('/configuracion/flujo-versiones/validacion'),
 
-  /** Activa el borrador; 409 si algo queda sin quién lo haga o lo apruebe. */
+  /** Activa el borrador y pasa a él los procesos vivos; 409 si algo queda sin quién lo haga o lo apruebe. */
   activarFlujo: (nota?: string) =>
-    pedir<{ activada: boolean }>('/configuracion/flujo-versiones/activar', {
+    pedir<ResultadoActivacionFlujo>('/configuracion/flujo-versiones/activar', {
       method: 'POST',
       body: JSON.stringify({ nota }),
     }),
@@ -3069,13 +3454,23 @@ export const contratacionService = {
   /** Lo que la configuración deja sin salida: puestos que nadie puede ocupar, actividades huérfanas. */
   diagnosticoDePuestos: () => pedir<ProblemaDePuestos[]>('/configuracion/puestos/diagnostico'),
 
-  crearPuesto: (datos: { nombre: string; descripcion?: string | null; obligatorio?: boolean; orden?: number }) =>
+  crearPuesto: (datos: {
+    nombre: string;
+    descripcion?: string | null;
+    obligatorio?: boolean;
+    orden?: number;
+    rolId?: string | null;
+  }) =>
     pedir<Puesto>('/configuracion/puestos', { method: 'POST', body: JSON.stringify(datos) }),
 
   actualizarPuesto: (
     id: string,
-    datos: { nombre?: string; descripcion?: string | null; obligatorio?: boolean; orden?: number },
+    datos: { nombre?: string; descripcion?: string | null; obligatorio?: boolean; orden?: number; rolId?: string | null },
   ) => pedir<Puesto>(`/configuracion/puestos/${id}`, { method: 'PUT', body: JSON.stringify(datos) }),
+
+  /** Le da al rol del puesto los permisos por etapa que le faltan (143). */
+  completarPermisosDePuesto: (id: string) =>
+    pedir<PermisosCompletados>(`/configuracion/puestos/${id}/completar-permisos`, { method: 'POST' }),
 
   /** No se deja mientras alguna actividad lo use. */
   archivarPuesto: (id: string) => pedir<{ archivado: boolean }>(`/configuracion/puestos/${id}`, { method: 'DELETE' }),

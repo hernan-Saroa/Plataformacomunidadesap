@@ -19,6 +19,12 @@ import {
   Info,
   UserCheck,
   Tag,
+  Globe,
+  ShieldCheck,
+  Upload,
+  Paperclip,
+  Clock,
+  Calendar,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -85,6 +91,13 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const [cargandoDependencias, setCargandoDependencias] = useState<boolean>(true);
 
   const [tipoAtencion, setTipoAtencion] = useState<'FISICA' | 'TECNOLOGICA' | ''>('');
+  const [ambitoUbicacion, setAmbitoUbicacion] = useState<'CENTRAL' | 'TERRITORIAL'>('CENTRAL');
+  const [direccionesTerritoriales, setDireccionesTerritoriales] = useState<any[]>([]);
+  const [idDireccionTerritorial, setIdDireccionTerritorial] = useState<string | number>('');
+  const [idCetap, setIdCetap] = useState<string | number>('');
+  const [bloquesCetap, setBloquesCetap] = useState<BloqueEdificio[]>([]);
+  const [cargandoBloquesCetap, setCargandoBloquesCetap] = useState<boolean>(false);
+  const [ubicacionAdicionalTexto, setUbicacionAdicionalTexto] = useState<string>('');
   const [idSede, setIdSede] = useState<string>('');
   const [idBloque, setIdBloque] = useState<string>('');
   const [idEspacio, setIdEspacio] = useState<string>('');
@@ -97,6 +110,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const [salon, setSalon] = useState<string>('');
   const [ubicacionDetalle, setUbicacionDetalle] = useState<string>('');
   const [tipoMantenimiento, setTipoMantenimiento] = useState<string>('CORRECTIVO');
+  const [fechaProgramada, setFechaProgramada] = useState<string>('');
   const [idCategoria, setIdCategoria] = useState<number | undefined>(undefined);
   const [idSubcategoria, setIdSubcategoria] = useState<number | undefined>(undefined);
   const [prioridad, setPrioridad] = useState<string>('MEDIA');
@@ -108,6 +122,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const [nombreFuncionarioBienAsignado, setNombreFuncionarioBienAsignado] = useState<string>('');
   const [placaInventarioBien, setPlacaInventarioBien] = useState<string>('');
   const [soporteBienAsignadoUrl, setSoporteBienAsignadoUrl] = useState<string>('');
+  const [archivoSoporteBien, setArchivoSoporteBien] = useState<File | null>(null);
 
   const [archivos, setArchivos] = useState<ArchivoPendiente[]>([]);
   const [arrastrando, setArrastrando] = useState<boolean>(false);
@@ -128,6 +143,8 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
 
   const inputFileRef = useRef<HTMLInputElement>(null);
   const tipoAtencionRef = useRef<HTMLButtonElement>(null);
+  const territorialRef = useRef<HTMLSelectElement>(null);
+  const cetapRef = useRef<HTMLSelectElement>(null);
   const sedeRef = useRef<HTMLSelectElement>(null);
   const areaSolicitanteRef = useRef<HTMLSelectElement>(null);
   const bloqueRef = useRef<HTMLSelectElement>(null);
@@ -135,6 +152,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const pisoRef = useRef<HTMLInputElement>(null);
   const salonRef = useRef<HTMLInputElement>(null);
   const tipoMantenimientoRef = useRef<HTMLSelectElement>(null);
+  const fechaProgramadaRef = useRef<HTMLInputElement>(null);
   const categoriaRef = useRef<HTMLSelectElement>(null);
   const funcionarioRef = useRef<HTMLInputElement>(null);
   const placaRef = useRef<HTMLInputElement>(null);
@@ -146,14 +164,29 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         setCargandoSedes(true);
         setCargandoCatalogos(true);
         setCargandoDependencias(true);
-        const [listadoSedes, tm, pr, cs, deps] = await Promise.all([
+        const [listadoSedes, tm, pr, cs, deps, terrData, ambito] = await Promise.all([
           infraestructuraService.getSedesAlcanceUMI(),
           infraestructuraService.getCatalogo('TIPO_MANTENIMIENTO'),
           infraestructuraService.getCatalogo('PRIORIDAD'),
           infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'),
           infraestructuraService.getDependenciasCatalogo(),
+          infraestructuraService.getTerritorialesConCetaps(),
+          infraestructuraService.getAmbitoTerritorial(),
         ]);
         setSedesAlcance(listadoSedes);
+        if (terrData && Array.isArray(terrData.direccionesTerritoriales)) {
+          setDireccionesTerritoriales(terrData.direccionesTerritoriales);
+          // Pre-seleccionar la territorial del usuario si pertenece a una Dirección Territorial regional
+          if (ambito && !ambito.esCentral && ambito.idDireccionTerritorial) {
+            const dtMatch = terrData.direccionesTerritoriales.find(
+              (t: any) => Number(t.id) === Number(ambito.idDireccionTerritorial),
+            );
+            if (dtMatch) {
+              setAmbitoUbicacion('TERRITORIAL');
+              setIdDireccionTerritorial(String(dtMatch.id));
+            }
+          }
+        }
         setCatalogoCS(cs.length > 0 ? cs : []);
         setDependencias(Array.isArray(deps) && deps.length > 0 ? deps : []);
         if (listadoSedes.length === 1) {
@@ -201,18 +234,70 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const territorialSeleccionada = useMemo(() => {
+    return direccionesTerritoriales.find((t) => String(t.id) === String(idDireccionTerritorial)) ?? null;
+  }, [direccionesTerritoriales, idDireccionTerritorial]);
+
+  const cetapsDisponibles = useMemo(() => {
+    return territorialSeleccionada?.cetaps ?? [];
+  }, [territorialSeleccionada]);
+
+  const cetapSeleccionado = useMemo(() => {
+    return cetapsDisponibles.find((c: any) => String(c.id) === String(idCetap)) ?? null;
+  }, [cetapsDisponibles, idCetap]);
+
+  const cetapTieneBloques = useMemo(() => {
+    return Number(cetapSeleccionado?.total_bloques) > 0;
+  }, [cetapSeleccionado]);
+
   const sedeSeleccionada = useMemo(
     () => sedesAlcance.find((s) => s.idSede === idSede) ?? null,
     [sedesAlcance, idSede],
   );
-  const bloquesSedeSeleccionada: BloqueEdificio[] = useMemo(
-    () => (sedeSeleccionada?.bloques ?? []).filter((b) => b.isActivo !== false),
-    [sedeSeleccionada],
-  );
+
+  const bloquesDisponibles: BloqueEdificio[] = useMemo(() => {
+    if (ambitoUbicacion === 'TERRITORIAL') {
+      return bloquesCetap;
+    }
+    return (sedeSeleccionada?.bloques ?? []).filter((b) => b.isActivo !== false);
+  }, [ambitoUbicacion, bloquesCetap, sedeSeleccionada]);
+
+  const bloquesSedeSeleccionada = bloquesDisponibles;
+
   const espacioSeleccionado: EspacioFisico | null | undefined = useMemo(
     () => espaciosDelBloque.find((e) => e.idEspacio === idEspacio),
     [espaciosDelBloque, idEspacio],
   );
+
+  // Cargar bloques de CETAP o activar Fallback al cambiar CETAP
+  useEffect(() => {
+    if (ambitoUbicacion !== 'TERRITORIAL') return;
+    setIdBloque('');
+    setIdEspacio('');
+    setEspaciosDelBloque([]);
+    if (!idCetap) {
+      setBloquesCetap([]);
+      return;
+    }
+    const cetapObj = cetapsDisponibles.find((c: any) => String(c.id) === String(idCetap));
+    if (Number(cetapObj?.total_bloques) > 0) {
+      setCargandoBloquesCetap(true);
+      infraestructuraService
+        .getBloquesPorCetap(idCetap)
+        .then((blqs) => {
+          setBloquesCetap(blqs || []);
+        })
+        .catch((err) => {
+          console.warn('[NuevaSolicitudForm] Error cargando bloques de CETAP:', err);
+          setBloquesCetap([]);
+        })
+        .finally(() => setCargandoBloquesCetap(false));
+    } else {
+      setBloquesCetap([]);
+      setPiso('Piso 1');
+      setSalon(`CETAP ${cetapObj?.nombre || ''} - Sede General`);
+    }
+  }, [idCetap, ambitoUbicacion, cetapsDisponibles]);
 
   // (EFDS-1732) Reset selectores dependientes al cambiar la sede
   useEffect(() => {
@@ -237,6 +322,11 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
       setIdEspacio('');
       setPiso('');
       setSalon('');
+      return;
+    }
+    if (ambitoUbicacion === 'TERRITORIAL') {
+      const blq = bloquesCetap.find((b) => b.idBloque === idBloque);
+      setEspaciosDelBloque(blq?.espacios || []);
       return;
     }
     let cancelled = false;
@@ -301,18 +391,43 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const validar = (): boolean => {
     const nuevosErrores: Record<string, string> = {};
     if (!tipoAtencion) nuevosErrores.tipoAtencion = 'Seleccione el tipo de atención (Física o Tecnológica)';
-    if (!idSede) nuevosErrores.idSede = 'Seleccione la sede';
+    if (ambitoUbicacion === 'CENTRAL') {
+      if (!idSede) nuevosErrores.idSede = 'Seleccione la sede de Nivel Central';
+      if (ubicacionManual) {
+        if (!piso.trim()) nuevosErrores.piso = 'Ingrese el piso';
+        if (!salon.trim()) nuevosErrores.salon = 'Ingrese el salón, oficina o ubicación';
+      } else {
+        if (!idBloque) nuevosErrores.idBloque = 'Seleccione el bloque o edificio';
+        if (!idEspacio) nuevosErrores.idEspacio = 'Seleccione el espacio físico (aula, oficina, laboratorio...)';
+      }
+    } else {
+      if (!idDireccionTerritorial) nuevosErrores.idDireccionTerritorial = 'Seleccione la Dirección Territorial';
+      if (!idCetap) nuevosErrores.idCetap = 'Seleccione el CETAP municipal';
+      if (cetapTieneBloques && !ubicacionManual) {
+        if (!idBloque) nuevosErrores.idBloque = 'Seleccione el bloque o edificio del CETAP';
+        if (!idEspacio) nuevosErrores.idEspacio = 'Seleccione el espacio físico';
+      } else {
+        if (!salon.trim()) nuevosErrores.salon = 'Indique el espacio o ubicación específica';
+      }
+    }
     if (!nombreAreaSolicitante.trim() || nombreAreaSolicitante.trim().length < 3) {
       nuevosErrores.nombreAreaSolicitante = 'Ingrese el nombre del área solicitante (mínimo 3 caracteres)';
     }
-    if (ubicacionManual) {
-      if (!piso.trim()) nuevosErrores.piso = 'Ingrese el piso';
-      if (!salon.trim()) nuevosErrores.salon = 'Ingrese el salón, oficina o ubicación';
-    } else {
-      if (!idBloque) nuevosErrores.idBloque = 'Seleccione el bloque o edificio';
-      if (!idEspacio) nuevosErrores.idEspacio = 'Seleccione el espacio físico (aula, oficina, laboratorio...)';
-    }
     if (!tipoMantenimiento) nuevosErrores.tipoMantenimiento = 'Seleccione un tipo de mantenimiento';
+    if (tipoMantenimiento === 'PREVENTIVO') {
+      const hoyStr = new Date().toISOString().split('T')[0];
+      const max15DiasDate = new Date();
+      max15DiasDate.setDate(max15DiasDate.getDate() + 15);
+      const max15DiasStr = max15DiasDate.toISOString().split('T')[0];
+
+      if (!fechaProgramada) {
+        nuevosErrores.fechaProgramada = 'La fecha programada es obligatoria para mantenimiento preventivo (máx. 15 días a futuro)';
+      } else if (fechaProgramada < hoyStr) {
+        nuevosErrores.fechaProgramada = 'La fecha programada no puede ser anterior a la fecha actual';
+      } else if (fechaProgramada > max15DiasStr) {
+        nuevosErrores.fechaProgramada = `La fecha programada no puede superar el límite de 15 días calendario (${max15DiasStr})`;
+      }
+    }
     if (tipoAtencion !== 'TECNOLOGICA' && !Number.isInteger(idCategoria)) {
       nuevosErrores.idCategoria = 'Seleccione la categoría de servicio';
     }
@@ -329,12 +444,16 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
     }
     setErrores(nuevosErrores);
     if (Object.keys(nuevosErrores).length > 0) {
-      const ordenCampos = ubicacionManual
-        ? ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'piso', 'salon', 'tipoMantenimiento', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion']
-        : ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'idBloque', 'idEspacio', 'tipoMantenimiento', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion'];
+      const ordenCampos = ambitoUbicacion === 'CENTRAL'
+        ? (ubicacionManual
+            ? ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'piso', 'salon', 'tipoMantenimiento', 'fechaProgramada', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion']
+            : ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'idBloque', 'idEspacio', 'tipoMantenimiento', 'fechaProgramada', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion'])
+        : ['tipoAtencion', 'idDireccionTerritorial', 'idCetap', 'nombreAreaSolicitante', 'idBloque', 'idEspacio', 'salon', 'tipoMantenimiento', 'fechaProgramada', 'idCategoria', 'descripcion'];
       const primerCampoConError = ordenCampos.find((campo) => !!nuevosErrores[campo]);
       const refsPorCampo: Record<string, React.RefObject<HTMLElement | null>> = {
         tipoAtencion: tipoAtencionRef,
+        idDireccionTerritorial: territorialRef,
+        idCetap: cetapRef,
         idSede: sedeRef,
         nombreAreaSolicitante: areaSolicitanteRef,
         idBloque: bloqueRef,
@@ -342,6 +461,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         piso: pisoRef,
         salon: salonRef,
         tipoMantenimiento: tipoMantenimientoRef,
+        fechaProgramada: fechaProgramadaRef,
         idCategoria: categoriaRef,
         nombreFuncionarioBienAsignado: funcionarioRef,
         placaInventarioBien: placaRef,
@@ -464,14 +584,39 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
           ...archivos.flatMap((a) => (a.evidencia?.idEvidencia ? [a.evidencia.idEvidencia] : [])),
         ]),
       ).filter((x): x is string => !!x);
+
+      let soporteUrlFinal = soporteBienAsignadoUrl.trim();
+      if (esBienAsignadoFuncionario && archivoSoporteBien) {
+        try {
+          const evSoporte = await infraestructuraService.uploadEvidencia(archivoSoporteBien, {
+            notas: 'soporte_bien_asignado',
+          });
+          if (evSoporte) {
+            if (evSoporte.idEvidencia) {
+              uploadedEvidenciaIds.push(evSoporte.idEvidencia);
+            }
+            soporteUrlFinal = evSoporte.urlPresigned || evSoporte.urlPublica || soporteUrlFinal;
+          }
+        } catch (errUploadSoporte) {
+          console.warn('Error al subir soporte de bien asignado:', errUploadSoporte);
+        }
+      }
+
       const payload: CreateMantenimientoPayload = {
-        idSede,
+        ...(ambitoUbicacion === 'CENTRAL'
+          ? { idSede }
+          : {
+              idDireccionTerritorial: Number(idDireccionTerritorial),
+              idCetap: Number(idCetap),
+              ubicacionAdicionalTexto: ubicacionAdicionalTexto.trim() || undefined,
+            }),
         idEspacio: !ubicacionManual && idEspacio ? idEspacio : undefined,
         nombreAreaSolicitante: nombreAreaSolicitante.trim(),
         piso: piso.trim(),
         salon: salon.trim(),
         ubicacionDetalle: ubicacionDetalle.trim() || undefined,
         tipoMantenimiento,
+        fechaProgramada: tipoMantenimiento === 'PREVENTIVO' && fechaProgramada ? fechaProgramada : undefined,
         prioridad,
         idCategoria: Number.isInteger(idCategoria) ? idCategoria : undefined,
         idSubcategoria: Number.isInteger(idSubcategoria) ? idSubcategoria : undefined,
@@ -482,7 +627,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         esBienAsignadoFuncionario,
         nombreFuncionarioBienAsignado: esBienAsignadoFuncionario ? nombreFuncionarioBienAsignado.trim() : undefined,
         placaInventarioBien: esBienAsignadoFuncionario ? placaInventarioBien.trim() : undefined,
-        soporteBienAsignadoUrl: esBienAsignadoFuncionario && soporteBienAsignadoUrl.trim() ? soporteBienAsignadoUrl.trim() : undefined,
+        soporteBienAsignadoUrl: esBienAsignadoFuncionario && soporteUrlFinal ? soporteUrlFinal : undefined,
       };
       const resultado = await infraestructuraService.createMantenimiento(payload);
       archivos.forEach((a) => a.preview && URL.revokeObjectURL(a.preview));
@@ -671,41 +816,155 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className={etiquetaCampoClase('idSede')}>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                    Sede
-                  </span>
-                  <span className="text-rose-500 ml-1">*</span>
-                </label>
-                <select
-                  ref={sedeRef}
-                  value={idSede}
-                  onChange={(e) => {
-                    const nuevaSede = e.target.value;
-                    setIdSede(nuevaSede);
-                    if (nuevaSede && nombreAreaSolicitante) {
-                      const filtrada = dependencias.find((d) => d.nomDependencia === nombreAreaSolicitante);
-                      if (filtrada && filtrada.sedeUmiId && filtrada.sedeUmiId !== nuevaSede) {
-                        setNombreAreaSolicitante('');
-                      }
-                    }
+            {/* Selector de Ámbito de Ubicación: Nivel Central vs Red Territorial */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700 block">
+                Ámbito de Ubicación Geográfica <span className="text-rose-500">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAmbitoUbicacion('CENTRAL');
+                    setIdDireccionTerritorial('');
+                    setIdCetap('');
+                    setBloquesCetap([]);
+                    setIdBloque('');
+                    setIdEspacio('');
                   }}
-                  disabled={cargandoSedes}
-                  className={inputClase('idSede')}
-                  aria-invalid={!!errores.idSede}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                    ambitoUbicacion === 'CENTRAL'
+                      ? 'bg-white text-blue-700 shadow-sm border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
                 >
-                  <option value="">{cargandoSedes ? 'Cargando sedes...' : 'Seleccione una sede'}</option>
-                  {sedesAlcance.map((s) => (
-                    <option key={s.idSede} value={s.idSede}>
-                      {s.nombre}
-                    </option>
-                  ))}
-                </select>
-                {errorCampo('idSede')}
+                  <Building2 className="w-3.5 h-3.5" />
+                  Sedes Nivel Central (Bogotá D.C.)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAmbitoUbicacion('TERRITORIAL');
+                    setIdSede('');
+                    setIdBloque('');
+                    setIdEspacio('');
+                  }}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                    ambitoUbicacion === 'TERRITORIAL'
+                      ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  Dirección Territorial / CETAP Regional
+                </button>
               </div>
+            </div>
+
+            {/* Selectores según el ámbito elegido */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {ambitoUbicacion === 'CENTRAL' ? (
+                <div>
+                  <label className={etiquetaCampoClase('idSede')}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                      Sede Nivel Central
+                    </span>
+                    <span className="text-rose-500 ml-1">*</span>
+                  </label>
+                  <select
+                    ref={sedeRef}
+                    value={idSede}
+                    onChange={(e) => {
+                      const nuevaSede = e.target.value;
+                      setIdSede(nuevaSede);
+                      if (nuevaSede && nombreAreaSolicitante) {
+                        const filtrada = dependencias.find((d) => d.nomDependencia === nombreAreaSolicitante);
+                        if (filtrada && filtrada.sedeUmiId && filtrada.sedeUmiId !== nuevaSede) {
+                          setNombreAreaSolicitante('');
+                        }
+                      }
+                    }}
+                    disabled={cargandoSedes}
+                    className={inputClase('idSede')}
+                    aria-invalid={!!errores.idSede}
+                  >
+                    <option value="">{cargandoSedes ? 'Cargando sedes...' : 'Seleccione una sede central'}</option>
+                    {sedesAlcance.map((s) => (
+                      <option key={s.idSede} value={s.idSede}>
+                        {s.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  {errorCampo('idSede')}
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className={etiquetaCampoClase('idDireccionTerritorial')}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5 text-slate-400" />
+                        Dirección Territorial ({direccionesTerritoriales.length})
+                      </span>
+                      <span className="text-rose-500 ml-1">*</span>
+                    </label>
+                    <select
+                      ref={territorialRef}
+                      value={idDireccionTerritorial}
+                      onChange={(e) => {
+                        const tid = e.target.value;
+                        setIdDireccionTerritorial(tid);
+                        setIdCetap('');
+                        setIdBloque('');
+                        setIdEspacio('');
+                        setBloquesCetap([]);
+                      }}
+                      className={inputClase('idDireccionTerritorial')}
+                      aria-invalid={!!errores.idDireccionTerritorial}
+                    >
+                      <option value="">Seleccione la Dirección Territorial</option>
+                      {direccionesTerritoriales.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.nombre} {t.codigo ? `(${t.codigo})` : ''} · {(t.cetaps || []).length} CETAPs
+                        </option>
+                      ))}
+                    </select>
+                    {errorCampo('idDireccionTerritorial')}
+                  </div>
+
+                  <div>
+                    <label className={etiquetaCampoClase('idCetap')}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                        CETAP / Sede Municipal ({cetapsDisponibles.length})
+                      </span>
+                      <span className="text-rose-500 ml-1">*</span>
+                    </label>
+                    <select
+                      ref={cetapRef}
+                      value={idCetap}
+                      onChange={(e) => setIdCetap(e.target.value)}
+                      disabled={!idDireccionTerritorial || cetapsDisponibles.length === 0}
+                      className={inputClase('idCetap')}
+                      aria-invalid={!!errores.idCetap}
+                    >
+                      <option value="">
+                        {!idDireccionTerritorial
+                          ? 'Primero seleccione la territorial'
+                          : cetapsDisponibles.length === 0
+                          ? 'Sin CETAPs registrados'
+                          : 'Seleccione el CETAP municipal'}
+                      </option>
+                      {cetapsDisponibles.map((c: any) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre} {c.total_bloques > 0 ? `· (${c.total_bloques} bloques)` : '· (Fallback)'}
+                        </option>
+                      ))}
+                    </select>
+                    {errorCampo('idCetap')}
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className={etiquetaCampoClase('nombreAreaSolicitante')}>
@@ -742,68 +1001,97 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 {errorCampo('nombreAreaSolicitante')}
               </div>
 
-              <div>
-                <label className={etiquetaCampoClase('idBloque')}>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-slate-400" />
-                    Bloque / Edificio
-                  </span>
-                  <span className="text-rose-500 ml-1">*</span>
-                </label>
-                <select
-                  ref={bloqueRef}
-                  value={idBloque}
-                  onChange={(e) => setIdBloque(e.target.value)}
-                  disabled={ubicacionManual || cargandoSedes || !idSede}
-                  className={inputClase('idBloque')}
-                  aria-invalid={!!errores.idBloque}
-                >
-                  <option value="">
-                    {ubicacionManual
-                      ? 'Ubicación manual activada'
-                      : !idSede
-                      ? 'Primero seleccione la sede'
-                      : bloquesSedeSeleccionada.length === 0
-                      ? 'No hay bloques registrados para esta sede'
-                      : 'Seleccione el bloque o edificio'}
-                  </option>
-                  {bloquesSedeSeleccionada.map((b) => (
-                    <option key={b.idBloque} value={b.idBloque}>
-                      [{b.codigo}] {b.nombre} {b.pisos > 1 ? `· ${b.pisos} pisos` : ''}
-                    </option>
-                  ))}
-                </select>
-                {errorCampo('idBloque')}
-              </div>
+              {/* Bloque y Espacio: Si es Territorial con Fallback se muestra campo de ubicación asistida */}
+              {ambitoUbicacion === 'TERRITORIAL' && idCetap && !cetapTieneBloques ? (
+                <div className="md:col-span-2 p-3.5 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-950 flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-amber-900 mb-0.5">Modo de Radicación Asistida (Fallback Activo)</p>
+                      <p className="leading-relaxed">
+                        El <strong>CETAP {cetapSeleccionado?.nombre}</strong> aún no cuenta con un levantamiento de aulas y oficinas registrado. La solicitud se registrará como <strong>Sede General</strong> y el personal técnico clasificará la ubicación física en el diagnóstico.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-amber-200/60">
+                    <label className="block text-[11px] font-bold text-amber-900 mb-1">
+                      Ubicación específica o referencia en el CETAP (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Salón del 2do piso al lado de coordinación, baño del patio, etc."
+                      value={ubicacionAdicionalTexto}
+                      onChange={(e) => setUbicacionAdicionalTexto(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-amber-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className={etiquetaCampoClase('idBloque')}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-slate-400" />
+                        Bloque / Edificio
+                      </span>
+                      <span className="text-rose-500 ml-1">*</span>
+                    </label>
+                    <select
+                      ref={bloqueRef}
+                      value={idBloque}
+                      onChange={(e) => setIdBloque(e.target.value)}
+                      disabled={ubicacionManual || cargandoSedes || (ambitoUbicacion === 'CENTRAL' ? !idSede : !idCetap) || cargandoBloquesCetap}
+                      className={inputClase('idBloque')}
+                      aria-invalid={!!errores.idBloque}
+                    >
+                      <option value="">
+                        {ubicacionManual
+                          ? 'Ubicación manual activada'
+                          : cargandoBloquesCetap
+                          ? 'Cargando bloques del CETAP...'
+                          : (ambitoUbicacion === 'CENTRAL' ? !idSede : !idCetap)
+                          ? 'Primero seleccione la sede o CETAP'
+                          : bloquesSedeSeleccionada.length === 0
+                          ? 'No hay bloques registrados para esta sede'
+                          : 'Seleccione el bloque o edificio'}
+                      </option>
+                      {bloquesSedeSeleccionada.map((b) => (
+                        <option key={b.idBloque} value={b.idBloque}>
+                          [{b.codigo}] {b.nombre} {b.pisos > 1 ? `· ${b.pisos} pisos` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {errorCampo('idBloque')}
+                  </div>
 
-              <div>
-                <label className={etiquetaCampoClase('idEspacio')}>
-                  <span className="inline-flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                    Espacio físico (aula / oficina / lab)
-                  </span>
-                  <span className="text-rose-500 ml-1">*</span>
-                </label>
-                <select
-                  ref={espacioRef}
-                  value={idEspacio}
-                  onChange={(e) => setIdEspacio(e.target.value)}
-                  disabled={ubicacionManual || !idBloque || cargandoEspacios}
-                  className={inputClase('idEspacio')}
-                  aria-invalid={!!errores.idEspacio}
-                >
-                  <option value="">
-                    {ubicacionManual
-                      ? 'Ubicación manual activada'
-                      : !idBloque
-                      ? 'Primero seleccione el bloque'
-                      : cargandoEspacios
-                      ? 'Cargando espacios del bloque...'
-                      : espaciosDelBloque.length === 0
-                      ? 'No hay espacios registrados en este bloque'
-                      : 'Seleccione el espacio'}
-                  </option>
-                  {espaciosDelBloque.map((e) => (
+                  <div>
+                    <label className={etiquetaCampoClase('idEspacio')}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                        Espacio físico (aula / oficina / lab)
+                      </span>
+                      <span className="text-rose-500 ml-1">*</span>
+                    </label>
+                    <select
+                      ref={espacioRef}
+                      value={idEspacio}
+                      onChange={(e) => setIdEspacio(e.target.value)}
+                      disabled={ubicacionManual || !idBloque || cargandoEspacios}
+                      className={inputClase('idEspacio')}
+                      aria-invalid={!!errores.idEspacio}
+                    >
+                      <option value="">
+                        {ubicacionManual
+                          ? 'Ubicación manual activada'
+                          : !idBloque
+                          ? 'Primero seleccione el bloque'
+                          : cargandoEspacios
+                          ? 'Cargando espacios del bloque...'
+                          : espaciosDelBloque.length === 0
+                          ? 'No hay espacios registrados en este bloque'
+                          : 'Seleccione el espacio'}
+                      </option>
+                      {espaciosDelBloque.map((e) => (
                     <option key={e.idEspacio} value={e.idEspacio}>
                       [{e.codigo}] {e.nombre} · {e.tipo} · P{e.piso === 0 ? 'B' : e.piso} {e.capacidad ? `· Cap ${e.capacidad}` : ''}
                     </option>
@@ -811,6 +1099,8 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 </select>
                 {errorCampo('idEspacio')}
               </div>
+            </>
+          )}
 
               <div className="md:col-span-2">
                 <label className="inline-flex items-start gap-2 select-none cursor-pointer">
@@ -920,7 +1210,24 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 <select
                   ref={tipoMantenimientoRef}
                   value={tipoMantenimiento}
-                  onChange={(e) => setTipoMantenimiento(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTipoMantenimiento(val);
+                    if (val === 'PREVENTIVO') {
+                      if (!fechaProgramada) {
+                        const hoy = new Date().toISOString().split('T')[0];
+                        setFechaProgramada(hoy);
+                      }
+                      if (!idCategoria && tipoAtencion !== 'TECNOLOGICA') {
+                        const catPrev = catalogoCS.find(
+                          (c) => c.codigo === 'CS_008' || String(c.nombre || '').toLowerCase().includes('preventivo'),
+                        );
+                        if (catPrev) {
+                          setIdCategoria(catPrev.idCatalogo);
+                        }
+                      }
+                    }
+                  }}
                   disabled={cargandoCatalogos}
                   className={inputClase('tipoMantenimiento')}
                   aria-invalid={!!errores.tipoMantenimiento}
@@ -933,6 +1240,45 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 </select>
                 {errorCampo('tipoMantenimiento')}
               </div>
+
+              {tipoMantenimiento === 'PREVENTIVO' && (
+                <div className="rounded-xl border border-sky-300 bg-sky-50/70 p-4 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-900">
+                      <Clock className="w-4 h-4 text-sky-600" />
+                      Programación Preventiva (Ventana Máx. 15 Días)
+                    </span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-sky-200 text-sky-800 border border-sky-300">
+                      Máx. 15 Días Futuro
+                    </span>
+                  </div>
+                  <label className={etiquetaCampoClase('fechaProgramada')}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      Fecha Programada de Atención
+                    </span>
+                    <span className="text-rose-500 ml-1">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    ref={fechaProgramadaRef}
+                    min={new Date().toISOString().split('T')[0]}
+                    max={(() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + 15);
+                      return d.toISOString().split('T')[0];
+                    })()}
+                    value={fechaProgramada}
+                    onChange={(e) => setFechaProgramada(e.target.value)}
+                    className={inputClase('fechaProgramada')}
+                    aria-invalid={!!errores.fechaProgramada}
+                  />
+                  <p className="text-[11px] text-sky-700">
+                    La intervención preventiva debe programarse entre hoy ({new Date().toISOString().split('T')[0]}) y un plazo máximo de 15 días calendario hacia el futuro.
+                  </p>
+                  {errorCampo('fechaProgramada')}
+                </div>
+              )}
 
               <div>
                 <label className={etiquetaCampoClase('idCategoria')}>
@@ -1075,7 +1421,10 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                       <UserCheck className="w-5 h-5" />
                     </div>
                     <div>
-                      <label htmlFor="toggle-bien-funcionario" className="text-sm font-semibold text-slate-800 cursor-pointer select-none">
+                      <label
+                        onClick={() => setEsBienAsignadoFuncionario((prev) => !prev)}
+                        className="text-sm font-semibold text-slate-800 cursor-pointer select-none"
+                      >
                         ¿El mantenimiento se realiza sobre un bien asignado a un funcionario?
                       </label>
                       <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
@@ -1083,16 +1432,28 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                       </p>
                     </div>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
-                    <input
-                      id="toggle-bien-funcionario"
-                      type="checkbox"
-                      checked={esBienAsignadoFuncionario}
-                      onChange={(e) => setEsBienAsignadoFuncionario(e.target.checked)}
-                      className="sr-only peer"
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={esBienAsignadoFuncionario}
+                    onClick={() => setEsBienAsignadoFuncionario((prev) => !prev)}
+                    style={{
+                      backgroundColor: esBienAsignadoFuncionario ? '#ea580c' : '#cbd5e1',
+                      borderColor: esBienAsignadoFuncionario ? '#c2410c' : '#94a3b8',
+                    }}
+                    className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-orange-500/40 mt-1 shadow-inner ${
+                      esBienAsignadoFuncionario ? 'bg-orange-600 border-orange-700' : 'bg-slate-300 border-slate-400'
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        transform: esBienAsignadoFuncionario ? 'translateX(22px)' : 'translateX(2px)',
+                        transition: 'transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+                      }}
+                      className="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-md ring-0"
                     />
-                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
-                  </label>
+                  </button>
                 </div>
 
                 {esBienAsignadoFuncionario && (
@@ -1137,21 +1498,71 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                       {errorCampo('placaInventarioBien')}
                     </div>
 
-                    <div className="md:col-span-2">
-                      <label className={labelClase}>
-                        <span className="inline-flex items-center gap-1.5">
-                          <Link2 className="w-3.5 h-3.5 text-slate-400" />
-                          Enlace / Soporte de entrega o asignación
-                        </span>
-                        <span className="text-slate-400 font-normal ml-2">(opcional)</span>
-                      </label>
-                      <input
-                        type="url"
-                        value={soporteBienAsignadoUrl}
-                        onChange={(e) => setSoporteBienAsignadoUrl(e.target.value)}
-                        placeholder="https://drive.google.com/... o enlace a acta de entrega"
-                        className={inputClase('soporteBienAsignadoUrl')}
-                      />
+                    <div className="md:col-span-2 space-y-3">
+                      <div>
+                        <label className={labelClase}>
+                          <span className="inline-flex items-center gap-1.5">
+                            <Link2 className="w-3.5 h-3.5 text-slate-400" />
+                            Enlace / Soporte de entrega o asignación
+                          </span>
+                          <span className="text-slate-400 font-normal ml-2">(opcional si adjunta archivo abajo)</span>
+                        </label>
+                        <input
+                          type="url"
+                          value={soporteBienAsignadoUrl}
+                          onChange={(e) => setSoporteBienAsignadoUrl(e.target.value)}
+                          placeholder="https://drive.google.com/... o enlace a acta de entrega"
+                          className={inputClase('soporteBienAsignadoUrl')}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className={labelClase}>
+                          <span className="inline-flex items-center gap-1.5">
+                            <FileText className="w-3.5 h-3.5 text-slate-400" />
+                            Anexo / Soporte Documental del Bien (PDF o Imagen)
+                          </span>
+                          <span className="text-slate-400 font-normal ml-2">(opcional)</span>
+                        </label>
+
+                        {archivoSoporteBien ? (
+                          <div className="flex items-center justify-between p-2.5 rounded-xl bg-amber-50/80 border border-amber-200">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Paperclip className="w-4 h-4 text-amber-600 shrink-0" />
+                              <span className="text-xs font-semibold text-amber-900 truncate">
+                                {archivoSoporteBien.name}
+                              </span>
+                              <span className="text-[10px] text-amber-600 shrink-0">
+                                ({(archivoSoporteBien.size / 1024).toFixed(1)} KB)
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setArchivoSoporteBien(null)}
+                              className="p-1 rounded-lg hover:bg-amber-100 text-amber-700 transition-colors"
+                              title="Quitar archivo"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-slate-300 hover:border-amber-400 bg-slate-50/50 hover:bg-amber-50/30 cursor-pointer transition-all">
+                            <Upload className="w-4 h-4 text-slate-500" />
+                            <span className="text-xs font-medium text-slate-600">
+                              Adjuntar PDF, oficio, acta de entrega o constancia (PNG/JPG)
+                            </span>
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept=".pdf,.png,.jpg,.jpeg"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) setArchivoSoporteBien(file);
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}

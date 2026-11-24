@@ -6,12 +6,12 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
-  Query,
   Req,
+  UploadedFile,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileFieldsInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { join } from 'path';
 import { unlink } from 'fs/promises';
@@ -90,17 +90,6 @@ export class SupervisionController {
   })
   estado(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
     return this.service.estado(procesoId, getHiringAccess(req));
-  }
-
-  @Get('candidatos')
-  @Puede('ver', '8.2')
-  @ApiOperation({
-    summary: 'A quién se puede designar supervisor',
-    description:
-      'Las cuentas que pueden ocupar el puesto que avala la 9.4 en este proceso (121): las que tienen todos los permisos de lo que ese puesto hace.',
-  })
-  candidatos(@Param('id', ParseUUIDPipe) procesoId: string, @Query('q') q?: string) {
-    return this.service.candidatos(procesoId, q ?? '');
   }
 
   @Post()
@@ -245,13 +234,37 @@ export class SupervisionController {
 
   @Post('aviso')
   @Puede('decidir', '8.2')
+  @UseInterceptors(
+    FileInterceptor(
+      'file',
+      opcionesDeCarga(
+        [...MIME_DOCUMENTOS, ...MIME_IMAGENES],
+        'La evidencia de la notificación se carga en PDF, Word, Excel, PNG o JPG',
+      ),
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Dejar constancia de que se le avisó al supervisor',
     description:
-      'La matriz pide en 8.2 que se le alerte. Lo normal es que lo haga el correo de la designación (124); esto queda para cuando no salió y se le avisó por fuera.',
+      'Lo normal es que lo haga el correo de la designación (124); esto queda para cuando no salió y se le avisó por fuera, con la evidencia obligatoria en `file` (sesión de QA del 04/11).',
   })
-  registrarAviso(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
-    return this.service.registrarAviso(procesoId, getHiringAccess(req));
+  async registrarAviso(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @UploadedFile() file: any,
+    @Req() req: any,
+  ) {
+    try {
+      return await this.service.registrarAviso(
+        procesoId,
+        getHiringAccess(req),
+        file,
+        file ? await sha256Archivo(join(STORAGE_PATH, file.filename)) : undefined,
+      );
+    } catch (error) {
+      if (file) await unlink(join(STORAGE_PATH, file.filename)).catch(() => undefined);
+      throw error;
+    }
   }
 
   /** El acto es un acto administrativo: solo ofimáticos, aunque los anexos admitan imágenes. */

@@ -3,9 +3,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { BancoDocentesBulkUpload } from './BancoDocentesBulkUpload';
 import { bulkUploadBancoDocentes, getRundConvocatorias } from '../../../services/api/ptaApi';
 import { downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
+import { downloadRundBulkErrorReport } from '../../../utils/rundBulkErrorReport';
 
 vi.mock('../../../services/api/ptaApi', () => ({ getRundConvocatorias: vi.fn().mockResolvedValue([]), bulkUploadBancoDocentes: vi.fn() }));
 vi.mock('../../../utils/bancoDocentesExcel', () => ({ downloadBancoDocentesTemplate: vi.fn() }));
+vi.mock('../../../utils/rundBulkErrorReport', () => ({ downloadRundBulkErrorReport: vi.fn().mockReturnValue(true) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() } }));
 // These cases verify import requests; animation scheduling belongs to browser checks.
 vi.mock('motion/react', async () => {
@@ -117,4 +119,64 @@ it('permite asociar filas sin cambios si se escribe la convocatoria después de 
   fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Nueva convocatoria' } });
   fireEvent.click(await screen.findByRole('button', { name: 'Importar ahora (1)' }));
   await waitFor(() => expect(bulkUploadBancoDocentes).toHaveBeenLastCalledWith(file, false, true, '2026-2', 'Nueva convocatoria'));
+});
+
+it('HU 1355: con filas rechazadas ofrece descargar el reporte de errores con el nombre del archivo cargado', async () => {
+  const errorDetails = [{ fila: 4, columna: 'DOCUMENTO_IDENTIDAD', datoErrado: '12', message: 'La cédula debe tener entre 5 y 20 caracteres.' }];
+  vi.mocked(bulkUploadBancoDocentes).mockResolvedValue({ success: true, data: {
+    total: 3, created: 2, updated: 0, unchanged: 0, errors: 1, results: [], errorDetails,
+  } } as any);
+  const { container } = render(<BancoDocentesBulkUpload {...props} periodoSeleccionado="2026-2" />);
+  const file = archivo();
+  fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [file] } });
+  fireEvent.click(await screen.findByRole('button', { name: /Descargar reporte de errores/ }));
+  expect(downloadRundBulkErrorReport).toHaveBeenCalledWith(errorDetails, 'CargaDocentes_RUND_2026-1.xlsx');
+});
+
+it('HU 1355: sin errores no aparece el botón del reporte', async () => {
+  vi.mocked(bulkUploadBancoDocentes).mockResolvedValue({ success: true, data: {
+    total: 2, created: 2, updated: 0, unchanged: 0, errors: 0, results: [], errorDetails: [],
+  } } as any);
+  const { container } = render(<BancoDocentesBulkUpload {...props} periodoSeleccionado="2026-2" />);
+  fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [archivo()] } });
+  await screen.findByRole('button', { name: /Importar ahora/ });
+  expect(screen.queryByRole('button', { name: /Descargar reporte de errores/ })).toBeNull();
+});
+
+const subir = async (data: object) => {
+  vi.mocked(bulkUploadBancoDocentes).mockResolvedValue({ success: true, data: { total: 1, created: 0, updated: 1, unchanged: 0, errors: 0, results: [], errorDetails: [], ...data } } as any);
+  const { container } = render(<BancoDocentesBulkUpload {...props} periodoSeleccionado="2026-2" />);
+  fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [archivo()] } });
+  await screen.findByText('Total Registros');
+};
+
+it('RUND-003: plantilla cuyo perfil ya coincide con las columnas de título muestra el aviso en vez de callar', async () => {
+  await subir({ titulosReconocidos: 3, titulosDeducidos: 0, titulosSinClasificar: 0 });
+  const nota = screen.getByRole('note').textContent;
+  expect(nota).toContain('3 títulos reconocidos');
+  expect(nota).toContain('No hay títulos adicionales nuevos por registrar');
+});
+
+it('RUND-003: perfil con títulos nuevos informa cuántos se registran y lista lo no clasificado con su fila', async () => {
+  await subir({
+    titulosReconocidos: 4, titulosDeducidos: 3, titulosSinClasificar: 1,
+    results: [{ sourceRowNumber: 3, fullName: 'DOCENTE UNO', action: 'update', titulosSinClasificar: ['Posgrado en Cultura de la Paz'] }],
+  });
+  expect(screen.getByRole('note').textContent).toContain('3 se registrarán como información adicional');
+  expect(screen.getByRole('listitem').textContent).toBe('Fila 3 · DOCENTE UNO: Posgrado en Cultura de la Paz');
+});
+
+it('RUND-003: si todas las filas tienen errores avisa que no se analizaron sus títulos', async () => {
+  await subir({ total: 1, updated: 0, errors: 1, errorDetails: [{ fila: 3, columna: 'INICIO_VINCULACION', message: 'Campo obligatorio vacío: INICIO_VINCULACION' }] });
+  expect(screen.getByRole('note').textContent).toContain('1 fila con errores no se analizó');
+});
+
+it('RUND-003: si el perfil no trae títulos reconocibles lo dice', async () => {
+  await subir({ filasSinTitulosEnPerfil: 1 });
+  expect(screen.getByRole('note').textContent).toContain('sin títulos reconocibles');
+});
+
+it('RUND-003: sin nada que informar no aparece el aviso', async () => {
+  await subir({});
+  expect(screen.queryByRole('note')).toBeNull();
 });

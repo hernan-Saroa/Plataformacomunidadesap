@@ -57,9 +57,10 @@ interface ArchivoCargado {
 /**
  * Publicación del contrato — actividad 8.8 (EFDS-1166).
  *
- * Se registra el destino porque las fuentes no coinciden: la historia habla de
- * SECOP II y la matriz llama a la actividad «Publicación en página web ESAP».
- * Registrar el sitio reconcilia las dos lecturas sin decidir por Contratación.
+ * Desde la sesión de QA del 04/11 la actividad es **solo la página web de la
+ * ESAP**: el contrato ya se publicó en SECOP II con la adjudicación, así que esa
+ * opción se quitó. Las publicaciones en SECOP II registradas antes se siguen
+ * mostrando y siguen contando para el cierre, para no reabrir lo ya cumplido.
  *
  * El cálculo del plazo reutiliza el de la publicidad del pliego (EFDS-1150):
  * los días hábiles y los festivos colombianos ya están resueltos ahí, y tener
@@ -81,7 +82,7 @@ export class PublicacionContratoService {
     if (!contrato) {
       return {
         suscrito: false,
-        motivoNoSuscrito: 'el proceso todavía no tiene contrato generado',
+        motivoNoSuscrito: 'el proceso todavía no tiene contrato (se genera en la 8.1)',
         plazo,
         publicaciones: [] as any[],
         pendientes: [] as DestinoPublicacion[],
@@ -125,9 +126,9 @@ export class PublicacionContratoService {
       }),
       // Qué destinos faltan, dicho por el servidor: la pantalla no tiene por
       // qué conocer la lista ni cómo se compara.
-      pendientes: (['SECOP_II', 'WEB_ESAP'] as DestinoPublicacion[]).filter(
-        (d) => !publicaciones.some((p) => p.destino === d),
-      ),
+      // Desde el 04/11 solo la página web; con cualquier publicación ya
+      // registrada no falta nada.
+      pendientes: (publicaciones.length ? [] : ['WEB_ESAP']) as DestinoPublicacion[],
     };
   }
 
@@ -147,22 +148,14 @@ export class PublicacionContratoService {
         where: { contratoId: contrato.id, destino: dto.destino },
       });
       if (repetida) {
-        throw new ConflictException(
-          dto.destino === 'SECOP_II'
-            ? 'El contrato ya se registró como publicado en SECOP II'
-            : 'El contrato ya se registró como publicado en la página web de la ESAP',
-        );
+        throw new ConflictException('El contrato ya se registró como publicado en la página web de la ESAP');
       }
 
       this.validarFecha(dto.fechaPublicacion);
 
-      // Solo SECOP II cierra la actividad: la de la página web queda
-      // registrada pero no la da por cumplida, y exigir la firma ahí sería
-      // pedirla por algo que no cierra nada.
-      if (
-        dto.destino === 'SECOP_II' &&
-        (await this.cierre.exigeFirma(em, NUMERAL_PUBLICACION_CONTRATO))
-      ) {
+      // La publicación en la página web es la que cierra la actividad, así
+      // que la firma, si la 8.8 la exige, se pide aquí.
+      if (await this.cierre.exigeFirma(em, NUMERAL_PUBLICACION_CONTRATO)) {
         this.cierre.exigirFirmaValida(dto.firma);
       }
 
@@ -177,7 +170,7 @@ export class PublicacionContratoService {
       const fechaLimite = sumarDiasHabiles(desde, plazo.diasHabiles, festivos);
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const doc = await this.guardarDocumento(
         em,
@@ -209,7 +202,7 @@ export class PublicacionContratoService {
         procesoId,
         contrato.id,
         acceso,
-        dto.destino === 'SECOP_II' ? dto.firma : undefined,
+        dto.firma,
       );
 
       await this.traza(em, procesoId, publicacion.id, 'PUBLICAR', acceso, {
@@ -269,11 +262,11 @@ export class PublicacionContratoService {
   }
 
   /**
-   * La actividad se cumple con la publicación en SECOP II.
+   * La actividad se cumple con la publicación en la página web de la ESAP.
    *
-   * Es la que la historia exige (RF-LEG-05); la de la página web de la ESAP
-   * queda registrada pero no condiciona el cierre, porque las fuentes no
-   * coinciden en si son dos publicaciones o una sola.
+   * Sesión de QA del 04/11: la 8.8 es solo la web, porque en SECOP II el
+   * contrato ya quedó publicado con la adjudicación. Una publicación en SECOP II
+   * registrada antes de ese cambio también la da por cumplida.
    */
   private async marcarActividad(
     em: EntityManager,
@@ -282,11 +275,9 @@ export class PublicacionContratoService {
     acceso: HiringAccess,
     firma?: FirmaOtpDto,
   ) {
-    const secop = await em
-      .getRepository(PublicacionContrato)
-      .findOne({ where: { contratoId, destino: 'SECOP_II' } });
+    const publicada = await em.getRepository(PublicacionContrato).findOne({ where: { contratoId } });
 
-    if (!secop) {
+    if (!publicada) {
       const actividad = await em
         .getRepository(ProcesoActividad)
         .findOne({ where: { procesoId, numeral: NUMERAL_PUBLICACION_CONTRATO } });
@@ -321,7 +312,7 @@ export class PublicacionContratoService {
 
   private async contratoDelProceso(em: EntityManager, procesoId: string, bloquear = false) {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
 
     const consulta = em
       .getRepository(Contrato)
@@ -336,7 +327,7 @@ export class PublicacionContratoService {
 
   private async exigirContratoSuscrito(em: EntityManager, procesoId: string) {
     const contrato = await this.contratoDelProceso(em, procesoId, true);
-    if (!contrato) throw new NotFoundException('El proceso no tiene contrato generado');
+    if (!contrato) throw new NotFoundException('El proceso todavía no tiene contrato: se genera en la 8.1');
 
     if (!admitePublicacion(contrato.estado)) {
       throw new ConflictException(

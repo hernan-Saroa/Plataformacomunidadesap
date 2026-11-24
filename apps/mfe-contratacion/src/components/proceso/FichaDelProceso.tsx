@@ -264,8 +264,7 @@ export function FichaDelProceso({
             />
             {/* Los puestos que configuró la Dirección (109): ya no hay un
                 abogado fijo, hay los lugares que el área decidió. */}
-            {/* El del supervisor va en su propia fila, con la designación. */}
-            {(puestos?.puestos ?? []).filter((p) => p.seOcupaEn !== '8.2').map((p) => (
+            {(puestos?.puestos ?? []).map((p) => (
               <Miembro
                 key={p.id}
                 Icono={Scale}

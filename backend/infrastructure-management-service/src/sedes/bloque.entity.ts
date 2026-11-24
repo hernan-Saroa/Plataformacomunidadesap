@@ -16,8 +16,11 @@ export class BloqueEdificio {
   @PrimaryGeneratedColumn('uuid', { name: 'id_bloque' })
   idBloque: string;
 
-  @Column({ type: 'uuid', name: 'id_sede' })
-  idSede: string;
+  @Column({ type: 'uuid', name: 'id_sede', nullable: true })
+  idSede?: string;
+
+  @Column({ type: 'bigint', name: 'id_cetap', nullable: true })
+  idCetap?: number;
 
   @Column({ type: 'varchar', length: 30 })
   codigo: string;

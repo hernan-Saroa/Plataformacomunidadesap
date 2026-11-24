@@ -1,20 +1,27 @@
+import { RUND_MAX_ARCHIVO_BYTES, RUND_MAX_ARCHIVO_MB } from '../../../utils/rundEvidenceRules';
 import { useState, useEffect } from 'react';
 import { Mail, ShieldCheck, ChevronRight, CheckCircle, Save, Loader2, User, Briefcase, GraduationCap, FileText, Upload, X, Paperclip } from 'lucide-react';
 import { apiClient } from '../../../../../shell/src/services/api';
 import { ESAPLogo } from '../../../../../shell/src/components/assets/ESAPLogo';
 import { vincularRundSoporte } from '../../../services/api/ptaApi';
 import { PerfilDocenteCabezote } from './PerfilDocenteCabezote';
+import { RUND_BLOCK_LABELS } from '../../../utils/rundDocumentScope';
 
 // Catálogo de soportes por bloque RUND (alineado con BancoDocentesService.CATALOGO_SOPORTE).
 // Se presenta un subconjunto curado con etiquetas amigables para la autogestión del docente.
 const SOPORTES_CATALOGO: { bloque: string; label: string; tipos: { key: string; label: string; required?: boolean }[] }[] = [
   {
-    bloque: 'IDENTIDAD', label: 'Identidad',
-    tipos: [{ key: 'documento_identidad', label: 'Documento de identidad (cédula)', required: true }],
+    bloque: 'IDENTIDAD', label: RUND_BLOCK_LABELS.IDENTIDAD,
+    tipos: [
+      { key: 'documento_identidad', label: 'Documento de identidad (cédula)', required: true },
+      { key: 'tarjeta_profesional', label: 'Tarjeta profesional' },
+      { key: 'hoja_vida', label: 'Hoja de vida' },
+    ],
   },
   {
-    bloque: 'FORMACION', label: 'Formación Académica',
+    bloque: 'FORMACION', label: RUND_BLOCK_LABELS.FORMACION,
     tipos: [
+      { key: 'diploma_bachiller', label: 'Diploma de bachiller' },
       { key: 'diploma_pregrado', label: 'Diploma o acta de grado de pregrado', required: true },
       { key: 'diploma_especializacion', label: 'Diploma de especialización' },
       { key: 'diploma_maestria', label: 'Diploma de maestría' },
@@ -38,11 +45,18 @@ const SOPORTES_CATALOGO: { bloque: string; label: string; tipos: { key: string; 
     ],
   },
   {
-    bloque: 'ACADEMICO', label: 'Académico',
+    bloque: 'ACADEMICO', label: RUND_BLOCK_LABELS.ACADEMICO,
     tipos: [
       { key: 'acto_asignacion_nucleo', label: 'Acto de asignación del núcleo temático' },
       { key: 'certificacion_investigacion', label: 'Certificación de investigación' },
       { key: 'acta_evaluacion_desempeno', label: 'Acta de evaluación de desempeño' },
+      { key: 'experiencia_docente', label: '02 Experiencia docente' },
+      { key: 'experiencia_laboral', label: '03 Experiencia laboral' },
+      { key: 'experiencia_investigativa', label: 'Experiencia investigativa' },
+      { key: 'productividad_academica', label: 'Productividad académica' },
+      { key: 'dominio_segunda_lengua', label: 'Dominio de segunda lengua' },
+      { key: 'formacion_no_formal', label: 'Formación no formal' },
+      { key: 'estudio_hoja_vida', label: 'Estudio de hoja de vida' },
     ],
   },
   { bloque: 'TRANSVERSAL', label: 'Transversal', tipos: [{ key: 'autorizacion_habeas_data', label: 'Autorización de tratamiento de datos firmada', required: true }] },
@@ -314,8 +328,8 @@ export function AutogestionDocenteRUND() {
 
   // Manejo de archivos retenidos por bloque/tipo (no se suben hasta el envío final).
   const setSoporteFile = (bloque: string, tipo: string, file: File | null) => {
-    if (file && (!file.name.toLowerCase().endsWith('.pdf') || file.type !== 'application/pdf' || file.size > 10 * 1024 * 1024)) {
-      setError('Seleccione un PDF válido de máximo 10 MB.');
+    if (file && (!file.name.toLowerCase().endsWith('.pdf') || file.type !== 'application/pdf' || file.size > RUND_MAX_ARCHIVO_BYTES)) {
+      setError(`Seleccione un PDF válido de máximo ${RUND_MAX_ARCHIVO_MB} MB.`);
       return;
     }
     const key = `${bloque}__${tipo}`;
@@ -903,7 +917,7 @@ export function AutogestionDocenteRUND() {
                   <div>
                     <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#0f172a', fontWeight: 700 }}>Adjunta tus Documentos de Soporte</h2>
                     <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b', lineHeight: 1.5 }}>
-                      Carga los documentos que respaldan tu información. Formato: PDF, máximo 10 MB por archivo. Los marcados con <span style={{ color: '#ef4444' }}>*</span> son recomendados.
+                      Carga los documentos que respaldan tu información. Formato: PDF, máximo {RUND_MAX_ARCHIVO_MB} MB por archivo. Los marcados con <span style={{ color: '#ef4444' }}>*</span> son recomendados.
                     </p>
                   </div>
                 </div>
@@ -935,7 +949,7 @@ export function AutogestionDocenteRUND() {
                                 <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#334155' }}>
                                   {tipo.label}{tipo.required && <span style={{ color: '#ef4444' }}> *</span>}
                                 </div>
-                                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 3 }}>PDF · Máximo 10 MB por archivo</div>
+                                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 3 }}>PDF · Máximo {RUND_MAX_ARCHIVO_MB} MB por archivo</div>
                                 {saved && !file && <div style={{ fontSize: '0.72rem', color: saved.estado === 'Aprobado' ? '#047857' : saved.estado === 'Rechazado' ? '#B91C1C' : '#92400E' }}>
                                   {saved.estado === 'Aprobado' ? '✓ Aprobado' : saved.estado === 'Rechazado' ? 'Devuelto' : 'Pendiente de revisión'}: {saved.nombre}
                                   {saved.observacion && <div>Corrección requerida: {saved.observacion}</div>}

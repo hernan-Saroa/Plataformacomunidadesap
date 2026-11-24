@@ -444,8 +444,11 @@ describe('actividadesDisponibles · la 9.2 y la 9.3 nunca bloquean lo que sigue'
  * momento de la ejecución, y la ejecución empieza con el acta de inicio (8.7;
  * la 9.1 es la reunión, opcional desde la revisión de QA de EFDS-1176).
  */
-describe('actividadesDisponibles · la 9.5 se abre desde que arranca la ejecución', () => {
-  const etapa9 = (estadoDeLa87: string | null, estadoDeLa94: string | null) => [
+describe('actividadesDisponibles · la 9.5 se abre desde la firma del contrato', () => {
+  // Sesión de QA del 04/11 (138): las modificaciones se habilitan desde que las
+  // dos partes firman (8.1), sin esperar el acta de inicio.
+  const etapa9 = (estadoDeLa87: string | null, estadoDeLa94: string | null, estadoDeLa81 = 'APROBADO') => [
+    paso('8.1', { estado: estadoDeLa81 }),
     paso('8.7', { estado: estadoDeLa87 }),
     paso('9.1', { estado: 'BORRADOR' }),
     paso('9.2', { estado: 'BORRADOR' }),
@@ -462,11 +465,17 @@ describe('actividadesDisponibles · la 9.5 se abre desde que arranca la ejecuci�
     expect(motivoDelBloqueo('9.5', flujo)).toBeNull();
   });
 
-  it('sin acta de inicio no hay ejecución, y por tanto nada que modificar', () => {
+  it('con el contrato firmado ya se puede modificar, aunque falte el acta de inicio', () => {
     const flujo = etapa9('BORRADOR', null);
 
+    expect(actividadesDisponibles(flujo).has('9.5')).toBe(true);
+  });
+
+  it('sin el contrato firmado no hay nada que modificar', () => {
+    const flujo = etapa9('BORRADOR', null, 'BORRADOR');
+
     expect(actividadesDisponibles(flujo).has('9.5')).toBe(false);
-    expect(motivoDelBloqueo('9.5', flujo)).toBe('Antes hay que terminar 8.7');
+    expect(motivoDelBloqueo('9.5', flujo)).toBe('Antes hay que terminar 8.1');
   });
 
   it('un contrato que nunca se modificó no queda trancado antes de la etapa 10', () => {

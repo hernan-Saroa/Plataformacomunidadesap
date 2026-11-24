@@ -26,7 +26,8 @@ export type CabezoteCampoClave =
   | 'TERRITORIAL'
   | 'ESTADO_VINCULACION'
   | 'PUNTAJE_SALARIAL'
-  | 'ULTIMA_EVALUACION';
+  | 'ULTIMA_EVALUACION'
+  | 'CLASE_DOCENTE';
 
 export interface CabezoteCampoVista {
   clave: CabezoteCampoClave;
@@ -40,6 +41,21 @@ export interface CabezoteCampoVista {
   nota: string | null;
 }
 
+export type CabezoteContactoClave = 'CORREO_INSTITUCIONAL' | 'CORREO_ALTERNATIVO' | 'TELEFONO';
+
+/** RUND-013 — tarjeta de la línea "Datos de contacto" del cabezote. */
+export interface CabezoteContactoVista {
+  clave: CabezoteContactoClave;
+  etiqueta: string;
+  /** Valor tal como se guarda; vacío si no hay dato (sirve para precargar la edición). */
+  valorActual: string;
+  /** Texto que se pinta: el valor o "No registrado". */
+  valor: string;
+  ausente: boolean;
+  /** Origen del dato: Asignación institucional o Autodeclarado. */
+  origen: string;
+}
+
 export interface CabezotePerfilDocenteVista {
   nombreCompleto: string;
   iniciales: string;
@@ -49,6 +65,7 @@ export interface CabezotePerfilDocenteVista {
   accesoCompleto: boolean;
   puntajeRestringido: boolean;
   campos: CabezoteCampoVista[];
+  contacto: CabezoteContactoVista[];
   soloLectura: true;
 }
 
@@ -59,6 +76,20 @@ export const CABEZOTE_ETIQUETAS: Record<CabezoteCampoClave, string> = {
   ESTADO_VINCULACION: 'Estado de vinculación',
   PUNTAJE_SALARIAL: 'Puntaje salarial',
   ULTIMA_EVALUACION: 'Última evaluación',
+  CLASE_DOCENTE: 'Clase de docente',
+};
+
+export const CABEZOTE_CONTACTO_ETIQUETAS: Record<CabezoteContactoClave, string> = {
+  CORREO_INSTITUCIONAL: 'Correo institucional',
+  CORREO_ALTERNATIVO: 'Correo personal',
+  TELEFONO: 'Teléfono',
+};
+
+/** El correo institucional lo asigna la ESAP; el resto lo declara el docente. */
+export const CABEZOTE_CONTACTO_ORIGEN: Record<CabezoteContactoClave, string> = {
+  CORREO_INSTITUCIONAL: 'Asignación institucional',
+  CORREO_ALTERNATIVO: 'Autodeclarado',
+  TELEFONO: 'Autodeclarado',
 };
 
 export const CABEZOTE_ORIGEN_EVALUACION: Record<CabezoteOrigenEvaluacion, string> = {
@@ -104,6 +135,16 @@ function primerTexto(source: Record<string, any>, keys: string[]): string | null
     if (value !== null) return value;
   }
   return null;
+}
+
+/** Planta o Cátedra: la clase que envía el servidor o, si falta, la que resulta de las horas PTA (> 0 = planta). */
+export function etiquetaClaseDocente(clase: unknown, horas?: unknown): string | null {
+  const guardada = String(clase ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+  if (guardada === 'PLANTA') return 'Planta';
+  if (guardada === 'CATEDRA') return 'Cátedra';
+  if (horas === null || horas === undefined || String(horas).trim() === '') return null;
+  const numero = Number(String(horas).replace(',', '.'));
+  return Number.isFinite(numero) ? (numero > 0 ? 'Planta' : 'Cátedra') : null;
 }
 
 function formatearPuntaje(value: unknown): string | null {
@@ -155,6 +196,17 @@ function resolverOrigenEvaluacion(source: Record<string, any>, tieneValor: boole
   return (canal && CANAL_A_ORIGEN[canal.toUpperCase()]) || 'REGISTRO_RUND';
 }
 
+function contacto(clave: CabezoteContactoClave, valor: string | null): CabezoteContactoVista {
+  return {
+    clave,
+    etiqueta: CABEZOTE_CONTACTO_ETIQUETAS[clave],
+    valorActual: valor || '',
+    valor: valor || CABEZOTE_SIN_DATO,
+    ausente: !valor,
+    origen: CABEZOTE_CONTACTO_ORIGEN[clave],
+  };
+}
+
 function campo(
   clave: CabezoteCampoClave,
   valor: string | null,
@@ -204,6 +256,11 @@ export function buildCabezotePerfilDocente(
     accesoCompleto,
     puntajeRestringido,
     soloLectura: true,
+    contacto: [
+      contacto('CORREO_INSTITUCIONAL', primerTexto(perfil, ['correo_institucional', 'correoInstitucional'])),
+      contacto('CORREO_ALTERNATIVO', primerTexto(perfil, ['correo_personal', 'correoPersonal', 'correo_alternativo', 'correoAlternativo'])),
+      contacto('TELEFONO', primerTexto(perfil, ['telefono', 'tel_celular'])),
+    ],
     campos: [
       campo('TIPO_VINCULACION', primerTexto(perfil, [
         'tipo_vinculacion',
@@ -223,6 +280,7 @@ export function buildCabezotePerfilDocente(
         nota: CABEZOTE_ORIGEN_EVALUACION[origenEvaluacion],
         textoAusente: 'Sin evaluación registrada',
       }),
+      campo('CLASE_DOCENTE', etiquetaClaseDocente(perfil.clase_docente ?? perfil.claseDocente, perfil.horas_programables ?? perfil.horasAsignables ?? perfil.horas_pta)),
     ],
   };
 }

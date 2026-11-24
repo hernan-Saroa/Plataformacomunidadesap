@@ -3,7 +3,7 @@ import { AlertTriangle, ChevronDown, Clock, LayoutGrid } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { CampoConfigurable, CeldaMatriz, FilaMatriz, Modalidad } from '../../types';
+import { CambioDeAplicabilidad, CampoConfigurable, CeldaMatriz, FilaMatriz, Modalidad } from '../../types';
 import { ACTIVIDADES_CON_REGISTRO, TIENEN_PANEL } from '../proceso/actividadesConPanel';
 
 import { FirmaActividad } from './FirmaActividad';
@@ -342,6 +342,18 @@ function PlazoActividad({ fila, onCambio }: { fila: FilaMatriz; onCambio: (fila:
 }
 
 /** Las once modalidades en una fila: lo único de la ficha que cambia entre ellas. */
+/** Qué pasó en los procesos vivos de la modalidad, dicho para el toast. */
+function queCambioEnLosProcesos({ actualizados, yaLaPasaron }: CambioDeAplicabilidad['procesos']): string | undefined {
+  const partes: string[] = [];
+  if (actualizados) {
+    partes.push(actualizados === 1 ? 'Se ajustó 1 proceso en curso.' : `Se ajustaron ${actualizados} procesos en curso.`);
+  }
+  if (yaLaPasaron.length) {
+    partes.push(`No se reabre en ${yaLaPasaron.join(', ')}: ya iba${yaLaPasaron.length === 1 ? '' : 'n'} más adelante.`);
+  }
+  return partes.join(' ') || undefined;
+}
+
 function Modalidades({
   fila,
   modalidades,
@@ -364,7 +376,7 @@ function Modalidades({
   const cambiar = async (modalidad: Modalidad, nuevo: boolean, razon?: string) => {
     setGuardando(modalidad.codigo);
     try {
-      await contratacionService.cambiarAplicabilidad(fila.numeral, {
+      const r = await contratacionService.cambiarAplicabilidad(fila.numeral, {
         modalidad: modalidad.codigo,
         aplica: nuevo,
         motivo: razon,
@@ -377,7 +389,9 @@ function Modalidades({
             : c,
         ),
       });
-      toast.success(nuevo ? `Se exige en ${modalidad.nombre}` : `Ya no se exige en ${modalidad.nombre}`);
+      toast.success(nuevo ? `Se exige en ${modalidad.nombre}` : `Ya no se exige en ${modalidad.nombre}`, {
+        description: queCambioEnLosProcesos(r.procesos),
+      });
       setExcluyendo(null);
       setMotivo('');
     } catch (err: any) {

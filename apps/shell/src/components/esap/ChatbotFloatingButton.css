@@ -61,12 +61,33 @@
 .esap-chatbot-widget__content > * { flex: 1; min-width: 0; min-height: 0; }
 .esap-chatbot-widget__loading { padding: 24px; text-align: center; font-size: 13px; }
 .esap-chatbot-widget__launcher {
-  position: absolute; right: var(--chatbot-right); bottom: var(--chatbot-bottom);
-  pointer-events: auto; display: flex; align-items: center; gap: 8px;
+  position: absolute; right: 0; bottom: var(--chatbot-bottom);
+  pointer-events: auto; display: flex; align-items: center;
   max-width: calc(100% - var(--chatbot-right) - var(--chatbot-gap));
-  min-height: 48px; padding: 12px 16px; border: 0; border-radius: 32px;
+  min-height: 48px; padding: 12px; border: 0; border-radius: 32px 0px 0px 32px;
   background: linear-gradient(110deg, #2563eb, #4338ca); color: white;
   box-shadow: 0 6px 24px #0f172a40; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+/* Estado inicial: texto oculto */
+.esap-chatbot-widget__launcher > span {
+  display: block !important;
+  opacity: 0;
+  transform: translateX(20px);
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition:
+    opacity 0.75s ease,
+    transform 0.75s ease,
+    max-width 0.75s ease;
+}
+
+/* Al pasar el mouse: aparece de derecha a izquierda */
+.esap-chatbot-widget__launcher:hover > span {
+  padding-left: 8px;
+  opacity: 1;
+  transform: translateX(0);
+  max-width: 200px;
 }
 .esap-chatbot-widget button:focus-visible, .esap-chatbot-widget__panel:focus-visible { outline: 3px solid #fbbf24; outline-offset: -3px; }
 @media (max-width: 360px), (max-height: 420px) {

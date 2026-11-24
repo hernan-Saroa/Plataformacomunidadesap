@@ -30,6 +30,17 @@ describe('Gateway: la auditoría general no duplica datos sensibles RUND', () =>
     await lastValueFrom(interceptor.intercept(context as any,{handle:()=>of({success:true})}));
     expect(audit.logRequest).toHaveBeenCalledWith(expect.objectContaining({url,queryParams:{active:'true'},requestBody:{nombre:'USUARIO_SINTETICO'},responseBody:{id:'SYNTHETIC',nombre:'USUARIO_SINTETICO'}}));
   });
+  it('REQ-RUND-F015/F016: la cédula de la interoperabilidad PTA no queda en la auditoría de la URL', () => {
+    for (const ruta of ['perfiles', 'historial']) {
+      const url = `/pta/api/v1/rund/interoperabilidad/${ruta}/001020304050?periodo=2026-2`;
+      expect(isRundAuditUrl(url)).toBe(true);
+      const limpia = redactRundAuditUrl(url);
+      expect(limpia).toBe(`/pta/api/v1/rund/interoperabilidad/${ruta}/[DOCUMENTO]`);
+      expect(limpia).not.toContain('001020304050');
+    }
+    expect(redactRundAuditUrl('/auth/api/v1/rund-algo/otra-ruta')).toBe('/auth/api/v1/rund-algo/otra-ruta');
+  });
+
   it('redacta tokens y documentos de la URL sin cambiar otras rutas', () => {
     expect(redactRundAuditUrl('/pta/api/v1/banco-docentes/1020304050?periodo=2026-2')).not.toContain('1020304050');
     expect(redactRundAuditUrl('http://localhost:3003/banco-docentes/drafts/secret-token')).not.toContain('secret-token');

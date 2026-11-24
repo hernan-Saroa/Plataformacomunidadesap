@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, Ban, Check, ClipboardCheck, Undo2 } from 'lucide-react';
+import { ArrowRight, Ban, Check, ClipboardCheck, Send, Undo2 } from 'lucide-react';
 
 import { usarAprobacion } from './usarAprobacion';
 import { useFirma } from './useFirma';
@@ -301,9 +301,21 @@ export function AprobacionDeLaActividad({
                   aria-label="Observaciones de la aprobación"
                   className={campo}
                 />
-                <ElegirSoportes archivos={soportes} onCambio={setSoportes} />
+                {/* Las correcciones solo en un escalón intermedio, que las carga
+                    y pasa al siguiente. En la aprobación definitiva no hay nada
+                    que corregir: el campo ahí confundía (AJU-006 de QA, 14/11).
+                    Corregir es devolver, y la devolución sí lleva adjuntos. */}
+                {siguiente ? (
+                  <ElegirSoportes
+                    archivos={soportes}
+                    onCambio={setSoportes}
+                    etiqueta="Correcciones o documentos de tu revisión (opcional)"
+                  />
+                ) : null}
                 <p className="text-[11px] text-slate-500 m-0">
-                  Lo que escribas y adjuntes queda en el historial de la revisión, con tu nombre.
+                  {siguiente
+                    ? 'Lo que escribas y adjuntes queda en el historial de la revisión, con tu nombre.'
+                    : 'Lo que escribas queda en el historial de la revisión, con tu nombre.'}
                 </p>
                 <div className="flex flex-col gap-1.5">
                   <button
@@ -319,7 +331,7 @@ export function AprobacionDeLaActividad({
                     disabled={a.guardando}
                   >
                     <Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" />
-                    {siguiente ? 'Confirmar y pasar al siguiente' : 'Confirmar la aprobación'}
+                    {siguiente ? 'Pasar al siguiente escalón' : 'Confirmar la aprobación'}
                   </button>
                   <button
                     type="button"
@@ -417,7 +429,7 @@ export function AprobacionDeLaActividad({
                     }
                   >
                     <Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" />
-                    {siguiente ? 'Aprobar y pasar al siguiente' : 'Aprobar'}
+                    {siguiente ? 'Cargar correcciones y pasar al siguiente escalón' : 'Aprobar'}
                   </button>
                 ) : null}
                 {puede('DEVOLVER') ? (
@@ -500,6 +512,8 @@ export function AprobacionDeLaActividad({
   // BORRADOR y DEVUELTO comparten pantalla: en ambos el gestor trabaja la
   // actividad abajo y la envía desde aquí. Lo único que cambia es que en la
   // devuelta hay que decirle qué corregir.
+  /** La retiró quien la envió: vuelve a borrador con su trabajo intacto. */
+  const retirada = a.estado === 'BORRADOR' && a.ronda?.estado === 'RETIRADA' && a.esMia;
   return marco(
     a.estado === 'DEVUELTO' ? 'aviso' : 'neutro',
     <>
@@ -528,8 +542,22 @@ export function AprobacionDeLaActividad({
           ? (a.ronda?.escalones.length ?? 0) > 1
             ? 'Corrige lo señalado abajo y vuelve a registrar la actividad: se envía de nuevo y la revisión empieza otra vez desde el escalón 1.'
             : 'Corrige lo señalado abajo y vuelve a registrar la actividad: con eso se envía de nuevo.'
-          : 'Se envía sola al registrar la actividad, abajo.'}
+          : retirada
+            ? 'La retiraste de aprobación. Si cambias algo abajo se envía sola; si no hay nada que cambiar, vuelve a enviarla desde aquí.'
+            : 'Se envía sola al registrar la actividad, abajo.'}
       </p>
+
+      {/* Retirada, el trabajo de abajo ya estaba hecho y muchos paneles no
+          ofrecen rehacerlo —el CDP de la 4.2 sigue cargado y no hay qué volver
+          a registrar—: sin este botón la actividad se quedaba en borrador y el
+          flujo, detenido. Solo tras un retiro: ahí ya se envió una vez con el
+          trabajo completo, que es lo que este bloque no sabe comprobar. */}
+      {retirada ? (
+        <button type="button" className={primario} onClick={a.enviar} disabled={a.guardando}>
+          <Send className="w-3.5 h-3.5" aria-hidden="true" />
+          Volver a enviar a aprobación
+        </button>
+      ) : null}
 
       {a.estado === 'DEVUELTO' && a.quienAprueba.length ? (
         <p className="text-[11px] text-slate-500 m-0">{quien}</p>

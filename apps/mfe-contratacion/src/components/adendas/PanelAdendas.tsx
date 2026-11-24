@@ -1,9 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CalendarClock, FilePlus2, FileText, Paperclip, Send, Undo2 } from 'lucide-react';
+import { CalendarClock, FilePlus2, FileText, Paperclip, Plus, Send, Trash2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { Adenda, EstadoAdendas, EvidenciaFirmaOtp } from '../../types';
+import {
+  Adenda,
+  CambioCronogramaAdenda,
+  CronogramaPorEtapas,
+  EstadoAdendas,
+  EvidenciaFirmaOtp,
+} from '../../types';
 import { Aviso, Ayuda, Boton, campo, Marco, Pendiente, Titulo } from '../shared/PiezasPanel';
 import { Permitido } from '../shared/Permitido';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
@@ -21,6 +27,35 @@ const ETIQUETA_TIPO = {
   FONDO: 'Requisitos de fondo',
   CRONOGRAMA: 'Cronograma',
 } as const;
+
+/** Una fecha del cronograma que la adenda mueve, mientras se llena (139). */
+interface FilaCambio {
+  llave: number;
+  /** «ETAPA:6» o «ACTIVIDAD:<numeral o id>». */
+  opcion: string;
+  fechaInicio: string;
+  fechaFin: string;
+}
+
+/** Lo que se puede mover del cronograma de la 5.2, con la fecha que tiene hoy. */
+function opcionesDelCronograma(cronograma: CronogramaPorEtapas | null, sinCierre: boolean) {
+  if (!cronograma) return [];
+  const hoy = (fin: string | null) => (fin ? `hoy hasta el ${fechaLarga(fin)}` : 'sin programar');
+  return [
+    ...cronograma.etapas
+      .filter((e) => e.estado !== 'CUMPLIDA')
+      .map((e) => ({
+        valor: `ETAPA:${e.etapa}`,
+        nombre: `Etapa ${e.etapa} · ${e.nombre} (${hoy(e.fechaFin)})`,
+      })),
+    ...(cronograma.actividades ?? [])
+      .filter((a) => a.estado !== 'CUMPLIDA' && !(sinCierre && a.numeral === '6.1'))
+      .map((a) => ({
+        valor: `ACTIVIDAD:${a.numeral ?? a.id}`,
+        nombre: `${a.numeral ? `${a.numeral} · ` : ''}${a.nombre}${a.propia ? ' (propia)' : ''} (${hoy(a.fechaFin)})`,
+      })),
+  ];
+}
 
 const TONO_ESTADO = {
   EMITIDA: 'border-amber-200 bg-amber-50 text-amber-900',
@@ -48,7 +83,12 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
   const [tipo, setTipo] = useState<'FONDO' | 'CRONOGRAMA'>('FONDO');
   const [objeto, setObjeto] = useState('');
   const [vencimiento, setVencimiento] = useState('');
+  /** Hora del nuevo cierre de ofertas; vacía conserva la del cronograma (EFDS-1155). */
+  const [hora, setHora] = useState('');
   const [documento, setDocumento] = useState<File | null>(null);
+  /** Otras fechas del cronograma de la 5.2 que mueve la adenda (139). */
+  const [cambios, setCambios] = useState<FilaCambio[]>([]);
+  const [cronograma, setCronograma] = useState<CronogramaPorEtapas | null>(null);
 
   const leer = () =>
     contratacionService
@@ -65,11 +105,22 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
     leer();
   }, [procesoId]);
 
+  // El cronograma se pide al abrir el formulario: es lo que la adenda puede mover.
+  useEffect(() => {
+    if (!emitiendo) return;
+    contratacionService
+      .cronograma(procesoId)
+      .then(setCronograma)
+      .catch(() => setCronograma(null));
+  }, [emitiendo, procesoId]);
+
   const limpiar = () => {
     setObjeto('');
     setVencimiento('');
+    setHora('');
     setDocumento(null);
     setTipo('FONDO');
+    setCambios([]);
     setEmitiendo(false);
   };
 
@@ -78,10 +129,38 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
   const soloCronograma = !!estado?.soloCronograma;
   const tipoElegido = soloCronograma ? 'CRONOGRAMA' : tipo;
   const pideVencimiento = tipoElegido === 'CRONOGRAMA' && !soloCronograma;
+  // Solo el cierre de ofertas tiene hora; el plazo de observaciones es un día.
+  const pideHora = pideVencimiento && estado?.mueve === 'CIERRE_OFERTAS';
+
+  // Si la adenda mueve el cierre, la 6.1 del cronograma se mueve con él.
+  const opciones = opcionesDelCronograma(cronograma, pideHora);
+  const cambiosAEnviar: CambioCronogramaAdenda[] =
+    tipoElegido === 'CRONOGRAMA'
+      ? cambios.map((c) => {
+          const [ambito, ...resto] = c.opcion.split(':');
+          return {
+            ambito: ambito as 'ETAPA' | 'ACTIVIDAD',
+            clave: resto.join(':'),
+            fechaInicio: c.fechaInicio || null,
+            fechaFin: c.fechaFin,
+          };
+        })
+      : [];
+  const problemaCambios = cambios
+    .map((c, i) => {
+      if (!c.opcion) return `Fecha ${i + 1} del cronograma: elige qué mueve`;
+      if (!c.fechaFin) return `Fecha ${i + 1} del cronograma: falta la nueva fecha de fin`;
+      if (c.fechaInicio && c.fechaInicio > c.fechaFin) return `Fecha ${i + 1} del cronograma: el inicio va después del fin`;
+      if (cambios.findIndex((x) => x.opcion === c.opcion) !== i) return `Fecha ${i + 1} del cronograma: ya está arriba`;
+      return null;
+    })
+    .find(Boolean);
+  // Desde la 139 una de cronograma puede mover solo fechas del cronograma.
+  const faltaVencimiento = pideVencimiento && !vencimiento && cambios.length === 0;
 
   const emitir = async () => {
     if (!objeto.trim() || !documento) return;
-    if (pideVencimiento && !vencimiento) return;
+    if (faltaVencimiento || (tipoElegido === 'CRONOGRAMA' && problemaCambios)) return;
 
     setGuardando(true);
     try {
@@ -91,7 +170,9 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
           {
             tipo: tipoElegido,
             objeto: objeto.trim(),
-            vencimientoNuevo: pideVencimiento ? vencimiento : undefined,
+            vencimientoNuevo: pideVencimiento && vencimiento ? vencimiento : undefined,
+            horaNueva: pideHora && vencimiento && hora ? hora : undefined,
+            cambiosCronograma: cambiosAEnviar.length ? cambiosAEnviar : undefined,
           },
           documento,
         ),
@@ -119,10 +200,12 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
       setEstado(tras);
 
       const publicada = tras.adendas.find((a) => a.id === adenda.id);
+      const movidas = publicada?.cambiosCronograma?.length ?? 0;
       toast.success(
-        publicada?.tipo === 'CRONOGRAMA' && publicada.vencimientoNuevo
-          ? `Adenda publicada; el plazo vence ahora el ${fechaLarga(publicada.vencimientoNuevo)}`
-          : 'Adenda publicada',
+        (publicada?.tipo === 'CRONOGRAMA' && publicada.vencimientoNuevo
+          ? `Adenda publicada; el plazo vence ahora el ${momento(publicada.vencimientoNuevo, publicada.horaNueva ?? publicada.horaAnterior)}`
+          : 'Adenda publicada') +
+          (movidas ? `. Se ${movidas === 1 ? 'movió 1 fecha' : `movieron ${movidas} fechas`} del cronograma` : ''),
       );
       onCambio?.();
     } catch (err: any) {
@@ -279,20 +362,115 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
                 {estado.mueve === 'CIERRE_OFERTAS'
                   ? 'Nueva fecha de cierre de ofertas'
                   : 'Nuevo vencimiento del plazo de observaciones'}{' '}
-                <span className="text-red-600">*</span>
+                {cambios.length === 0 ? <span className="text-red-600">*</span> : null}
               </label>
-              <input
-                id="adenda-vencimiento"
-                type="date"
-                value={vencimiento}
-                onChange={(e) => setVencimiento(e.target.value)}
-                className={campo}
-              />
+              <div className="flex flex-wrap gap-2">
+                <input
+                  id="adenda-vencimiento"
+                  type="date"
+                  value={vencimiento}
+                  onChange={(e) => setVencimiento(e.target.value)}
+                  className={`${campo} flex-1`}
+                  style={{ minWidth: 150 }}
+                />
+                {/* El cierre de ofertas se fija con hora: «hasta las 10:00 a.m.
+                    del día X». Vacía, se conserva la del cronograma. */}
+                {pideHora ? (
+                  <input
+                    id="adenda-hora"
+                    type="time"
+                    aria-label="Hora del nuevo cierre de ofertas"
+                    value={hora}
+                    onChange={(e) => setHora(e.target.value)}
+                    className={campo}
+                    style={{ width: 130 }}
+                  />
+                ) : null}
+              </div>
               <p className="text-[11px] text-gray-500 mt-1.5 mb-0 leading-relaxed">
                 {estado.vencimientoVigente
-                  ? `Hoy vence el ${fechaLarga(estado.vencimientoVigente)}. Una adenda de cronograma prorroga: la fecha nueva debe ser posterior.`
+                  ? `Hoy vence el ${momento(estado.vencimientoVigente, estado.horaVigente)}. Una adenda de cronograma prorroga: ${pideHora ? 'el nuevo cierre' : 'la fecha nueva'} debe ser posterior.`
                   : 'Debe ser posterior al vencimiento vigente: una adenda de cronograma prorroga el plazo.'}
+                {pideHora
+                  ? ' Si dejas la hora vacía se conserva la del cronograma. Mientras la adenda no se publique, el cierre vigente sigue siendo el de hoy.'
+                  : ''}
+                {' '}Si la adenda solo mueve otras fechas del cronograma, déjala vacía.
               </p>
+            </div>
+          ) : null}
+
+          {/* Las demás fechas del cronograma de la 5.2 que mueve (139): se
+              aplican al publicarla, como el nuevo cierre. */}
+          {tipoElegido === 'CRONOGRAMA' && opciones.length > 0 ? (
+            <div className="space-y-1.5">
+              <p className="block text-xs font-bold text-gray-600 m-0">Fechas del cronograma que mueve</p>
+              <p className="text-[11px] text-gray-500 m-0 leading-relaxed">
+                Etapas o actividades del cronograma de la 5.2, incluidas las propias del proceso. Se
+                aplican cuando la adenda se publica y quedan en el historial del cronograma.
+                {pideHora ? ' La 6.1 se mueve con la nueva fecha de cierre.' : ''}
+              </p>
+              {cambios.map((c, i) => (
+                <div key={c.llave} className="flex flex-wrap items-center gap-2">
+                  <select
+                    aria-label={`Qué mueve la fecha ${i + 1} del cronograma`}
+                    value={c.opcion}
+                    onChange={(e) =>
+                      setCambios((cs) => cs.map((x) => (x.llave === c.llave ? { ...x, opcion: e.target.value } : x)))
+                    }
+                    className={`${campo} flex-1`}
+                    style={{ minWidth: 220 }}
+                  >
+                    <option value="">Elige la etapa o actividad…</option>
+                    {opciones.map((o) => (
+                      <option key={o.valor} value={o.valor}>
+                        {o.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="date"
+                    aria-label={`Nuevo inicio de la fecha ${i + 1} del cronograma`}
+                    title="Nuevo inicio (opcional: vacío conserva el que tiene)"
+                    value={c.fechaInicio}
+                    onChange={(e) =>
+                      setCambios((cs) => cs.map((x) => (x.llave === c.llave ? { ...x, fechaInicio: e.target.value } : x)))
+                    }
+                    className={campo}
+                    style={{ width: 150 }}
+                  />
+                  <input
+                    type="date"
+                    aria-label={`Nuevo fin de la fecha ${i + 1} del cronograma`}
+                    value={c.fechaFin}
+                    onChange={(e) =>
+                      setCambios((cs) => cs.map((x) => (x.llave === c.llave ? { ...x, fechaFin: e.target.value } : x)))
+                    }
+                    className={campo}
+                    style={{ width: 150 }}
+                  />
+                  <button
+                    type="button"
+                    aria-label={`Quitar la fecha ${i + 1} del cronograma`}
+                    onClick={() => setCambios((cs) => cs.filter((x) => x.llave !== c.llave))}
+                    className="text-xs font-bold text-red-700 hover:underline inline-flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() =>
+                  setCambios((cs) => [
+                    ...cs,
+                    { llave: (cs.length ? cs[cs.length - 1].llave : 0) + 1, opcion: '', fechaInicio: '', fechaFin: '' },
+                  ])
+                }
+                className="text-xs font-bold text-[#003DA5] hover:underline inline-flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" /> Mover una fecha del cronograma
+              </button>
+              {problemaCambios ? <p className="text-xs text-red-700 m-0">{problemaCambios}</p> : null}
             </div>
           ) : null}
 
@@ -309,7 +487,8 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
                 guardando ||
                 !objeto.trim() ||
                 !documento ||
-                (pideVencimiento && !vencimiento)
+                faltaVencimiento ||
+                (tipoElegido === 'CRONOGRAMA' && !!problemaCambios)
               }
               onClick={emitir}
             >
@@ -335,6 +514,11 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
       {dialogo.elemento}
     </Marco>
   );
+}
+
+/** Un día con la hora del cierre, si la tiene: «12 de noviembre de 2026 a las 10:00». */
+function momento(dia: string, hora: string | null) {
+  return `${fechaLarga(dia)}${hora ? ` a las ${hora.slice(0, 5)}` : ''}`;
 }
 
 /** Una adenda con su estado y las acciones que admite. */
@@ -384,11 +568,32 @@ function FilaAdenda({
               {adenda.tipo === 'CRONOGRAMA' && adenda.vencimientoNuevo
                 ? ` · el plazo pasó ${
                     adenda.vencimientoAnterior
-                      ? `del ${fechaLarga(adenda.vencimientoAnterior)} `
+                      ? `del ${momento(adenda.vencimientoAnterior, adenda.horaAnterior)} `
                       : ''
-                  }al ${fechaLarga(adenda.vencimientoNuevo)}`
+                  }al ${momento(adenda.vencimientoNuevo, adenda.horaNueva ?? adenda.horaAnterior)}`
                 : ''}
             </p>
+          ) : null}
+
+          {/* Las fechas del cronograma que mueve (139): antes de publicarla, lo
+              que hará; publicada, el cambio que fue. */}
+          {adenda.tipo === 'CRONOGRAMA' && adenda.cambiosCronograma?.length && !anulada ? (
+            <div className="mt-1">
+              <p className="text-[11px] font-bold m-0">
+                {adenda.estado === 'PUBLICADA' ? 'Movió en el cronograma:' : 'Al publicarse moverá en el cronograma:'}
+              </p>
+              <ul className="list-none m-0 p-0">
+                {adenda.cambiosCronograma.map((c) => (
+                  <li key={`${c.ambito}:${c.clave}`} className="text-[11px] leading-relaxed">
+                    {c.nombre ?? c.clave}:{' '}
+                    {adenda.estado === 'PUBLICADA'
+                      ? `${c.antes?.fechaFin ? fechaLarga(c.antes.fechaFin) : 'sin fecha'} → `
+                      : 'hasta el '}
+                    {fechaLarga(c.fechaFin)}
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : null}
 
           {anulada && adenda.motivoAnulacion ? (

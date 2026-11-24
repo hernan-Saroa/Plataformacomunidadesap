@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { contratacionService } from '../../services/contratacionService';
+import { contratacionService, RutaObservaciones } from '../../services/contratacionService';
 import { EstadoObservaciones, EvidenciaFirmaOtp, ObservacionPliego } from '../../types';
 import {
   Aviso,
@@ -32,9 +32,15 @@ import { useFirma } from '../shared/useFirma';
 interface Props {
   procesoId: string;
   onCambio?: () => void;
+  /**
+   * El proyecto (5.6) o el definitivo (5.12.1, sesión de QA del 04/11). Las
+   * dos se llevan con la misma metodología.
+   */
+  pliego?: 'PROYECTO' | 'DEFINITIVO';
 }
 
-const NUMERAL = '5.6';
+const NUMERAL_PROYECTO = '5.6';
+const NUMERAL_DEFINITIVO = '5.12.1';
 
 /**
  * Actividad 5.6 · Observaciones al proyecto de pliego (EFDS-1151).
@@ -46,8 +52,14 @@ const NUMERAL = '5.6';
  * Lo que la entidad debe poder demostrar es que las recibió y que las
  * respondió, así que lo que manda la vista es qué queda sin responder.
  */
-export function PanelObservaciones({ procesoId, onCambio }: Props) {
-  const firma = useFirma(NUMERAL, 'Cerrar la recepción de observaciones');
+export function PanelObservaciones({ procesoId, onCambio, pliego = 'PROYECTO' }: Props) {
+  const definitivo = pliego === 'DEFINITIVO';
+  const ruta: RutaObservaciones = definitivo ? 'observaciones-definitivo' : 'observaciones';
+  const nombrePliego = definitivo ? 'pliego definitivo' : 'proyecto de pliego';
+  const firma = useFirma(
+    definitivo ? NUMERAL_DEFINITIVO : NUMERAL_PROYECTO,
+    'Cerrar la recepción de observaciones',
+  );
   const [estado, setEstado] = useState<EstadoObservaciones | null>(null);
   const [cargando, setCargando] = useState(true);
   const [trabajando, setTrabajando] = useState(false);
@@ -56,7 +68,7 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
   const cargar = async () => {
     setCargando(true);
     try {
-      setEstado(await contratacionService.observaciones(procesoId));
+      setEstado(await contratacionService.observaciones(procesoId, ruta));
     } catch (err: any) {
       toast.error('No se pudieron cargar las observaciones', {
         id: 'observaciones-carga',
@@ -69,7 +81,7 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
 
   useEffect(() => {
     cargar();
-  }, [procesoId]);
+  }, [procesoId, ruta]);
 
   /** Devuelve si salió bien: quien llama decide qué limpiar y qué conservar. */
   const ejecutar = async (accion: () => Promise<unknown>, exito: string): Promise<boolean> => {
@@ -100,7 +112,7 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
   if (!estado.aplica) {
     return (
       <Marco>
-        <Aviso tono="ok" titulo="Esta modalidad no recibe observaciones al proyecto de pliego">
+        <Aviso tono="ok" titulo={`Esta modalidad no recibe observaciones al ${nombrePliego}`}>
           No hay etapa de observaciones en este flujo, así que no queda nada pendiente de atender
           por este concepto.
         </Aviso>
@@ -113,10 +125,17 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
   if (!estado.publicado) {
     return (
       <Marco>
-        <Pendiente
-          falta="5.3"
-          texto="Las observaciones se presentan sobre el proyecto de pliego publicado. Registra primero la publicación y su plazo de publicidad."
-        />
+        {definitivo ? (
+          <Pendiente
+            falta="5.7"
+            texto="Las observaciones al pliego definitivo corren desde la apertura del proceso, que lo publica. Registra primero la apertura."
+          />
+        ) : (
+          <Pendiente
+            falta="5.3"
+            texto="Las observaciones se presentan sobre el proyecto de pliego publicado. Registra primero la publicación y su plazo de publicidad."
+          />
+        )}
       </Marco>
     );
   }
@@ -125,6 +144,13 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
 
   return (
     <Marco>
+      {definitivo ? (
+        <Ayuda>
+          Las observaciones que presentan los interesados al pliego definitivo, desde la apertura
+          del proceso, y sus respuestas. Se registran igual que las del proyecto de pliego: por
+          interesado, con varios archivos, y se responden con un documento general o una por una.
+        </Ayuda>
+      ) : null}
       <Resumen estado={estado} />
 
       {estado.observaciones.length > 0 && (
@@ -135,7 +161,7 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
                 observacion={observacion}
                 puedeResponder={estado.puedeGestionar}
                 trabajando={trabajando}
-                onResponder={(datos) =>
+                onResponder={(datos, archivos) =>
                   firma.conFirma((firmaOtp) =>
                     ejecutar(
                       () =>
@@ -144,6 +170,8 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
                           observacion.id,
                           datos,
                           firmaOtp,
+                          ruta,
+                          archivos,
                         ),
                       'Observación respondida',
                     ),
@@ -158,9 +186,11 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
       {resumen.total === 0 && (
         <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3">
           <p className="text-xs text-slate-700 m-0">
-            {estado.plazoVencido
-              ? 'No se registró ninguna observación y el plazo de publicidad ya venció.'
-              : 'Todavía no se ha registrado ninguna observación. El plazo de publicidad sigue corriendo.'}
+            {definitivo
+              ? 'Todavía no se ha registrado ninguna observación al pliego definitivo.'
+              : estado.plazoVencido
+                ? 'No se registró ninguna observación y el plazo de publicidad ya venció.'
+                : 'Todavía no se ha registrado ninguna observación. El plazo de publicidad sigue corriendo.'}
           </p>
         </div>
       )}
@@ -187,7 +217,7 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
               onCancelar={() => setRegistrando(false)}
               onRegistrar={async (datos, archivos) => {
                 const ok = await ejecutar(
-                  () => contratacionService.registrarObservacion(procesoId, datos, archivos),
+                  () => contratacionService.registrarObservacion(procesoId, datos, archivos, ruta),
                   'Observaciones del interesado registradas',
                 );
                 if (ok) setRegistrando(false);
@@ -219,6 +249,7 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
                         datos,
                         archivos,
                         firmaOtp,
+                        ruta,
                       ),
                     'Observaciones respondidas con el documento general',
                   ),
@@ -230,15 +261,16 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
           {estado.puedeCerrarse && !registrando && (
             <div className="space-y-1.5">
               <Ayuda>
-                No recibir observaciones es un resultado legítimo. Con el plazo vencido puedes dar
-                por cumplida la actividad para que no quede pendiente en el riel.
+                {definitivo
+                  ? 'No recibir observaciones al pliego definitivo es un resultado legítimo: puedes dar por cumplida la actividad para que no quede pendiente en el riel.'
+                  : 'No recibir observaciones es un resultado legítimo. Con el plazo vencido puedes dar por cumplida la actividad para que no quede pendiente en el riel.'}
               </Ayuda>
               <BotonSecundario
                 disabled={trabajando}
                 onClick={() =>
                   firma.conFirma((firmaOtp) =>
                     ejecutar(
-                      () => contratacionService.cerrarSinObservaciones(procesoId, firmaOtp),
+                      () => contratacionService.cerrarSinObservaciones(procesoId, firmaOtp, ruta),
                       'Actividad cerrada sin observaciones',
                     ),
                   )
@@ -326,12 +358,15 @@ function Observacion({
   trabajando: boolean;
   onResponder: (
     datos: { respuesta: string; modificoPliego?: boolean },
+    archivos: File[],
   ) => Promise<boolean> | boolean | undefined;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [respuesta, setRespuesta] = useState('');
   /** Informativo (127): null si no se dice. */
   const [modifico, setModifico] = useState<boolean | null>(null);
+  const [archivos, setArchivos] = useState<File[]>([]);
+  const archivosRespuesta = observacion.respuestaSoportesIds?.length ?? 0;
 
   const respondida = observacion.respondidaAt !== null;
 
@@ -399,6 +434,14 @@ function Observacion({
           <p className="text-xs text-slate-700 m-0 leading-relaxed whitespace-pre-line">
             {observacion.respuesta}
           </p>
+          {archivosRespuesta > 0 && (
+            <p className="text-xs text-slate-500 m-0 flex items-center gap-1.5">
+              <Paperclip className="w-3.5 h-3.5" />
+              {archivosRespuesta === 1
+                ? 'Un archivo de respuesta, en el expediente'
+                : `${archivosRespuesta} archivos de respuesta, en el expediente`}
+            </p>
+          )}
           <p className="text-xs text-slate-500 m-0">
             {observacion.respondidaPor ?? 'Sin registrar'} ·{' '}
             {observacion.respondidaAt ? momento(observacion.respondidaAt) : ''} ·{' '}
@@ -431,19 +474,29 @@ function Observacion({
               <SiNo nombre={`modifico-${observacion.id}`} valor={modifico} onCambio={setModifico} />
             </fieldset>
 
+            <ArchivosVarios
+              archivos={archivos}
+              onCambio={setArchivos}
+              texto="Archivos de la respuesta a este interesado (opcional, hasta 10)"
+            />
+
             <div className="flex items-center gap-2">
               <Boton
                 disabled={trabajando || !respuesta.trim()}
                 onClick={async () => {
                   // Solo se cierra si la respuesta pasó: si falló, lo escrito
                   // debe seguir ahí para reintentar.
-                  const ok = await onResponder({
-                    respuesta: respuesta.trim(),
-                    modificoPliego: modifico ?? undefined,
-                  });
+                  const ok = await onResponder(
+                    {
+                      respuesta: respuesta.trim(),
+                      modificoPliego: modifico ?? undefined,
+                    },
+                    archivos,
+                  );
                   if (ok) {
                     setRespuesta('');
                     setModifico(null);
+                    setArchivos([]);
                     setAbierto(false);
                   }
                 }}

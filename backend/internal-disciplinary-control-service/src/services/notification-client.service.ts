@@ -17,7 +17,12 @@ export interface SendNotificationDto {
   texto_boton_accion?: string;
   url_accion?: string;
   datos_adicionales?: Record<string, any>;
+  /** Código del módulo en la configuración de notificaciones (EFDS-2406); si no viene, es este módulo. */
+  modulo?: string;
 }
+
+/** Código del módulo en la configuración de notificaciones (EFDS-2406). */
+export const MODULO_NOTIFICACIONES = 'control-disciplinario';
 
 @Injectable()
 export class NotificationClientService {
@@ -88,14 +93,15 @@ export class NotificationClientService {
 
   async send(dto: SendNotificationDto): Promise<void> {
     try {
-      await axios.post(`${this.baseUrl}/notifications`, dto, { timeout: 3000 });
+      await axios.post(`${this.baseUrl}/notifications`, { ...dto, modulo: dto.modulo ?? MODULO_NOTIFICACIONES }, { timeout: 3000 });
     } catch (err) {
       this.logger.warn(`No se pudo enviar notificación a ${dto.id_usuario_destinatario}: ${err?.message}`);
     }
   }
 
-  async sendMany(dtos: SendNotificationDto[]): Promise<void> {
-    if (!dtos.length) return;
+  async sendMany(entrada: SendNotificationDto[]): Promise<void> {
+    if (!entrada.length) return;
+    const dtos = entrada.map((dto) => ({ ...dto, modulo: dto.modulo ?? MODULO_NOTIFICACIONES }));
     try {
       await axios.post(`${this.baseUrl}/notifications/bulk`, { notifications: dtos }, { timeout: 3000 });
     } catch (err) {

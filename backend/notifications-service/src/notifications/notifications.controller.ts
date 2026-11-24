@@ -7,8 +7,10 @@ import {
   Param,
   Body,
   Query,
+  Res,
 } from '@nestjs/common';
-import { NotificationsService } from './notifications.service';
+import type { Response } from 'express';
+import { NotificationsService, esOmitida } from './notifications.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 
 @Controller()
@@ -53,10 +55,12 @@ export class NotificationsController {
     return this.service.markAllAsRead(userId);
   }
 
-  // POST /notifications
+  // POST /notifications — 202 cuando la configuración de notificaciones lo omite
   @Post('notifications')
-  create(@Body() dto: CreateNotificationDto) {
-    return this.service.create(dto);
+  async create(@Body() dto: CreateNotificationDto, @Res({ passthrough: true }) res: Response) {
+    const resultado = await this.service.create(dto);
+    if (esOmitida(resultado)) res.status(202);
+    return resultado;
   }
 
   // POST /notifications/bulk

@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { fijarPlazoEnDias } from '../contratos/plazo-pactado';
 import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import {
@@ -116,7 +117,7 @@ export class ActaInicioService {
     if (!contrato) {
       return {
         puedeIniciar: false,
-        motivoNoPuede: 'el proceso todavía no tiene contrato generado',
+        motivoNoPuede: 'el proceso todavía no tiene contrato (se genera en la 8.1)',
         acta: null,
         supervisor: null,
       };
@@ -241,7 +242,7 @@ export class ActaInicioService {
       // única que trae.
       if (!suscripcion && archivo && hash) {
         const expediente = await em.findOne(Expediente, { where: { procesoId } });
-        if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+        if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
         const doc = await this.guardarDocumento(
           em,
@@ -280,6 +281,7 @@ export class ActaInicioService {
       if (contrato.estado !== 'EJECUCION') {
         contrato.estado = 'EJECUCION';
         contrato.ejecucionDesde = dto.fechaInicio;
+        fijarPlazoEnDias(contrato, dto.fechaInicio);
         await em.save(contrato);
       }
 
@@ -315,7 +317,7 @@ export class ActaInicioService {
       return {
         aplica,
         puedeRegistrar: false,
-        motivoNoPuede: 'el proceso todavía no tiene contrato generado',
+        motivoNoPuede: 'el proceso todavía no tiene contrato (se genera en la 8.1)',
         legalizado: false,
         requiereArl: false,
         suscripcion: null,
@@ -390,7 +392,7 @@ export class ActaInicioService {
       }
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const doc = await this.guardarDocumento(
         em,
@@ -413,6 +415,7 @@ export class ActaInicioService {
 
       contrato.estado = 'EJECUCION';
       contrato.ejecucionDesde = dto.fechaSuscripcion;
+      fijarPlazoEnDias(contrato, dto.fechaSuscripcion);
       await em.save(contrato);
 
       await this.cierre.resolverCierre(
@@ -560,7 +563,7 @@ export class ActaInicioService {
 
   private async exigirContratoLegalizado(em: EntityManager, procesoId: string) {
     const contrato = await this.contratoDelProceso(em, procesoId, true);
-    if (!contrato) throw new NotFoundException('El proceso no tiene contrato generado');
+    if (!contrato) throw new NotFoundException('El proceso todavía no tiene contrato: se genera en la 8.1');
 
     if (!admiteInicio(contrato.estado)) {
       throw new ConflictException(
@@ -598,7 +601,7 @@ export class ActaInicioService {
 
   private async exigirProceso(em: EntityManager, procesoId: string) {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { PortalDocenteController } from './portal-docente.controller.js';
 import { PortalDocenteService } from './portal-docente.service.js';
+import { HorarioDocenteService } from './horario-docente.service.js';
 import { AsignacionesModule } from '../asignaciones/asignaciones.module.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { VistaModule } from '../vista/vista.module.js';
@@ -14,7 +15,7 @@ import { VistaModule } from '../vista/vista.module.js';
 @Module({
   imports: [AsignacionesModule, VistaModule],
   controllers: [PortalDocenteController],
-  providers: [PortalDocenteService, ProgramacionPermissionsService],
+  providers: [PortalDocenteService, HorarioDocenteService, ProgramacionPermissionsService],
   exports: [PortalDocenteService],
 })
 export class PortalDocenteModule {}

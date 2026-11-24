@@ -4,6 +4,7 @@ import { CalendarClock, Loader2, Gauge, Check, Hand, RotateCcw } from 'lucide-re
 
 import { ConcertacionDocente } from './ConcertacionDocente';
 import { GruposAsignados } from './GruposAsignados';
+import { HorarioGruposVirtuales } from './HorarioGruposVirtuales';
 import { getConfiguracionPortal } from '../services/api/vistaApi';
 import { getConfiguracionConcertacion } from '../services/api/concertacionApi';
 import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
@@ -179,6 +180,9 @@ export default function PortalDocenteProgramacion() {
           {excedido && <p className="text-[11px] text-red-600 font-semibold">Estás por encima del tope.</p>}
         </div>
       )}
+
+      {/* Grupos virtuales asignados sin horario (063): el docente lo define aquí */}
+      {!tomaFranjas && <HorarioGruposVirtuales />}
 
       {/* Concertación de la docencia (EFDS-2315): solo si está encendida y el periodo está en el corte */}
       {periodosConDocencia.map((p) => (

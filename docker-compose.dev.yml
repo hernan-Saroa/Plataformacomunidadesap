@@ -3,6 +3,11 @@
 # Uso: docker-compose -f docker-compose.dev.yml up -d --build
 
 services:
+  mailpit:
+    image: axllent/mailpit:v1.22.3
+    networks:
+      - superapp-net
+
   # ============ FRONTEND (React + Vite - Build de producción con Nginx) ============
   frontend:
     build:
@@ -206,6 +211,12 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3003
+      # Interoperabilidad PTA <-> Programación Académica (EFDS-2435). SOLO es el valor INICIAL: se siembra
+      # en la base la primera vez; después manda la base (PTA > Configuración). Sin definir = apagada (manual).
+      PROG_CONCERTACION_HABILITADA: ${PROG_CONCERTACION_HABILITADA:-true}
+      PROG_CONCERTACION_DESDE_PERIODO: ${PROG_CONCERTACION_DESDE_PERIODO:-2026-1}
+      PTA_MOCK_FIRMA_OTP: ${PTA_MOCK_FIRMA_OTP:-true}
+      AUDIT_SERVICE_URL: http://audit-service:3011
 
       DB_HOST: db
       DB_PORT: 5432
@@ -300,6 +311,8 @@ services:
       dockerfile: Dockerfile
     container_name: internal-disciplinary-control-service
     environment:
+      JURIDICA_EMAIL: judicial@dev.invalid
+      MAIL_ENVIRONMENT: dev
       NODE_ENV: production
       PORT: 3005
       TZ: America/Bogota
@@ -414,6 +427,8 @@ services:
       dockerfile: Dockerfile
     container_name: legal-management-service
     environment:
+      JURIDICA_EMAIL: judicial@dev.invalid
+      MAIL_ENVIRONMENT: dev
       NODE_ENV: production
       PORT: 3008
 
@@ -430,9 +445,9 @@ services:
       AZURE_TENANT_ID: ${AZURE_TENANT_ID}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
-      LEGAL_EMAIL_ACCOUNT: ${LEGAL_EMAIL_ACCOUNT}
-      LEGAL_EMAIL_ACCOUNT_JUDICIAL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL}
-      LEGAL_EMAIL_ACCOUNT_CORREOS: ${LEGAL_EMAIL_ACCOUNT_CORREOS}
+      LEGAL_EMAIL_ACCOUNT: ""
+      LEGAL_EMAIL_ACCOUNT_JUDICIAL: ${DEV_LEGAL_EMAIL_ACCOUNT_JUDICIAL:-}
+      LEGAL_EMAIL_ACCOUNT_CORREOS: ${DEV_LEGAL_EMAIL_ACCOUNT_CORREOS:-}
       NOTIFICATIONS_EMAIL_ACCOUNT: ${NOTIFICATIONS_EMAIL_ACCOUNT:-}
       LEGAL_SYNC_EXCLUDED_SENDERS: ${LEGAL_SYNC_EXCLUDED_SENDERS:-}
 
@@ -460,6 +475,9 @@ services:
       dockerfile: Dockerfile
     container_name: notifications-service
     environment:
+      MAIL_TEST_INBOX: avisos@dev.invalid
+      JURIDICA_EMAIL: judicial@dev.invalid
+      MAIL_ENVIRONMENT: dev
       NODE_ENV: production
       PORT: 3009
 
@@ -473,13 +491,12 @@ services:
       # JWT - debe coincidir con gateway y auth-service
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
 
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS}
-      SMTP_FROM: ${SMTP_FROM}
-      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
-      EMAIL_REDIRECT_TO: ${EMAIL_REDIRECT_TO:-}
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      SMTP_FROM: notificaciones@dev.invalid
+      EMAIL_PROVIDER: smtp
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
@@ -609,6 +626,14 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3013
+      # Programación Académica: la concertación ya no depende de una variable (EFDS-2435). El interruptor
+      # vive en el PTA (base de datos). Estas variables se declaran explícitas; los valores son los de siempre.
+      PROG_CONCERTACION_DESDE_PERIODO: ${PROG_CONCERTACION_DESDE_PERIODO:-2026-1}
+      PROG_NUCLEO_PUENTE: ${PROG_NUCLEO_PUENTE:-suma}
+      PROG_SIN_DATO_ASIGNABLE: ${PROG_SIN_DATO_ASIGNABLE:-true}
+      PROG_PORTAL_TOMA_FRANJAS: ${PROG_PORTAL_TOMA_FRANJAS:-false}
+      PROG_MOCK_FIRMA_OTP: ${PROG_MOCK_FIRMA_OTP:-true}
+      ACADEMIC_WORK_PLAN_SERVICE_URL: http://academic-work-plan-service:3003
 
       DB_HOST: db
       DB_PORT: 5432

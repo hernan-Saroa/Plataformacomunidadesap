@@ -139,7 +139,7 @@ export function DecisionEstudioPrevio({
         active:scale-95 transition-all ${variante === 'tarjeta' ? 'w-full' : ''}`}
     >
       <Check className="w-3.5 h-3.5" strokeWidth={3} />
-      {siguiente ? 'Aprobar y pasar al siguiente' : 'Aprobar'}
+      {siguiente ? 'Cargar correcciones y pasar al siguiente escalón' : 'Aprobar'}
     </button>
   );
   const puede = (a: AccionEscalon) => acciones.includes(a);
@@ -165,7 +165,9 @@ export function DecisionEstudioPrevio({
         onClose={() => setAccion(null)}
         title={
           accion === 'aprobar'
-            ? 'Aprobar estudio previo'
+            ? siguiente
+              ? 'Pasar al siguiente escalón'
+              : 'Aprobar estudio previo'
             : accion === 'negar'
               ? 'Negar el proceso'
               : 'Devolver para corrección'
@@ -173,7 +175,7 @@ export function DecisionEstudioPrevio({
         description={
           accion === 'aprobar'
             ? siguiente
-              ? `Pasa al siguiente escalón: ${siguiente}. La aprobación definitiva es la del último.`
+              ? `Adjunta las correcciones que hiciste, si las hay, y el estudio pasa al siguiente escalón: ${siguiente}. La aprobación definitiva es la del último.`
               : 'El proceso podrá continuar a las etapas siguientes'
             : accion === 'negar'
               ? // Se dice lo que de verdad va a pasar, y que no tiene vuelta:
@@ -211,7 +213,9 @@ export function DecisionEstudioPrevio({
               {procesando
                 ? 'Procesando…'
                 : accion === 'aprobar'
-                  ? 'Confirmar'
+                  ? siguiente
+                    ? 'Pasar al siguiente escalón'
+                    : 'Confirmar'
                   : accion === 'negar'
                     ? 'Negar el proceso'
                     : 'Devolver'}
@@ -269,7 +273,11 @@ export function DecisionEstudioPrevio({
             <ElegirSoportes
               archivos={soportes}
               onCambio={setSoportes}
-              etiqueta="Documentos que sustentan la aprobación (opcional)"
+              etiqueta={
+                siguiente
+                  ? 'Correcciones o documentos de tu revisión (opcional)'
+                  : 'Documentos que sustentan la aprobación (opcional)'
+              }
             />
             <p className="text-[11px] text-gray-500 mt-1.5 mb-0">
               Lo que escribas y adjuntes queda en el historial de la revisión, con tu nombre.

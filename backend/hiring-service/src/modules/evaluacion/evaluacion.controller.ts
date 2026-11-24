@@ -26,7 +26,7 @@ import {
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
-import { PuedeOEsDelComite } from './puede-o-es-del-comite.guard';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -40,10 +40,9 @@ import {
  * Evaluación de ofertas — actividad 6.3 (EFDS-1157).
  *
  * La plataforma no califica: el comité evalúa por fuera y aquí registra el
- * resultado con su informe. Quién puede registrar lo decide la membresía del
- * comité de este proceso, no el rol: el designado entra aunque no tenga el
- * alcance de la 6.3, y un evaluador designado en otro proceso llega hasta aquí
- * y no escribe nada.
+ * resultado con su informe. Quién puede registrar lo decide el alcance de la
+ * 6.3, como en cualquier actividad: designar a alguien en el comité (6.2) lo
+ * identifica como evaluador, pero no le abre la puerta ni lo hace aprobador.
  */
 /** Archivos del informe: el consolidado y uno por dimensión, con holgura. */
 const MAX_ARCHIVOS_INFORME = 10;
@@ -54,7 +53,7 @@ export class EvaluacionController {
   constructor(private readonly service: EvaluacionService) {}
 
   @Get()
-  @PuedeOEsDelComite('ver', '6.3')
+  @Puede('ver', '6.3')
   @ApiOperation({
     summary: 'Estado de la evaluación del proceso',
     description:
@@ -65,7 +64,7 @@ export class EvaluacionController {
   }
 
   @Post('resultado')
-  @PuedeOEsDelComite('editar', '6.3')
+  @Puede('editar', '6.3')
   @UseInterceptors(
     FilesInterceptor(
       'files',
@@ -92,7 +91,7 @@ export class EvaluacionController {
   }
 
   @Post('resultado/actualizar')
-  @PuedeOEsDelComite('editar', '6.3')
+  @Puede('editar', '6.3')
   @UseInterceptors(
     FilesInterceptor(
       'files',
@@ -118,7 +117,7 @@ export class EvaluacionController {
   }
 
   @Post('resultado/rectificar')
-  @PuedeOEsDelComite('editar', '6.3')
+  @Puede('editar', '6.3')
   @ApiOperation({
     summary: 'Rectificar el resultado registrado',
     description:
@@ -133,7 +132,7 @@ export class EvaluacionController {
   }
 
   @Post('resultado/evidencias')
-  @PuedeOEsDelComite('editar', '6.3')
+  @Puede('editar', '6.3')
   @UseInterceptors(
     FileInterceptor(
       'file',

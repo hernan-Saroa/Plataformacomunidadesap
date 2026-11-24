@@ -4,6 +4,7 @@ import { BancoDocentesPTA } from './BancoDocentesPTA';
 import { getBancoDocentes, getBancoDocenteStats, getRundConvocatorias } from '../../../services/api/ptaApi';
 
 vi.mock('../../../services/api/ptaApi', () => ({ getRundConvocatorias: vi.fn().mockResolvedValue([]), getBancoDocentes: vi.fn(), getBancoDocenteStats: vi.fn(),
+  getAlertasPeriodoPrueba: vi.fn().mockResolvedValue({ success: false, data: null }),
   getCatalogoTerritoriales: vi.fn().mockResolvedValue({ success: true, data: [{ id: '43', nombre: 'Norte De Santander' }, { id: '44', nombre: 'Risaralda' }] }),
 }));
 vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn().mockResolvedValue([

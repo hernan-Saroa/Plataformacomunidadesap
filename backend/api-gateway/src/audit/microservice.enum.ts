@@ -42,6 +42,8 @@ const ROUTE_MODULE_MAP: Array<{ pattern: RegExp; module: string }> = [
   { pattern: /\/auth\/api\/v\d+\/(persons|person|people)/i, module: 'Gestión de Personas' },
   // Centro de Ayuda (EFDS-2399)
   { pattern: /\/auth\/api\/v\d+\/centro-ayuda/i, module: 'Centro de Ayuda' },
+  // Consola de configuración de notificaciones (EFDS-2406)
+  { pattern: /\/notificaciones\/api\/v\d+\/configuracion/i, module: 'Configuración de Notificaciones' },
 ];
 
 /**

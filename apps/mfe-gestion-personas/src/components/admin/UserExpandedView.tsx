@@ -209,7 +209,7 @@ export function UserExpandedView({
                 <div className="flex-1">
                   <p className="text-xs text-gray-500 mb-0.5">Fecha de Activación</p>
                   <p className="text-sm font-semibold text-gray-900">
-                    {new Date(user.enrollmentDate).toLocaleDateString('es-CO', { 
+                    {new Date(user.created_at).toLocaleDateString('es-CO', { 
                       weekday: 'long', 
                       year: 'numeric', 
                       month: 'long', 
@@ -217,7 +217,7 @@ export function UserExpandedView({
                     })}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    {new Date(user.enrollmentDate).toLocaleTimeString('es-CO', { 
+                    {new Date(user.created_at).toLocaleTimeString('es-CO', { 
                       hour: '2-digit', 
                       minute: '2-digit' 
                     })}
