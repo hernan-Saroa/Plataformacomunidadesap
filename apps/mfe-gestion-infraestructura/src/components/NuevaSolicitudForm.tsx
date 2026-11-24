@@ -23,6 +23,8 @@ import {
   ShieldCheck,
   Upload,
   Paperclip,
+  Clock,
+  Calendar,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -108,6 +110,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const [salon, setSalon] = useState<string>('');
   const [ubicacionDetalle, setUbicacionDetalle] = useState<string>('');
   const [tipoMantenimiento, setTipoMantenimiento] = useState<string>('CORRECTIVO');
+  const [fechaProgramada, setFechaProgramada] = useState<string>('');
   const [idCategoria, setIdCategoria] = useState<number | undefined>(undefined);
   const [idSubcategoria, setIdSubcategoria] = useState<number | undefined>(undefined);
   const [prioridad, setPrioridad] = useState<string>('MEDIA');
@@ -149,6 +152,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const pisoRef = useRef<HTMLInputElement>(null);
   const salonRef = useRef<HTMLInputElement>(null);
   const tipoMantenimientoRef = useRef<HTMLSelectElement>(null);
+  const fechaProgramadaRef = useRef<HTMLInputElement>(null);
   const categoriaRef = useRef<HTMLSelectElement>(null);
   const funcionarioRef = useRef<HTMLInputElement>(null);
   const placaRef = useRef<HTMLInputElement>(null);
@@ -160,17 +164,28 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         setCargandoSedes(true);
         setCargandoCatalogos(true);
         setCargandoDependencias(true);
-        const [listadoSedes, tm, pr, cs, deps, terrData] = await Promise.all([
+        const [listadoSedes, tm, pr, cs, deps, terrData, ambito] = await Promise.all([
           infraestructuraService.getSedesAlcanceUMI(),
           infraestructuraService.getCatalogo('TIPO_MANTENIMIENTO'),
           infraestructuraService.getCatalogo('PRIORIDAD'),
           infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'),
           infraestructuraService.getDependenciasCatalogo(),
           infraestructuraService.getTerritorialesConCetaps(),
+          infraestructuraService.getAmbitoTerritorial(),
         ]);
         setSedesAlcance(listadoSedes);
         if (terrData && Array.isArray(terrData.direccionesTerritoriales)) {
           setDireccionesTerritoriales(terrData.direccionesTerritoriales);
+          // Pre-seleccionar la territorial del usuario si pertenece a una Dirección Territorial regional
+          if (ambito && !ambito.esCentral && ambito.idDireccionTerritorial) {
+            const dtMatch = terrData.direccionesTerritoriales.find(
+              (t: any) => Number(t.id) === Number(ambito.idDireccionTerritorial),
+            );
+            if (dtMatch) {
+              setAmbitoUbicacion('TERRITORIAL');
+              setIdDireccionTerritorial(String(dtMatch.id));
+            }
+          }
         }
         setCatalogoCS(cs.length > 0 ? cs : []);
         setDependencias(Array.isArray(deps) && deps.length > 0 ? deps : []);
@@ -399,6 +414,20 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
       nuevosErrores.nombreAreaSolicitante = 'Ingrese el nombre del área solicitante (mínimo 3 caracteres)';
     }
     if (!tipoMantenimiento) nuevosErrores.tipoMantenimiento = 'Seleccione un tipo de mantenimiento';
+    if (tipoMantenimiento === 'PREVENTIVO') {
+      const hoyStr = new Date().toISOString().split('T')[0];
+      const max15DiasDate = new Date();
+      max15DiasDate.setDate(max15DiasDate.getDate() + 15);
+      const max15DiasStr = max15DiasDate.toISOString().split('T')[0];
+
+      if (!fechaProgramada) {
+        nuevosErrores.fechaProgramada = 'La fecha programada es obligatoria para mantenimiento preventivo (máx. 15 días a futuro)';
+      } else if (fechaProgramada < hoyStr) {
+        nuevosErrores.fechaProgramada = 'La fecha programada no puede ser anterior a la fecha actual';
+      } else if (fechaProgramada > max15DiasStr) {
+        nuevosErrores.fechaProgramada = `La fecha programada no puede superar el límite de 15 días calendario (${max15DiasStr})`;
+      }
+    }
     if (tipoAtencion !== 'TECNOLOGICA' && !Number.isInteger(idCategoria)) {
       nuevosErrores.idCategoria = 'Seleccione la categoría de servicio';
     }
@@ -417,9 +446,9 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
     if (Object.keys(nuevosErrores).length > 0) {
       const ordenCampos = ambitoUbicacion === 'CENTRAL'
         ? (ubicacionManual
-            ? ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'piso', 'salon', 'tipoMantenimiento', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion']
-            : ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'idBloque', 'idEspacio', 'tipoMantenimiento', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion'])
-        : ['tipoAtencion', 'idDireccionTerritorial', 'idCetap', 'nombreAreaSolicitante', 'idBloque', 'idEspacio', 'salon', 'tipoMantenimiento', 'idCategoria', 'descripcion'];
+            ? ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'piso', 'salon', 'tipoMantenimiento', 'fechaProgramada', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion']
+            : ['tipoAtencion', 'idSede', 'nombreAreaSolicitante', 'idBloque', 'idEspacio', 'tipoMantenimiento', 'fechaProgramada', 'idCategoria', 'nombreFuncionarioBienAsignado', 'placaInventarioBien', 'descripcion'])
+        : ['tipoAtencion', 'idDireccionTerritorial', 'idCetap', 'nombreAreaSolicitante', 'idBloque', 'idEspacio', 'salon', 'tipoMantenimiento', 'fechaProgramada', 'idCategoria', 'descripcion'];
       const primerCampoConError = ordenCampos.find((campo) => !!nuevosErrores[campo]);
       const refsPorCampo: Record<string, React.RefObject<HTMLElement | null>> = {
         tipoAtencion: tipoAtencionRef,
@@ -432,6 +461,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         piso: pisoRef,
         salon: salonRef,
         tipoMantenimiento: tipoMantenimientoRef,
+        fechaProgramada: fechaProgramadaRef,
         idCategoria: categoriaRef,
         nombreFuncionarioBienAsignado: funcionarioRef,
         placaInventarioBien: placaRef,
@@ -586,6 +616,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         salon: salon.trim(),
         ubicacionDetalle: ubicacionDetalle.trim() || undefined,
         tipoMantenimiento,
+        fechaProgramada: tipoMantenimiento === 'PREVENTIVO' && fechaProgramada ? fechaProgramada : undefined,
         prioridad,
         idCategoria: Number.isInteger(idCategoria) ? idCategoria : undefined,
         idSubcategoria: Number.isInteger(idSubcategoria) ? idSubcategoria : undefined,
@@ -1179,7 +1210,24 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 <select
                   ref={tipoMantenimientoRef}
                   value={tipoMantenimiento}
-                  onChange={(e) => setTipoMantenimiento(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTipoMantenimiento(val);
+                    if (val === 'PREVENTIVO') {
+                      if (!fechaProgramada) {
+                        const hoy = new Date().toISOString().split('T')[0];
+                        setFechaProgramada(hoy);
+                      }
+                      if (!idCategoria && tipoAtencion !== 'TECNOLOGICA') {
+                        const catPrev = catalogoCS.find(
+                          (c) => c.codigo === 'CS_008' || String(c.nombre || '').toLowerCase().includes('preventivo'),
+                        );
+                        if (catPrev) {
+                          setIdCategoria(catPrev.idCatalogo);
+                        }
+                      }
+                    }
+                  }}
                   disabled={cargandoCatalogos}
                   className={inputClase('tipoMantenimiento')}
                   aria-invalid={!!errores.tipoMantenimiento}
@@ -1192,6 +1240,45 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 </select>
                 {errorCampo('tipoMantenimiento')}
               </div>
+
+              {tipoMantenimiento === 'PREVENTIVO' && (
+                <div className="rounded-xl border border-sky-300 bg-sky-50/70 p-4 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-900">
+                      <Clock className="w-4 h-4 text-sky-600" />
+                      Programación Preventiva (Ventana Máx. 15 Días)
+                    </span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-sky-200 text-sky-800 border border-sky-300">
+                      Máx. 15 Días Futuro
+                    </span>
+                  </div>
+                  <label className={etiquetaCampoClase('fechaProgramada')}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      Fecha Programada de Atención
+                    </span>
+                    <span className="text-rose-500 ml-1">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    ref={fechaProgramadaRef}
+                    min={new Date().toISOString().split('T')[0]}
+                    max={(() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + 15);
+                      return d.toISOString().split('T')[0];
+                    })()}
+                    value={fechaProgramada}
+                    onChange={(e) => setFechaProgramada(e.target.value)}
+                    className={inputClase('fechaProgramada')}
+                    aria-invalid={!!errores.fechaProgramada}
+                  />
+                  <p className="text-[11px] text-sky-700">
+                    La intervención preventiva debe programarse entre hoy ({new Date().toISOString().split('T')[0]}) y un plazo máximo de 15 días calendario hacia el futuro.
+                  </p>
+                  {errorCampo('fechaProgramada')}
+                </div>
+              )}
 
               <div>
                 <label className={etiquetaCampoClase('idCategoria')}>

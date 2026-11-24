@@ -16,7 +16,7 @@ import { PdfModifierService } from './pdf-modifier.service';
 import { ProcessService, normalizeProcessStage } from './process.service';
 import { SequenceService } from './sequence.service';
 import { JuridicaEmailService, EmailAdjunto } from './juridica-email.service';
-import { NotificationClientService } from './notification-client.service';
+import { MODULO_NOTIFICACIONES, NotificationClientService } from './notification-client.service';
 import { AutosConfigurationService } from './autos-configuration.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -2009,6 +2009,7 @@ export class AutoService {
 
       await firstValueFrom(
         this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
+          modulo: MODULO_NOTIFICACIONES,
           to,
           subject,
           html,

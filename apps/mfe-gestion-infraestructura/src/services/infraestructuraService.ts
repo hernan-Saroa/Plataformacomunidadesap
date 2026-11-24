@@ -561,6 +561,7 @@ export interface CreateMantenimientoPayload {
   tipoAtencion: 'FISICA' | 'TECNOLOGICA';
   idCategoria?: number;
   idSubcategoria?: number;
+  fechaProgramada?: string;
   // ===== Fase 3 =====
   esBienAsignadoFuncionario?: boolean;
   nombreFuncionarioBienAsignado?: string;
@@ -612,6 +613,7 @@ export interface AprobarAsignarPayload {
   proveedorLocalNombre?: string | null;
   proveedorLocalNit?: string | null;
   ordenCompraContratoLocal?: string | null;
+  fechaProgramada?: string | null;
 }
 
 export interface RechazarPayload {
@@ -789,6 +791,10 @@ const FE_LEGACY_MAP: Record<string, string[]> = {
     'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
     'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
     'INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM',
+  ],
+  COORDINADOR_ADMINISTRATIVO_DT: [
+    'INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES',
+    'INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION',
   ],
   P3: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
   P2: ['INFRA_ANALISTA_ASIGNADOR_OPERATIVO'],

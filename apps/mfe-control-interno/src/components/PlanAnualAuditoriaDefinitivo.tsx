@@ -2861,6 +2861,26 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     // ✅ Sincronizar año activo con la vigencia del plan recién creado
     if (planCreado) {
       setAñoActual(vigencia);
+
+      // El universo auditable se hereda de la vigencia anterior al crear el plan (EFDS-2450)
+      const herencia = (planCreado as any).universoHeredado as
+        | { desde: number | null; copiadas: number; yaTenia: boolean; error?: boolean }
+        | undefined;
+      if (herencia && !herencia.yaTenia) {
+        if (herencia.copiadas > 0) {
+          toast.success(`Universo auditable heredado de ${herencia.desde}`, {
+            description: `Se copiaron ${herencia.copiadas} unidad(es) auditable(s) a la vigencia ${vigencia}. Puede agregarlas, modificarlas o inactivarlas sin afectar la vigencia ${herencia.desde}.`,
+          });
+        } else if (herencia.error) {
+          toast.warning('No se pudo heredar el universo auditable', {
+            description: `El plan se creó, pero el universo de la vigencia ${vigencia - 1} no se copió. Puede registrarlo en Universo Auditable.`,
+          });
+        } else {
+          toast.info('Universo auditable vacío', {
+            description: `No hay universo auditable registrado en la vigencia ${vigencia - 1}; el plan ${vigencia} inicia con el universo vacío.`,
+          });
+        }
+      }
     }
 
     if (planCreado && planCreado.roles) {

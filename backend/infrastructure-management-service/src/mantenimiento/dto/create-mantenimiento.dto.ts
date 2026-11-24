@@ -64,6 +64,14 @@ export class CreateMantenimientoDto {
   @MaxLength(50)
   tipoMantenimiento: string;
 
+  @ApiPropertyOptional({
+    example: '2026-11-28',
+    description: 'RF-INF-011 (EFDS-2436): Fecha programada para mantenimiento preventivo. Obligatoria cuando tipoMantenimiento es PREVENTIVO (máximo 15 días calendario hacia el futuro).',
+  })
+  @IsOptional()
+  @IsString()
+  fechaProgramada?: string;
+
   @ApiProperty({
     example: 'FISICA',
     description: 'Clasificación OBLIGATORIA EFDS-1731. FISICA = UMI (plomería, cerrajería). TECNOLOGICA = TI (HDMI, cómputo, impresora).',
@@ -452,9 +460,13 @@ export class TecnicoUmiFromAuthDto {
 }
 
 export class AsignarTecnicoPayload {
-  @ApiProperty({ example: 'a1b2c3d4-1234-5678-9abc-def012345678' })
+  @ApiPropertyOptional({
+    example: 'a1b2c3d4-1234-5678-9abc-def012345678',
+    description: 'UUID del técnico asignado (auth.user). Opcional si modalidadEjecutorTerritorial es PROVEEDOR_LOCAL_CONTRATADO.',
+  })
+  @IsOptional()
   @IsUUID('4')
-  idTecnicoAsignado: string;
+  idTecnicoAsignado?: string;
 
   @ApiPropertyOptional({ example: 'Ing. Porky', deprecated: true, description: 'Deprecated: display legacy se calcula desde JOIN persona. Ignorado si envian idTecnicoAsignado valido.' })
   @IsOptional()
@@ -496,6 +508,11 @@ export class AsignarTecnicoPayload {
   @IsOptional()
   @IsString()
   ordenCompraContratoLocal?: string;
+
+  @ApiPropertyOptional({ example: '2026-11-28', description: 'RF-INF-011: Fecha programada de ejecución (máximo 15 días a futuro)' })
+  @IsOptional()
+  @IsString()
+  fechaProgramada?: string;
 }
 
 export class RegistrarVoBoCierreDtDto {

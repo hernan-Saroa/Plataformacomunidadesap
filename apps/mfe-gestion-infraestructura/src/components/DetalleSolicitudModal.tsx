@@ -1630,8 +1630,27 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     return [...asigs].reverse().find((a: any) => a?.accion === 'CIERRE_POR_FALTA_DE_INSUMOS') || null;
   }, [esCerradaPorFaltaInsumos, detalle?.asignaciones]);
   // Estados pre-aprobación y finales declarados a nivel de módulo
-  const sesionUmiDetalle = useMemo(() => obtenerSesionUMI(), []);
+  const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
+  const sesionUmiDetalle = sesionUmi;
   const tienePerm = (codigo: string) => hasPerm(sesionUmiDetalle, codigo);
+  const rolesNormConformidad = useMemo(() => {
+    const raw = (sesionUmi?.roles ?? []) as unknown as Array<any>;
+    const set = new Set<string>();
+    for (const r of raw) {
+      if (!r) continue;
+      if (typeof r === 'string') {
+        const n = r.trim().toUpperCase();
+        if (n) set.add(n);
+      } else if (typeof r === 'object') {
+        const c = r.code || r.codigo || r.role || r.rol || r.name;
+        if (typeof c === 'string') {
+          const n = c.trim().toUpperCase();
+          if (n) set.add(n);
+        }
+      }
+    }
+    return set;
+  }, [sesionUmi]);
 
   const puedeAprobarAsignarUMI =
     detalle &&
@@ -1677,7 +1696,12 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     detalle &&
     !esAreaTI &&
     ['ASIGNADA', 'EN_CAMPO_VALORACION', 'EN_VALORACION'].includes(estadoActual) &&
-    (tienePerm('infraestructura.solicitud.cierre_tecnico') || tienePerm('infraestructura.solicitud.execute_assigned'));
+    (
+      tienePerm('infraestructura.solicitud.cierre_tecnico') ||
+      tienePerm('infraestructura.solicitud.close_with_evidence') ||
+      tienePerm('infraestructura.solicitud.execute_assigned') ||
+      rolesNormConformidad.has('COORDINADOR_ADMINISTRATIVO_DT')
+    );
 
   const esMantenimientoMayor = Boolean(
     String(detalle?.clasificacionMantenimiento || '').toUpperCase() === 'MAYOR' ||
@@ -1735,25 +1759,6 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   // ---------------------------------------------------------------------------
   // EFDS-1737 L17 + CP-05 + CP-10/11: actor conformidad = (a) SOLICITANTE ORIGINAL match exacto, OR (b) SUPER_ADMIN / ADMIN_FUNCIONAL bypass.
   // NUNCA P2 (assign), NUNCA P3/P4 TECNICOS, NUNCA P7 CALIDAD. Guardia UI = backend hace 403 real.
-  const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
-  const rolesNormConformidad = useMemo(() => {
-    const raw = (sesionUmi?.roles ?? []) as unknown as Array<any>;
-    const set = new Set<string>();
-    for (const r of raw) {
-      if (!r) continue;
-      if (typeof r === 'string') {
-        const n = r.trim().toUpperCase();
-        if (n) set.add(n);
-      } else if (typeof r === 'object') {
-        const c = r.code || r.codigo || r.role || r.rol || r.name;
-        if (typeof c === 'string') {
-          const n = c.trim().toUpperCase();
-          if (n) set.add(n);
-        }
-      }
-    }
-    return set;
-  }, [sesionUmi]);
   const esSolicitanteOriginalDeEstaSolicitud = useMemo(() => {
     if (!detalle) return false;
     const userIdActual = String(sesionUmi.userId || '').trim().toLowerCase();
@@ -1827,6 +1832,39 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     )
   );
 
+  const puedeEmitirVoBoCierreDt = useMemo(() => {
+    if (!detalle) return false;
+    if (!esSolicitudTerritorial && !detalle.ejecucionTerritorial?.voboCierreDtFecha) return false;
+    if (esSolicitanteOriginalDeEstaSolicitud) return false;
+
+    const esCentralAsignador = Boolean(
+      tienePerm('infraestructura.solicitud.assign') ||
+      tienePerm('infraestructura.solicitud.approve') ||
+      tienePerm('infraestructura.admin') ||
+      esAdminFuncionalInfra ||
+      rolesNormConformidad.has('COORDINADOR_INFRAESTRUCTURA') ||
+      rolesNormConformidad.has('P5') ||
+      rolesNormConformidad.has('ANALISTA_ASIGNADOR_UMI') ||
+      rolesNormConformidad.has('P2') ||
+      rolesNormConformidad.has('SUPER_ADMIN')
+    );
+
+    const esRolTerritorial = Boolean(
+      rolesNormConformidad.has('COORDINADOR_ADMINISTRATIVO_DT') ||
+      rolesNormConformidad.has('COORDINADOR_TERRITORIAL') ||
+      rolesNormConformidad.has('ENLACE_TERRITORIAL')
+    );
+
+    return esCentralAsignador || esRolTerritorial;
+  }, [
+    detalle,
+    esSolicitudTerritorial,
+    esSolicitanteOriginalDeEstaSolicitud,
+    tienePerm,
+    esAdminFuncionalInfra,
+    rolesNormConformidad,
+  ]);
+
   const ultimaRevisionTecnica = useMemo(() => {
     if (!Array.isArray((detalle as any)?.asignaciones)) return null;
     const revs = (detalle as any).asignaciones.filter(
@@ -1875,6 +1913,7 @@ const puedeCerrarTecnicamente = Boolean(
     (
       esAdminFuncionalInfra ||
       esResponsableTecnicoAsignado ||
+      rolesNormConformidad.has('COORDINADOR_ADMINISTRATIVO_DT') ||
       tienePerm('infraestructura.solicitud.cierre_tecnico') ||
       tienePerm('infraestructura.solicitud.close_with_evidence')
     )
@@ -2317,6 +2356,32 @@ const puedeCerrarTecnicamente = Boolean(
                           </div>
                           <p className="mt-1.5 text-xs text-slate-700 leading-relaxed bg-white/95 border border-purple-200 rounded-xl px-3.5 py-2.5 shadow-sm">
                             Esta solicitud supera la capacidad operativa de la cuadrilla UMI y requiere contratación externa. El responsable asignado debe registrar el <strong>Diagnóstico Técnico</strong> correspondiente. Posteriormente, la Coordinación GIM emite el <strong>Visto Bueno (VoBo)</strong> formal para dar curso al proceso contractual de la ESAP.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* EFDS-2436 / RF-INF-011: Banner de Mantenimiento Preventivo Programado */}
+                  {detalle.tipoMantenimiento === 'PREVENTIVO' && (
+                    <div className="rounded-2xl border border-sky-300 bg-sky-50/80 p-4 shadow-sm text-sky-950">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 shrink-0 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-xs">
+                          <Clock className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border bg-sky-200 text-sky-900 border-sky-300">
+                              Mantenimiento Preventivo Programado
+                            </span>
+                            {detalle.fechaProgramada && (
+                              <span className="text-[11px] font-bold text-sky-800">
+                                Fecha de atención: {formatearFecha(detalle.fechaProgramada)}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs mt-1.5 leading-relaxed text-sky-900">
+                            Esta orden preventiva cuenta con programación anticipada dentro de la ventana máxima de 15 días calendario. Recorre el ciclo regular de asignación técnica, valoración en campo, ejecución con evidencias y cierre formal.
                           </p>
                         </div>
                       </div>
@@ -2785,7 +2850,7 @@ const puedeCerrarTecnicamente = Boolean(
                                 <div className="rounded-xl border border-amber-200/90 bg-amber-50/60 p-3 space-y-2.5">
                                   <div className="flex items-center justify-between">
                                     <span className="text-[10px] font-black uppercase tracking-widest text-amber-900">
-                                      Modalidad del Ejecutor Territorial (RF-INF-013)
+                                      Modalidad del Ejecutor Territorial
                                     </span>
                                     <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
                                       {detalle.direccionTerritorialNombre || 'Dirección Territorial'}
@@ -3423,19 +3488,21 @@ const puedeCerrarTecnicamente = Boolean(
                             </p>
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setVoboCierreDtDecision(true);
-                            setVoboCierreDtObservaciones(detalle.ejecucionTerritorial?.voboCierreDtObservaciones || '');
-                            setErrorVoBoCierreDt('');
-                            setMostrarModalVoBoCierreDt(true);
-                          }}
-                          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm shadow-amber-500/20 transition-all shrink-0"
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          {detalle.ejecucionTerritorial?.voboCierreDtFecha ? 'Actualizar VoBo DT' : 'Emitir VoBo DT'}
-                        </button>
+                        {puedeEmitirVoBoCierreDt && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVoboCierreDtDecision(true);
+                              setVoboCierreDtObservaciones(detalle.ejecucionTerritorial?.voboCierreDtObservaciones || '');
+                              setErrorVoBoCierreDt('');
+                              setMostrarModalVoBoCierreDt(true);
+                            }}
+                            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm shadow-amber-500/20 transition-all shrink-0"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            {detalle.ejecucionTerritorial?.voboCierreDtFecha ? 'Actualizar VoBo DT' : 'Emitir VoBo DT'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -4442,8 +4509,13 @@ const puedeCerrarTecnicamente = Boolean(
                                           <User className="w-3 h-3 text-slate-400" />
                                           <span className="font-bold text-slate-500 shrink-0">Usuario:</span>
                                           <span className="font-semibold text-slate-700">
-                                            {entry.usuario_email || 'Sistema'}
+                                            {entry.usuario_nombre ? `${entry.usuario_nombre} (${entry.usuario_email || 'Sistema'})` : (entry.usuario_email || 'Sistema')}
                                           </span>
+                                          {entry.usuario_cargo && (
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-bold">
+                                              Cargo: {entry.usuario_cargo}
+                                            </span>
+                                          )}
                                           {entry.usuario_id && (
                                             <span className="text-slate-400 font-mono text-[10px]" title={String(entry.usuario_id)}>
                                               id·{String(entry.usuario_id).slice(0, 8)}
@@ -4687,7 +4759,7 @@ const puedeCerrarTecnicamente = Boolean(
                           Redistribuir / Reasignar técnico
                         </h3>
                         <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
-                          <span className="font-bold text-indigo-700">RF-INF-005 AC-01 / D10:</span> Cambia el técnico asignado. Si el estado actual es RECIBIDA o RECHAZADA → automáticamente pasa a <strong>ASIGNADA</strong>. Si ya está ASIGNADA, EN_ANÁLISIS o EN_PROGRESO → mantiene el estado y solo cambia el responsable.
+                          <span className="font-bold text-indigo-700">Reasignación:</span> Cambia el técnico asignado. Si el estado actual es RECIBIDA o RECHAZADA → automáticamente pasa a <strong>ASIGNADA</strong>. Si ya está ASIGNADA, EN_ANÁLISIS o EN_PROGRESO → mantiene el estado y solo cambia el responsable.
                         </p>
                       </div>
                     </div>
@@ -5823,7 +5895,7 @@ const puedeCerrarTecnicamente = Boolean(
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Motivo de Cierre por Falta de Insumos</h3>
-                  <p className="text-[11px] text-rose-700 font-medium">Requerimiento EFDS-1735 · Solicitud #{detalle?.consecutivo}</p>
+                  <p className="text-[11px] text-rose-700 font-medium">Solicitud #{detalle?.consecutivo}</p>
                 </div>
               </div>
               <button
@@ -5869,7 +5941,7 @@ const puedeCerrarTecnicamente = Boolean(
                   Causa / Justificación formal registrada
                 </label>
                 <div className="p-3.5 rounded-xl bg-white border border-rose-200 text-xs text-slate-900 font-medium leading-relaxed shadow-sm">
-                  {detalle?.motivoRechazo || trazaCierreInsumos?.motivo || 'Cierre técnico por falta de disponibilidad de insumos (EFDS-1735)'}
+                  {detalle?.motivoRechazo || trazaCierreInsumos?.motivo || 'Cierre técnico por falta de disponibilidad de insumos'}
                 </div>
               </div>
 
@@ -5913,7 +5985,7 @@ const puedeCerrarTecnicamente = Boolean(
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Cierre por Falta de Insumos</h3>
-                  <p className="text-[11px] text-rose-700 font-medium">Requerimiento EFDS-1735 · Solicitud #{detalle?.consecutivo}</p>
+                  <p className="text-[11px] text-rose-700 font-medium">Solicitud #{detalle?.consecutivo}</p>
                 </div>
               </div>
               <button
@@ -5988,7 +6060,7 @@ const puedeCerrarTecnicamente = Boolean(
                 ) : (
                   <>
                     <PackageX className="w-3.5 h-3.5 text-white" />
-                    <span style={{ color: '#ffffff' }}>Confirmar Cierre por Falta de Insumos (EFDS-1735)</span>
+                    <span style={{ color: '#ffffff' }}>Confirmar Cierre por Falta de Insumos</span>
               </>
                 )}
               </button>
@@ -5997,7 +6069,7 @@ const puedeCerrarTecnicamente = Boolean(
         </div>
       )}
 
-      {/* Modal Marcar Requiere Contratación (EFDS-2354) */}
+      {/* Modal Marcar Requiere Contratación */}
       {mostrarModalMarcarContratacion && (
         <div
           style={{
@@ -6033,7 +6105,7 @@ const puedeCerrarTecnicamente = Boolean(
                     Requerimiento de Contratación / Compra
                   </h3>
                   <p className="text-xs text-rose-700 font-semibold">
-                    EFDS-2354 · Notificación y seguimiento UMI
+                    Notificación y seguimiento de adquisición UMI
                   </p>
                 </div>
               </div>

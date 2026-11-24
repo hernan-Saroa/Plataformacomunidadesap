@@ -3,6 +3,7 @@ export interface AuthUser {
   username?: string;
   email?: string;
   name?: string;
+  cargo?: string;
   roles: string[];
   permissions?: Set<string> | string[];
   codigoTecnico?: string;

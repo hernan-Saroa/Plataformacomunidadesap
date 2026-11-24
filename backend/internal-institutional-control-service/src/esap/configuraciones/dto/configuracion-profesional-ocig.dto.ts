@@ -25,6 +25,12 @@ export class CreateConfiguracionProfesionalOCIGDto {
   @IsString()
   rolOcig: string;
 
+  // Roles además del principal (EFDS-2452): el Jefe OCI que también audita
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  rolesAdicionales?: string[];
+
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
@@ -61,6 +67,12 @@ export class UpdateConfiguracionProfesionalOCIGDto {
   @IsString()
   rolOcig?: string;
 
+  // Se agregan o quitan desde Editar sin eliminar al profesional (EFDS-2452)
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  rolesAdicionales?: string[];
+
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
@@ -95,6 +107,7 @@ export class ConfiguracionProfesionalOCIGResponseDto {
   id: string;
   idTercero: string;
   rolOcig: string; // Puede ser cualquier rol del sistema (ADMIN, USER, etc.)
+  rolesAdicionales: string[]; // EFDS-2452
   especialidades: string[];
   capacidadMaximaAuditorias: number;
   horasMensualesDisponibles: number;

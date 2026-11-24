@@ -98,6 +98,8 @@ interface FormularioProcesoDafpProps {
   procesosCatalog?: ProcesoParaSelect[];
   vigenciaPlan?: number;
   fechaCortePlan?: string;
+  /** Vigencia de la que se heredó la unidad al crear el Plan Anual (EFDS-2450) */
+  vigenciaOrigen?: number | null;
 }
 
 interface ProcesoCatalogoExtendido extends ProcesoParaSelect {
@@ -382,6 +384,7 @@ export function FormularioProcesoDafpVisual({
   procesosCatalog = [],
   vigenciaPlan,
   fechaCortePlan,
+  vigenciaOrigen,
 }: FormularioProcesoDafpProps) {
   const [formData, setFormData] = useState<FormularioDafpData>(() =>
     buildInitialData(procesoInicial, vigenciaPlan, fechaCortePlan)
@@ -873,6 +876,10 @@ export function FormularioProcesoDafpVisual({
                         className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 px-3 py-2.5 text-center text-sm font-bold outline-none"
                         title="La vigencia se hereda automáticamente del Plan Anual seleccionado"
                       />
+                      {/* El detalle indica de qué vigencia se copió la unidad (EFDS-2450, CA-05) */}
+                      {vigenciaOrigen ? (
+                        <p className="mt-1 text-xs text-gray-500">Heredada de {vigenciaOrigen}</p>
+                      ) : null}
                     </div>
                     <div>
                       <label className="mb-1.5 block text-xs font-bold text-gray-700">Fecha de corte <span className="text-red-500">*</span></label>

@@ -17,7 +17,8 @@ const DOCUMENT_KEYS = new Set([
   'documento_docente',
 ]);
 const SALARY_KEYS = new Set(['puntaje_salarial', 'puntajesalarial']);
-const VALUE_KEYS = new Set(['valor', 'datoprevio', 'datonuevo', 'dato_previo', 'dato_nuevo', 'valoranterior', 'valornuevo', 'datoerrado']);
+// 'anterior'/'nuevo': pares campo/anterior/nuevo del historial de auditoría (cambios[]).
+const VALUE_KEYS = new Set(['valor', 'datoprevio', 'datonuevo', 'dato_previo', 'dato_nuevo', 'valoranterior', 'valornuevo', 'datoerrado', 'anterior', 'nuevo']);
 
 export type RundSensitiveField = typeof RUND_SENSITIVE_FIELDS[number];
 

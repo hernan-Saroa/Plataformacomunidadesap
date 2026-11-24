@@ -45,11 +45,14 @@ import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/ap
 import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso, type DisponibilidadEquipoAuditorResponse } from '../services/api/controlInternoService';
 import { estructuraService } from '../../services/estructuraService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
+import { cumpleConAlgunRolOci } from '../config/roles-ocig-operativos';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 import { CampoFechaCalendario, type CalculoCronograma } from './CalendarioProgramacion';
 import { evaluacionProgramable } from '../utils/auditableEvaluacion';
 import { dependenciasDeLaEvaluacion, tituloConUnidades, unidadesDeLaEvaluacion, unidadesParaExportar } from './utils/unidadesAuditables';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { EditorNormatividadAplicable } from './EditorNormatividadAplicable';
+import { normalizarNormas, type NormaAplicable } from './services/normatividad';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -152,7 +155,8 @@ export interface AuditoriaUnificadaFormData {
   // 5. OBJETIVOS Y CRITERIOS
   objetivos: string[];
   criteriosAuditoria: string[];
-  normatividadAplicable: string[];
+  // Identificación, descripción y tipo; las guardadas como texto se leen como generales (EFDS-2451)
+  normatividadAplicable: NormaAplicable[];
   metodologia: string;
   
   // 6. RECURSOS Y PRODUCTOS
@@ -243,6 +247,8 @@ interface AuditorOption {
   id: string;
   nombre: string;
   cargo: string;
+  /** Roles además del principal (cargo), p. ej. el Jefe OCI que también audita (EFDS-2452) */
+  rolesAdicionales?: string[];
 }
 
 const ROLES_DECRETO_648 = [
@@ -468,7 +474,7 @@ export function FormularioAuditoriaUnificado({
       hitos: data?.hitos || [],
       objetivos: data?.objetivos || [],
       criteriosAuditoria: data?.criteriosAuditoria || [],
-      normatividadAplicable: data?.normatividadAplicable || [],
+      normatividadAplicable: normalizarNormas(data?.normatividadAplicable),
       metodologia: data?.metodologia || '',
       recursos: data?.recursos || [],
       presupuestoEstimado: data?.presupuestoEstimado ? formatMiles(data.presupuestoEstimado) : '',
@@ -504,7 +510,6 @@ export function FormularioAuditoriaUnificado({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [objetivoTemporal, setObjetivoTemporal] = useState('');
   const [criterioTemporal, setCriterioTemporal] = useState('');
-  const [normaTemporal, setNormaTemporal] = useState('');
   const [riesgoTemporal, setRiesgoTemporal] = useState('');
   const [procesoRiesgoTemporal, setProcesoRiesgoTemporal] = useState('');
   const [controlTemporal, setControlTemporal] = useState('');
@@ -634,7 +639,8 @@ export function FormularioAuditoriaUnificado({
             .map((config: any) => ({
               id: String(config.idTercero),
               nombre: config.nombre || `Profesional ${config.idTercero}`,
-              cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor'
+              cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor',
+              rolesAdicionales: Array.isArray(config.rolesAdicionales) ? config.rolesAdicionales : [],
             }));
           setAuditoresDisponibles(auditores);
         } else {
@@ -994,18 +1000,6 @@ export function FormularioAuditoriaUnificado({
       criteriosAuditoria: [...prev.criteriosAuditoria, criterioTemporal.trim()]
     }));
     setCriterioTemporal('');
-  };
-
-  const handleAgregarNorma = () => {
-    if (normaTemporal.trim().length < 5) {
-      toast.error('La norma debe tener al menos 5 caracteres');
-      return;
-    }
-    setFormData(prev => ({
-      ...prev,
-      normatividadAplicable: [...prev.normatividadAplicable, normaTemporal.trim()]
-    }));
-    setNormaTemporal('');
   };
 
   const handleAgregarRiesgo = () => {
@@ -1486,9 +1480,6 @@ export function FormularioAuditoriaUnificado({
             criterioTemporal={criterioTemporal}
             setCriterioTemporal={setCriterioTemporal}
             onAgregarCriterio={handleAgregarCriterio}
-            normaTemporal={normaTemporal}
-            setNormaTemporal={setNormaTemporal}
-            onAgregarNorma={handleAgregarNorma}
           />
         );
       case 6:
@@ -2915,10 +2906,10 @@ function Paso3EquipoAuditor({
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el jefe OCI / supervisor...</option>
-              {/* Solo el rol Jefe OCI (EFDS-2197); al editar se conserva el ya asignado */}
+              {/* Solo el rol Jefe OCI (EFDS-2197), principal o adicional (EFDS-2452); al editar se conserva el ya asignado */}
               {auditores
                 .filter(a =>
-                  REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esJefeOCISupervisor(a.cargo) ||
+                  cumpleConAlgunRolOci(a, REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esJefeOCISupervisor) ||
                   a.id === formData.supervisorAsignado
                 )
                 .map(auditor => (
@@ -2937,11 +2928,11 @@ function Paso3EquipoAuditor({
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el auditor líder...</option>
-              {/* Solo el rol Auditor (EFDS-2197); al editar se conserva el ya asignado */}
+              {/* Solo el rol Auditor (EFDS-2197), principal o adicional (EFDS-2452); al editar se conserva el ya asignado */}
               {auditores
                 .filter(a =>
                   a.id !== formData.supervisorAsignado &&
-                  (REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.puedeLiderarAuditoria(a.cargo) ||
+                  (cumpleConAlgunRolOci(a, REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.puedeLiderarAuditoria) ||
                     a.id === formData.auditorLider)
                 )
                 .map(auditor => (
@@ -2961,8 +2952,8 @@ function Paso3EquipoAuditor({
               {auditores.filter(a =>
                 a.id !== formData.supervisorAsignado &&
                 a.id !== formData.auditorLider &&
-                // Solo el rol Auditor (EFDS-2197); al editar se conservan los ya elegidos
-                (REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esEquipoAuditor(a.cargo) ||
+                // Solo el rol Auditor (EFDS-2197), principal o adicional (EFDS-2452); al editar se conservan los ya elegidos
+                (cumpleConAlgunRolOci(a, REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esEquipoAuditor) ||
                   isAuditorEnEquipo(a))
               ).map(auditor => {
                 const seleccionado = isAuditorEnEquipo(auditor);
@@ -3335,9 +3326,6 @@ interface Paso5Props extends PasoProps {
   criterioTemporal: string;
   setCriterioTemporal: (value: string) => void;
   onAgregarCriterio: () => void;
-  normaTemporal: string;
-  setNormaTemporal: (value: string) => void;
-  onAgregarNorma: () => void;
 }
 
 function Paso5ObjetivosCriterios({
@@ -3349,10 +3337,7 @@ function Paso5ObjetivosCriterios({
   onEliminarObjetivo,
   criterioTemporal,
   setCriterioTemporal,
-  onAgregarCriterio,
-  normaTemporal,
-  setNormaTemporal,
-  onAgregarNorma
+  onAgregarCriterio
 }: Paso5Props) {
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -3418,119 +3403,13 @@ function Paso5ObjetivosCriterios({
             </div>
           </div>
 
-          {/* Criterios de Auditoría */}
-          <div>
-            <h4 className="font-bold text-gray-900 mb-3">Criterios de Auditoría</h4>
-            
-            {formData.criteriosAuditoria.length > 0 && (
-              <div className="space-y-2 mb-3">
-                {formData.criteriosAuditoria.map((criterio, index) => (
-                  <div
-                    key={index}
-                    className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200"
-                  >
-                    <CheckSquare className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-gray-700 flex-1">{criterio}</p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        onChange(
-                          'criteriosAuditoria',
-                          formData.criteriosAuditoria.filter((_, i) => i !== index)
-                        );
-                      }}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
+          {/* Sin "Criterios de auditoría": la OCI no los maneja en la planeación; el marco va en el alcance (EFDS-2454) */}
 
-            <div className="flex gap-2">
-              <Input
-                value={criterioTemporal}
-                onChange={(e) => setCriterioTemporal(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    onAgregarCriterio();
-                  }
-                }}
-                placeholder="Ej: Cumplimiento de procedimientos internos"
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                onClick={onAgregarCriterio}
-                disabled={criterioTemporal.trim().length < 5}
-                style={{ backgroundColor: '#003DA5' }}
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Agregar
-              </Button>
-            </div>
-          </div>
-
-          {/* Normatividad Aplicable */}
-          <div>
-            <h4 className="font-bold text-gray-900 mb-3">Normatividad Aplicable</h4>
-            
-            {formData.normatividadAplicable.length > 0 && (
-              <div className="space-y-2 mb-3">
-                {formData.normatividadAplicable.map((norma, index) => (
-                  <div
-                    key={index}
-                    className="flex items-start gap-2 p-3 bg-purple-50 rounded-lg border border-purple-200"
-                  >
-                    <BookOpen className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-gray-700 flex-1">{norma}</p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        onChange(
-                          'normatividadAplicable',
-                          formData.normatividadAplicable.filter((_, i) => i !== index)
-                        );
-                      }}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <Input
-                value={normaTemporal}
-                onChange={(e) => setNormaTemporal(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    onAgregarNorma();
-                  }
-                }}
-                placeholder="Ej: Decreto 648 de 2017 - Modelo Estándar de Control Interno MECI"
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                onClick={onAgregarNorma}
-                disabled={normaTemporal.trim().length < 5}
-                style={{ backgroundColor: '#003DA5' }}
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Agregar
-              </Button>
-            </div>
-          </div>
+          {/* Normatividad Aplicable: manual o desde la plantilla Excel (EFDS-2451) */}
+          <EditorNormatividadAplicable
+            normas={formData.normatividadAplicable}
+            onChange={(normas) => onChange('normatividadAplicable', normas)}
+          />
 
           {/* Metodología */}
           <FieldWrapper

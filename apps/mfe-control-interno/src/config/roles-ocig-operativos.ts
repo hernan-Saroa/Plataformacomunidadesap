@@ -48,3 +48,35 @@ export function tieneRolOci(rol: string | null | undefined, esperado: RolOCIGOpe
   if (!(rol ?? '').trim()) return false;
   return normalizarRolOcigOperativo(rol) === esperado;
 }
+
+/**
+ * Roles del profesional en Asignar Profesional: el principal y los adicionales,
+ * normalizados y sin repetidos. Un profesional puede tener varios, p. ej. el Jefe
+ * OCI que también audita (EFDS-2452).
+ */
+export function rolesOciDe(
+  profesional:
+    | { cargo?: string | null; rolOcig?: string | null; rolesAdicionales?: readonly string[] | null }
+    | null
+    | undefined,
+): string[] {
+  if (!profesional) return [];
+  const roles: string[] = [];
+  for (const rol of [profesional.rolOcig, profesional.cargo, ...(profesional.rolesAdicionales ?? [])]) {
+    if (!(rol ?? '').trim()) continue;
+    const normalizado = String(normalizarRolOcigOperativo(rol));
+    if (!roles.includes(normalizado)) roles.push(normalizado);
+  }
+  return roles;
+}
+
+/**
+ * El profesional cumple la regla con cualquiera de sus roles, no solo con el
+ * principal (EFDS-2452).
+ */
+export function cumpleConAlgunRolOci(
+  profesional: Parameters<typeof rolesOciDe>[0],
+  regla: (rol: string) => boolean,
+): boolean {
+  return rolesOciDe(profesional).some((rol) => regla(rol));
+}

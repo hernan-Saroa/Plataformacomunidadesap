@@ -1,3 +1,4 @@
+import { MODULO_NOTIFICACIONES } from '../services/notification-client.service';
 import {
   Controller,
   Get,
@@ -99,6 +100,7 @@ export class CompartirExpedienteController {
         `;
 
         const emailPayload = {
+          modulo: MODULO_NOTIFICACIONES,
           to: dto.emailDestinatario,
           subject: `📋 Expediente Compartido - ESAP Control Disciplinario`,
           text: `Se ha compartido un expediente disciplinario con usted.\n\nEnlace: ${urlExpediente}${dto.requiereClave && dto.clave ? `\nClave: ${dto.clave}` : ''}`,
