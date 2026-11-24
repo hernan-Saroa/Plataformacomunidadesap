@@ -2364,23 +2364,43 @@ const puedeCerrarTecnicamente = Boolean(
 
                   {/* EFDS-2436 / RF-INF-011: Banner de Mantenimiento Preventivo Programado */}
                   {detalle.tipoMantenimiento === 'PREVENTIVO' && (
-                    <div className="rounded-2xl border border-sky-300 bg-sky-50/80 p-4 shadow-sm text-sky-950">
+                    <div
+                      className="rounded-2xl border p-4 shadow-sm"
+                      style={{
+                        backgroundColor: '#f0f9ff',
+                        borderColor: '#7dd3fc',
+                        color: '#082f49',
+                      }}
+                    >
                       <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 shrink-0 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-xs">
-                          <Clock className="w-5 h-5 text-white" />
+                        <div
+                          className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center shadow-xs"
+                          style={{
+                            backgroundColor: '#0284c7',
+                            color: '#ffffff',
+                          }}
+                        >
+                          <Clock className="w-5 h-5" style={{ color: '#ffffff' }} />
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border bg-sky-200 text-sky-900 border-sky-300">
+                            <span
+                              className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border"
+                              style={{
+                                backgroundColor: '#e0f2fe',
+                                color: '#0369a1',
+                                borderColor: '#7dd3fc',
+                              }}
+                            >
                               Mantenimiento Preventivo Programado
                             </span>
                             {detalle.fechaProgramada && (
-                              <span className="text-[11px] font-bold text-sky-800">
+                              <span className="text-[11px] font-bold" style={{ color: '#0369a1' }}>
                                 Fecha de atención: {formatearFecha(detalle.fechaProgramada)}
                               </span>
                             )}
                           </div>
-                          <p className="text-xs mt-1.5 leading-relaxed text-sky-900">
+                          <p className="text-xs mt-1.5 leading-relaxed" style={{ color: '#0c4a6e' }}>
                             Esta orden preventiva cuenta con programación anticipada dentro de la ventana máxima de 15 días calendario. Recorre el ciclo regular de asignación técnica, valoración en campo, ejecución con evidencias y cierre formal.
                           </p>
                         </div>
@@ -4258,19 +4278,23 @@ const puedeCerrarTecnicamente = Boolean(
                     <button
                       type="button"
                       onClick={confirmarRemitir}
-                      disabled={remitirEnviando}
+                      disabled={remitirEnviando || remitirMotivo.trim().length < 10}
+                      style={{
+                        backgroundColor: (remitirEnviando || remitirMotivo.trim().length < 10) ? '#93c5fd' : '#0284c7',
+                        color: '#ffffff',
+                      }}
                       className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold shadow-sm shadow-sky-500/20 transition-all disabled:opacity-60 active:scale-[0.98]"
                     >
                       {remitirEnviando ? (
                         <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Remitiendo...
-                    </>
+                          <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#ffffff' }} />
+                          <span style={{ color: '#ffffff' }}>Remitiendo...</span>
+                        </>
                       ) : (
                         <>
-                          <Send className="w-4 h-4" />
-                          Confirmar remisión
-                    </>
+                          <Send className="w-4 h-4" style={{ color: '#ffffff' }} />
+                          <span style={{ color: '#ffffff' }}>Confirmar remisión</span>
+                        </>
                       )}
                     </button>
                   </div>
@@ -4701,12 +4725,16 @@ const puedeCerrarTecnicamente = Boolean(
                       type="button"
                       onClick={confirmarRechazoHandler}
                       disabled={ejecutandoRechazo || rechazoMotivo.trim().length < 10}
+                      style={{
+                        backgroundColor: (ejecutandoRechazo || rechazoMotivo.trim().length < 10) ? '#f43f5e' : '#e11d48',
+                        color: '#ffffff',
+                      }}
                       className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold shadow-sm shadow-rose-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
                     >
                       {ejecutandoRechazo ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
+                        <><Loader2 className="w-4 h-4 animate-spin" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Procesando…</span></>
                       ) : (
-                        <><ThumbsDown className="w-4 h-4" /> Confirmar rechazo</>
+                        <><ThumbsDown className="w-4 h-4" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Confirmar rechazo</span></>
                       )}
                     </button>
                   </div>
@@ -4866,12 +4894,16 @@ const puedeCerrarTecnicamente = Boolean(
                       type="button"
                       onClick={confirmarRedistribucionHandler}
                       disabled={ejecutandoRedist || !redistTecnicoCodigo.trim() || cargandoTecnicos}
+                      style={{
+                        backgroundColor: (ejecutandoRedist || !redistTecnicoCodigo.trim() || cargandoTecnicos) ? '#6366f1' : '#4f46e5',
+                        color: '#ffffff',
+                      }}
                       className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm shadow-indigo-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
                     >
                       {ejecutandoRedist ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
+                        <><Loader2 className="w-4 h-4 animate-spin" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Procesando…</span></>
                       ) : (
-                        <><RedistribuirIcon className="w-4 h-4" /> Confirmar redistribución</>
+                        <><RedistribuirIcon className="w-4 h-4" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Confirmar redistribución</span></>
                       )}
                     </button>
                   </div>
@@ -4991,12 +5023,16 @@ const puedeCerrarTecnicamente = Boolean(
                       type="button"
                       onClick={handleConfirmarRecepcion}
                       disabled={ejecutandoRecepcion}
+                      style={{
+                        backgroundColor: ejecutandoRecepcion ? '#fcd34d' : '#d97706',
+                        color: '#ffffff',
+                      }}
                       className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-sm shadow-amber-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
                     >
                       {ejecutandoRecepcion ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
+                        <><Loader2 className="w-4 h-4 animate-spin" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Procesando…</span></>
                       ) : (
-                        <><Truck className="w-4 h-4" /> Confirmar recepción</>
+                        <><Truck className="w-4 h-4" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Confirmar recepción</span></>
                       )}
                     </button>
                   </div>
@@ -5485,16 +5521,20 @@ const puedeCerrarTecnicamente = Boolean(
                       type="button"
                       onClick={registrarVoBoHandler}
                       disabled={ejecutandoVoBo}
+                      style={{
+                        backgroundColor: ejecutandoVoBo ? '#a78bfa' : '#7c3aed',
+                        color: '#ffffff',
+                      }}
                       className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-sm shadow-violet-500/20 transition-all disabled:opacity-60"
                     >
                       {ejecutandoVoBo ? (
                         <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Registrando...
-                    </>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Registrando...</span>
+                        </>
                       ) : (
                         <>
-                          <BadgeCheck className="w-3.5 h-3.5" /> {voboDecision ? (detalle?.requiereContratacion ? "Confirmar Aval de Contratación" : "Confirmar VoBo") : "Registrar con Observaciones"}
-                    </>
+                          <BadgeCheck className="w-3.5 h-3.5" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>{voboDecision ? (detalle?.requiereContratacion ? "Confirmar Aval de Contratación" : "Confirmar VoBo") : "Registrar con Observaciones"}</span>
+                        </>
                       )}
                     </button>
                   </div>
@@ -5667,15 +5707,19 @@ const puedeCerrarTecnicamente = Boolean(
                       type="button"
                       onClick={registrarVoBoCierreDtHandler}
                       disabled={enviandoVoBoCierreDt}
+                      style={{
+                        backgroundColor: enviandoVoBoCierreDt ? '#fcd34d' : '#d97706',
+                        color: '#ffffff',
+                      }}
                       className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm shadow-amber-500/20 transition-all disabled:opacity-60"
                     >
                       {enviandoVoBoCierreDt ? (
                         <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Registrando...
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Registrando...</span>
                         </>
                       ) : (
                         <>
-                          <ShieldCheck className="w-3.5 h-3.5" /> {voboCierreDtDecision ? "Confirmar VoBo DT Aprobado" : "Registrar VoBo DT con Observaciones"}
+                          <ShieldCheck className="w-3.5 h-3.5" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>{voboCierreDtDecision ? "Confirmar VoBo DT Aprobado" : "Registrar VoBo DT con Observaciones"}</span>
                         </>
                       )}
                     </button>
@@ -6243,17 +6287,21 @@ const puedeCerrarTecnicamente = Boolean(
                 type="button"
                 disabled={guardandoEmergencia}
                 onClick={handleConfirmarEmergencia}
+                style={{
+                  backgroundColor: guardandoEmergencia ? '#fca5a5' : '#dc2626',
+                  color: '#ffffff',
+                }}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-sm transition-all disabled:opacity-50"
               >
                 {guardandoEmergencia ? (
                   <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Confirmando...</span>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: '#ffffff' }} />
+                    <span style={{ color: '#ffffff' }}>Confirmando...</span>
                   </>
                 ) : (
                   <>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Confirmar Emergencia</span>
+                    <CheckCircle2 className="w-3.5 h-3.5" style={{ color: '#ffffff' }} />
+                    <span style={{ color: '#ffffff' }}>Confirmar Emergencia</span>
                   </>
                 )}
               </button>

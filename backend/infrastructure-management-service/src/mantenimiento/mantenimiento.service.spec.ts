@@ -1891,7 +1891,7 @@ describe('[EFDS-1734] AC-03 Histórico auditoría JSONB asignaciones push entrie
     expect(keys).toEqual([
       'accion', 'fecha', 'id', 'id_tecnico_asignado', 'motivo',
       'observaciones', 'tecnico_codigo', 'tecnico_nombre_display',
-      'usuario_email', 'usuario_id', 'usuario_roles',
+      'usuario_cargo', 'usuario_email', 'usuario_id', 'usuario_nombre', 'usuario_roles',
     ]);
     expect(String(entry.tecnico_codigo)).toBe('TEC-HIST-1');
     expect(String(entry.tecnico_nombre_display)).toBe('Histórico 1');

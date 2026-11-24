@@ -111,6 +111,7 @@ export interface ReporteGestionPorCategoriaItem {
   codigoCategoria?: string | null;
   nombreCategoria: string;
   radicados: number;
+  porcentaje: number;
   completados: number;
   enCurso: number;
   vencidos: number;
@@ -2890,6 +2891,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento & { __meta?: { warning?: string } }> {
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) throw new ForbiddenException(vrUser.errorMsg);
     const solicitud = await this.findById(idSolicitud);
     const vr = await this.validarRolesAsignador(user, solicitud);
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
@@ -3109,6 +3112,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     body: { aprobado?: boolean; voboAprobado?: boolean; observaciones?: string | null; voboObservaciones?: string | null },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) throw new ForbiddenException(vrUser.errorMsg);
     const solicitud = await this.findById(idSolicitud);
     const vr = await this.validarRolesAsignador(user, solicitud);
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
@@ -3213,6 +3218,8 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
       throw new BadRequestException('Motivo de rechazo requiere al menos 10 caracteres.');
     }
 
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) throw new ForbiddenException(vrUser.errorMsg);
     const solicitud = await this.findById(idSolicitud);
     const vr = await this.validarRolesAsignador(user, solicitud);
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
@@ -3263,6 +3270,8 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     args: { tecnicoCodigo?: string; idTecnicoAsignado?: string; motivoRedistribucion?: string | null; observaciones?: string | null },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) throw new ForbiddenException(vrUser.errorMsg);
     const solicitud = await this.findById(idSolicitud);
     const vr = await this.validarRolesAsignador(user, solicitud);
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
@@ -3983,6 +3992,8 @@ ${insumosDesc ? `<p><strong>Materiales relacionados:</strong> ${insumosDesc}</p>
     dto: ConfirmarRecepcionInsumosDto,
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) throw new ForbiddenException(vrUser.errorMsg);
     const solicitud = await this.findById(idSolicitud);
     const vr = await this.validarRolesAsignador(user, solicitud);
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
@@ -4797,9 +4808,11 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     solicitud.observacionesConformidad = obs;
     solicitud.conteoReaperturasConformidad = Number(solicitud.conteoReaperturasConformidad || 0) + 1;
 
+    // Preservar la fecha límite institucional original antes de asignar el nuevo SLA operativo de 24h
+    solicitud.fechaLimiteOriginalAntesExtension =
+      solicitud.fechaLimiteOriginalAntesExtension ?? solicitud.fechaLimiteAtencion;
     // RELOJ NUEVO SLA 24H (project memory EFDS-1737)
     solicitud.fechaLimiteAtencion = new Date(ahora.getTime() + REAPERTURA_NUEVO_SLA_HORAS * 3600 * 1000);
-    solicitud.fechaLimiteOriginalAntesExtension = undefined;
     // NUNCA nulear cols de cierre técnico: fecha_cierre_tecnico, evidencias, trabajo_realizado etc.
     // La reapertura no invalida el trabajo ejecutado.
 
@@ -5276,11 +5289,14 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       .getRawMany();
     const porCategoria: ReporteGestionPorCategoriaItem[] = (catRaw || []).map((r: any) => {
       const id = r.idCategoria && r.idCategoria !== '' ? Number(r.idCategoria) : null;
+      const rads = Number(r.radicados || 0);
+      const pct = totalActual > 0 ? Number(((rads / totalActual) * 100).toFixed(2)) : 0;
       return {
         idCategoria: Number.isInteger(id) ? id! : null,
         codigoCategoria: r.codigoCategoria || null,
         nombreCategoria: String(r.nombreCategoria || ''),
-        radicados: Number(r.radicados || 0),
+        radicados: rads,
+        porcentaje: pct,
         completados: Number(r.completados || 0),
         enCurso: Number(r.encurso || 0),
         vencidos: Number(r.vencidos || 0),
@@ -5329,40 +5345,92 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     slaQb.leftJoin(CatalogoItem, 'ci', 'ci.idCatalogo = s.idCategoria AND ci.catalogo = :catCatalogo', { catCatalogo: 'CATEGORIA_SERVICIO' });
     aplicarFiltrosComunes(slaQb, 's.fechaRadicacion', fDesde, fHasta);
     slaQb.andWhere('s.fechaCierreTecnico IS NOT NULL AND s.fechaRadicacion IS NOT NULL');
+    slaQb.andWhere('s.estado IN (:...estCompSla)', { estCompSla: ESTADOS_COMPLETADOS });
     const slaRaw = await slaQb
       .addSelect('CAST(s.idCategoria AS TEXT)', 'idCategoria')
       .addSelect('COALESCE(ci.nombre, :fallbackSinCat)', 'nombreCategoria')
-      .addSelect('COUNT(*)::bigint', 'totalCierres')
-      .addSelect('ROUND(COALESCE(AVG(EXTRACT(EPOCH FROM (s.fechaCierreTecnico - s.fechaRadicacion)) / 86400.0), 0), 2)', 'promDias')
-      .addSelect("COALESCE(SUM(CASE WHEN s.fechaLimiteAtencion IS NOT NULL AND s.fechaCierreTecnico <= s.fechaLimiteAtencion THEN 1 ELSE 0 END), 0)::bigint", 'cumplen')
-      .addSelect("COALESCE(SUM(CASE WHEN s.fechaLimiteAtencion IS NOT NULL AND s.fechaCierreTecnico > s.fechaLimiteAtencion THEN 1 ELSE 0 END), 0)::bigint", 'exceden')
+      .addSelect('s.fechaRadicacion', 'fechaRadicacion')
+      .addSelect('s.fechaCierreTecnico', 'fechaCierreTecnico')
+      .addSelect('s.fechaLimiteAtencion', 'fechaLimiteAtencion')
+      .addSelect('s.fechaLimiteOriginalAntesExtension', 'fechaLimiteOriginal')
+      .addSelect('s.diasExtendidosPorInsumos', 'diasExtendidosPorInsumos')
+      .addSelect('s.conteoReaperturasConformidad', 'conteoReaperturasConformidad')
+      .addSelect('s.resultadoConformidad', 'resultadoConformidad')
       .setParameter('fallbackSinCat', '(sin categoría)')
-      .groupBy('s.idCategoria').addGroupBy('ci.nombre')
-      .orderBy('"totalCierres"', 'DESC')
       .getRawMany();
-    const tiemposAtencionVsMeta: ReporteGestionTiemposAtencionItem[] = await Promise.all((slaRaw || []).map(async (r: any) => {
-      const idStr = r.idCategoria && String(r.idCategoria).trim() !== '' ? String(r.idCategoria).trim() : null;
-      const idNum = (idStr && Number.isInteger(Number(idStr))) ? Number(idStr) : null;
-      let metaDias = 2;
-      if (Number.isInteger(idNum)) {
-        try {
-          const p = await this.obtenerParametroTiempoRespuesta(idNum!);
-          if (p && Number.isInteger(Number((p as any)?.dias ?? NaN))) metaDias = Number((p as any).dias);
-        } catch { /* ignore */ }
+
+    const gruposPorCat = new Map<string, { idCategoria: number | null; nombreCategoria: string; items: any[] }>();
+    for (const r of slaRaw || []) {
+      const key = String(r.idCategoria ?? r.nombreCategoria);
+      if (!gruposPorCat.has(key)) {
+        const idStr = r.idCategoria && String(r.idCategoria).trim() !== '' ? String(r.idCategoria).trim() : null;
+        const idNum = (idStr && Number.isInteger(Number(idStr))) ? Number(idStr) : null;
+        gruposPorCat.set(key, {
+          idCategoria: idNum,
+          nombreCategoria: String(r.nombreCategoria || ''),
+          items: [],
+        });
       }
-      const total = Number(r.totalCierres || 0);
-      const cumplen = Number(r.cumplen || 0);
-      const exceden = Number(r.exceden || 0);
-      return {
-        idCategoria: idNum,
-        nombreCategoria: String(r.nombreCategoria || ''),
-        metaSlaDias: metaDias,
-        casosCumplenSLA: cumplen,
-        casosExcedenSLA: exceden,
-        porcentajeCumplimiento: total === 0 ? 0 : (cumplen / total) * 100,
-        promedioRealDias: Number(r.promDias || 0),
-      };
-    }));
+      gruposPorCat.get(key)!.items.push(r);
+    }
+
+    const tiemposAtencionVsMeta: ReporteGestionTiemposAtencionItem[] = await Promise.all(
+      Array.from(gruposPorCat.values()).map(async (grupo) => {
+        let metaDias = 2;
+        if (grupo.idCategoria != null) {
+          try {
+            const p = await this.obtenerParametroTiempoRespuesta(grupo.idCategoria);
+            if (p && Number.isInteger(Number((p as any)?.dias ?? NaN))) metaDias = Number((p as any).dias);
+          } catch { /* ignore */ }
+        }
+
+        let cumplen = 0;
+        let exceden = 0;
+        let sumaDias = 0;
+
+        for (const item of grupo.items) {
+          const radMs = new Date(item.fechaRadicacion).getTime();
+          const finMs = new Date(item.fechaCierreTecnico).getTime();
+          const duracionDias = Math.max(0, (finMs - radMs) / (86400 * 1000));
+          sumaDias += duracionDias;
+
+          const diasInsumos = Math.max(0, Number(item.diasExtendidosPorInsumos || 0));
+          const diasPermitidos = metaDias + diasInsumos;
+
+          // Si duró más que la meta permitida institucional o fue reabierta excediendo la meta, excede SLA
+          let cumplioSla = duracionDias <= diasPermitidos;
+
+          // Verificación de fecha límite original antes de prórroga o reapertura
+          if (cumplioSla && item.fechaLimiteOriginal) {
+            const limOriginalMs = new Date(item.fechaLimiteOriginal).getTime() + (diasInsumos * 86400 * 1000);
+            if (finMs > limOriginalMs) {
+              cumplioSla = false;
+            }
+          }
+
+          if (cumplioSla) {
+            cumplen++;
+          } else {
+            exceden++;
+          }
+        }
+
+        const total = grupo.items.length;
+        const promDias = total > 0 ? Number((sumaDias / total).toFixed(2)) : 0;
+        const pctCumpl = total > 0 ? Number(((cumplen / total) * 100).toFixed(1)) : 0;
+
+        return {
+          idCategoria: grupo.idCategoria,
+          nombreCategoria: grupo.nombreCategoria,
+          metaSlaDias: metaDias,
+          casosCumplenSLA: cumplen,
+          casosExcedenSLA: exceden,
+          porcentajeCumplimiento: pctCumpl,
+          promedioRealDias: promDias,
+        };
+      }),
+    );
+    tiemposAtencionVsMeta.sort((a, b) => (b.casosCumplenSLA + b.casosExcedenSLA) - (a.casosCumplenSLA + a.casosExcedenSLA));
 
     // ---- E. percepcionServicio (reutiliza endpoint consolidados 1738) ----
     const filtrosComunesPercepcion: FiltrosConsolidadoCalificacion = {
@@ -5544,6 +5612,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       { header: 'Código', key: 'codigoCategoria', width: 12 },
       { header: 'Nombre', key: 'nombreCategoria', width: 48 },
       { header: 'Radicados', key: 'radicados', width: 12 },
+      { header: '% del Total', key: 'porcentaje', width: 14 },
       { header: 'Completados', key: 'completados', width: 12 },
       { header: 'En curso', key: 'enCurso', width: 12 },
       { header: 'Vencidos SLA', key: 'vencidos', width: 14 },
@@ -5557,6 +5626,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         codigoCategoria: c.codigoCategoria,
         nombreCategoria: c.nombreCategoria,
         radicados: c.radicados,
+        porcentaje: (c.porcentaje != null ? c.porcentaje.toFixed(2) + '%' : '0.00%'),
         completados: c.completados,
         enCurso: c.enCurso,
         vencidos: c.vencidos,
@@ -6067,10 +6137,11 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     const filaHeaderTabla = (arr: string[]) => arr.map((t) => ({ text: t, style: 'tableHeader' }));
 
     const catTable: any[][] = [
-      filaHeaderTabla(['Categoría', 'Rad', 'Comp', 'Cur', 'Venc', 'Prom ★']),
+      filaHeaderTabla(['Categoría', 'Rad', '% Total', 'Comp', 'Cur', 'Venc', 'Prom ★']),
       ...reporte.porCategoria.map((c) => [
         String(c.nombreCategoria || ''),
         String(c.radicados),
+        (c.porcentaje != null ? c.porcentaje.toFixed(1) + '%' : '0.0%'),
         String(c.completados),
         String(c.enCurso),
         String(c.vencidos),
@@ -6171,7 +6242,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
 
         // ===== SECCIÓN 3: Distribución Categoría =====
         { text: '2. Distribución por Categoría de Servicio', style: 'h2', margin: [0, 0, 0, 15] },
-        { table: { headerRows: 1, body: catTable, widths: ['*', 'auto', 'auto', 'auto', 'auto', 'auto'] }, layout: 'lightHorizontalLines' },
+        { table: { headerRows: 1, body: catTable, widths: ['*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'] }, layout: 'lightHorizontalLines' },
         { text: ' ', pageBreak: 'after' },
 
         // ===== SECCIÓN 4: Rendimiento Técnicos =====
@@ -6918,6 +6989,8 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) throw new ForbiddenException(vrUser.errorMsg);
     const solicitud = await this.findById(idSolicitud);
     const vr = await this.validarRolesAsignador(user, solicitud);
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
