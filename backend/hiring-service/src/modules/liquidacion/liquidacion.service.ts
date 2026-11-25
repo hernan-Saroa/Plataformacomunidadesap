@@ -204,110 +204,144 @@ export class LiquidacionService {
     acceso: HiringAccess,
   ) {
     await this.dataSource.transaction(async (em) => {
-      const contrato = await this.exigirContratoLiquidable(em, procesoId);
-
-      if (
-        (await this.exigeInformeFinal(em, procesoId)) &&
-        !(await this.informeFinalVigente(contrato.id, em))
-      ) {
-        throw new ConflictException(
-          'El contrato no tiene informe final de supervisión: la liquidación va sobre el informe que dice cómo se ejecutó (10.1). Si en esta modalidad basta el acta de recibo, la 10.1 se configura como opcional',
-        );
-      }
-
-      if (await this.actaVigente(contrato.id, em)) {
-        throw new ConflictException(
-          'El contrato ya está liquidado: para rehacer el acta se anula la vigente y se elabora otra',
-        );
-      }
-
-      const ventana = await this.ventanaDelContrato(em, contrato);
-      if (!ventana) {
-        throw new ConflictException(
-          'No se puede establecer la fecha de terminación del contrato: falta el acta de inicio o el plazo',
-        );
-      }
-
-      const alerta = alertaDelPlazo(this.hoy(), ventana);
-
-      // Antes se bloqueaba la unilateral dentro del plazo del acuerdo. Desde la
-      // revisión de QA de EFDS-1172 se registra con la resolución o la
-      // evidencia de su publicación, y la pantalla advierte del plazo: la
-      // entidad sabe si el contratista se negó o no se presentó.
-      void alerta;
-
-      if (dto.pazYSalvo && !pazYSalvo) {
-        throw new BadRequestException(
-          'Adjunta el soporte del paz y salvo: declararlo sin documento deja al expediente afirmando algo que no puede probar',
-        );
-      }
-
-      const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
-
-      const docActa = await this.guardarDocumento(
-        em,
-        expediente.id,
-        `Contrato ${contrato.numero} · acta de liquidación ${dto.tipo.toLowerCase()}`,
-        acta,
-        hashActa,
-        acceso,
+      // Desde la 151 la liquidación se tramita: el acta firmada la sube el área
+      // al final del trámite, no aquí. Lo de antes sigue para los procesos que
+      // ya iban por la 10.2 sin trámite.
+      const [tramite] = await em.query(
+        `SELECT 1 FROM hiring.tramites_liquidacion WHERE proceso_id = $1 AND estado <> 'DESISTIDA' LIMIT 1`,
+        [procesoId],
       );
-
-      let docPazYSalvo: Documento | null = null;
-      if (pazYSalvo && hashPazYSalvo) {
-        docPazYSalvo = await this.guardarDocumento(
-          em,
-          expediente.id,
-          `Contrato ${contrato.numero} · paz y salvo`,
-          pazYSalvo,
-          hashPazYSalvo,
-          acceso,
+      if (tramite) {
+        throw new ConflictException(
+          'Este contrato tiene un trámite de liquidación: el acta firmada se sube desde el trámite, al final de la revisión',
         );
       }
-
-      const balance = await this.calcularBalance(em, contrato);
-
-      const registro = await em.save(
-        em.create(ActaLiquidacion, {
-          contratoId: contrato.id,
-          tipo: dto.tipo,
-          actaDocumentoId: docActa.id,
-          fechaActa: dto.fechaActa,
-          balance,
-          pazYSalvo: dto.pazYSalvo ?? false,
-          pazYSalvoDocumentoId: docPazYSalvo?.id ?? null,
-          observaciones: dto.observaciones ?? null,
-          fechaTerminacion: ventana.fechaTerminacion,
-          bilateralHasta: ventana.bilateralHasta,
-          unilateralHasta: ventana.unilateralHasta,
-          momentoDelPlazo: alerta.momento,
-          estado: 'VIGENTE' as const,
-          liquidadoPor: acceso.userName,
-        } as Partial<ActaLiquidacion>),
-      );
-
-      // RF-SIS-01: el acta firmada es lo que deja el contrato liquidado. Se
-      // derivó aquí y no en el cierre definitivo (EFDS-1175) porque son dos
-      // hechos distintos: aquí se liquida, allá se cierra en firme.
-      contrato.estado = 'LIQUIDADO';
-      await em.save(contrato);
-
-      await this.marcarActividad(em, procesoId, contrato.id, acceso, dto.firma);
-
-      await this.traza(em, procesoId, registro.id, 'CERRAR', acceso, {
-        actividad: NUMERAL_LIQUIDACION,
-        contrato: contrato.numero,
-        tipo: dto.tipo,
-        // Que se liquidó tarde queda en la traza, no solo en el acta.
-        momentoDelPlazo: alerta.momento,
-        valorPagado: balance.valorPagado,
-        saldo: balance.saldo,
-        pazYSalvo: dto.pazYSalvo ?? false,
-      });
+      await this.registrarActa(em, procesoId, dto, acta, hashActa, pazYSalvo, hashPazYSalvo, acceso);
     });
 
     return this.estado(procesoId, acceso);
+  }
+
+  /**
+   * Lo que hace `liquidar`, dentro de una transacción ajena.
+   *
+   * Lo usa también el trámite de liquidación (151): cuando el área sube el acta
+   * firmada, la liquidación queda registrada exactamente como si se hubiera
+   * cargado en la 10.2, con las mismas exigencias.
+   */
+  async registrarActa(
+    em: EntityManager,
+    procesoId: string,
+    dto: LiquidarDto,
+    acta: ArchivoCargado,
+    hashActa: string,
+    pazYSalvo: ArchivoCargado | null,
+    hashPazYSalvo: string | null,
+    acceso: HiringAccess,
+  ): Promise<ActaLiquidacion> {
+    const contrato = await this.exigirContratoLiquidable(em, procesoId);
+
+    if (
+      (await this.exigeInformeFinal(em, procesoId)) &&
+      !(await this.informeFinalVigente(contrato.id, em))
+    ) {
+      throw new ConflictException(
+        'El contrato no tiene informe final de supervisión: la liquidación va sobre el informe que dice cómo se ejecutó (10.1). Si en esta modalidad basta el acta de recibo, la 10.1 se configura como opcional',
+      );
+    }
+
+    if (await this.actaVigente(contrato.id, em)) {
+      throw new ConflictException(
+        'El contrato ya está liquidado: para rehacer el acta se anula la vigente y se elabora otra',
+      );
+    }
+
+    const ventana = await this.ventanaDelContrato(em, contrato);
+    if (!ventana) {
+      throw new ConflictException(
+        'No se puede establecer la fecha de terminación del contrato: falta el acta de inicio o el plazo',
+      );
+    }
+
+    const alerta = alertaDelPlazo(this.hoy(), ventana);
+
+    // Antes se bloqueaba la unilateral dentro del plazo del acuerdo. Desde la
+    // revisión de QA de EFDS-1172 se registra con la resolución o la
+    // evidencia de su publicación, y la pantalla advierte del plazo: la
+    // entidad sabe si el contratista se negó o no se presentó.
+    void alerta;
+
+    if (dto.pazYSalvo && !pazYSalvo) {
+      throw new BadRequestException(
+        'Adjunta el soporte del paz y salvo: declararlo sin documento deja al expediente afirmando algo que no puede probar',
+      );
+    }
+
+    const expediente = await em.findOne(Expediente, { where: { procesoId } });
+    if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
+
+    const docActa = await this.guardarDocumento(
+      em,
+      expediente.id,
+      `Contrato ${contrato.numero} · acta de liquidación ${dto.tipo.toLowerCase()}`,
+      acta,
+      hashActa,
+      acceso,
+    );
+
+    let docPazYSalvo: Documento | null = null;
+    if (pazYSalvo && hashPazYSalvo) {
+      docPazYSalvo = await this.guardarDocumento(
+        em,
+        expediente.id,
+        `Contrato ${contrato.numero} · paz y salvo`,
+        pazYSalvo,
+        hashPazYSalvo,
+        acceso,
+      );
+    }
+
+    const balance = await this.calcularBalance(em, contrato);
+
+    const registro = await em.save(
+      em.create(ActaLiquidacion, {
+        contratoId: contrato.id,
+        tipo: dto.tipo,
+        actaDocumentoId: docActa.id,
+        fechaActa: dto.fechaActa,
+        balance,
+        pazYSalvo: dto.pazYSalvo ?? false,
+        pazYSalvoDocumentoId: docPazYSalvo?.id ?? null,
+        observaciones: dto.observaciones ?? null,
+        fechaTerminacion: ventana.fechaTerminacion,
+        bilateralHasta: ventana.bilateralHasta,
+        unilateralHasta: ventana.unilateralHasta,
+        momentoDelPlazo: alerta.momento,
+        estado: 'VIGENTE' as const,
+        liquidadoPor: acceso.userName,
+      } as Partial<ActaLiquidacion>),
+    );
+
+    // RF-SIS-01: el acta firmada es lo que deja el contrato liquidado. Se
+    // derivó aquí y no en el cierre definitivo (EFDS-1175) porque son dos
+    // hechos distintos: aquí se liquida, allá se cierra en firme.
+    contrato.estado = 'LIQUIDADO';
+    await em.save(contrato);
+
+    await this.marcarActividad(em, procesoId, contrato.id, acceso, dto.firma);
+
+    await this.traza(em, procesoId, registro.id, 'CERRAR', acceso, {
+      actividad: NUMERAL_LIQUIDACION,
+      contrato: contrato.numero,
+      tipo: dto.tipo,
+      // Que se liquidó tarde queda en la traza, no solo en el acta.
+      momentoDelPlazo: alerta.momento,
+      valorPagado: balance.valorPagado,
+      saldo: balance.saldo,
+      pazYSalvo: dto.pazYSalvo ?? false,
+    });
+
+    return registro;
   }
 
   /**

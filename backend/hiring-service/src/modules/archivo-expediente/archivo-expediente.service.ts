@@ -29,6 +29,7 @@ import {
   sumarDiasHabiles,
 } from '../publicacion/dias-habiles';
 import { festivosEntre } from '../publicacion/festivos-colombia';
+import { cerradoSinLiquidar } from '../tramites-liquidacion/sin-liquidacion';
 import {
   construirIndice,
   exigirExpedienteAbierto,
@@ -110,6 +111,7 @@ export class ArchivoExpedienteService {
       actaVigente: !!acta,
       publicadaEnSecop: publicaciones.length > 0,
       cierreVigente: !!cierre,
+      cerradoSinLiquidar: await cerradoSinLiquidar(em, contrato.id),
     });
 
     const festivos = await this.festivos();
@@ -265,6 +267,7 @@ export class ArchivoExpedienteService {
         actaVigente: !!acta,
         publicadaEnSecop,
         cierreVigente: !!(await this.cierreVigente(em, contrato.id)),
+        cerradoSinLiquidar: await cerradoSinLiquidar(em, contrato.id),
       });
 
       if (pendientes.length > 0) {

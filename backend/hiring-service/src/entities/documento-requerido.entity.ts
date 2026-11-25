@@ -59,6 +59,13 @@ export class DocumentoRequerido {
   @Column({ name: 'tipos_modificacion', type: 'jsonb', default: () => "'[]'::jsonb" })
   tiposModificacion: string[];
 
+  /**
+   * Solo en la 10.2 (151): a cuál trámite se pide —LIQUIDACION o CIERRE, que es
+   * el de los PSPAG—; NULL, a los dos.
+   */
+  @Column({ name: 'tramite_liquidacion', type: 'varchar', length: 12, nullable: true })
+  tramiteLiquidacion: 'LIQUIDACION' | 'CIERRE' | null;
+
   @Column({ name: 'plantilla_codigo', type: 'varchar', length: 40, nullable: true })
   plantillaCodigo: string | null;
 

@@ -1,3 +1,4 @@
+import { etapa10AbiertaEn } from '../tramites-liquidacion/etapa-10';
 import { Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
@@ -276,7 +277,15 @@ export class NotificadorService implements OnApplicationBootstrap {
     }));
     if (!pasos.length) return [];
 
-    const candidatas = porEmpezar(pasos);
+    // La etapa 10 espera el trámite de liquidación o cierre (151): avisar «te
+    // toca» de la 10.1 antes de radicarlo mandaría a trabajar algo con candado.
+    let abierta = true;
+    try {
+      abierta = await etapa10AbiertaEn(this.dataSource.manager, procesoId);
+    } catch (error: any) {
+      this.logger.warn(`No se pudo saber si la etapa 10 está abierta: ${error.message}`);
+    }
+    const candidatas = porEmpezar(pasos, { etapa10Abierta: abierta });
     if (!candidatas.length) return [];
 
     // Se reclaman en la misma sentencia que se anotan: si dos cambios del mismo
