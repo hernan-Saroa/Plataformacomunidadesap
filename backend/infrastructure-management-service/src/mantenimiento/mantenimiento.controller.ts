@@ -226,7 +226,7 @@ export class MantenimientoController {
   @Post('categorias-servicio')
   @ApiOperation({
     summary:
-      'Crear una nueva categoría de servicio (por ejemplo CS_009 Servicios Especiales). Exclusivo Coordinador GIM. Si el código se repite devuelve 409 Conflict.',
+      'Crear una nueva categoría o subcategoría de servicio. Exclusivo Coordinador GIM. Si se envía parentCodigo/idCategoriaPadre se registra como subcategoría vinculada.',
   })
   crearCategoriaServicio(
     @Body()
@@ -237,6 +237,8 @@ export class MantenimientoController {
       orden?: number;
       isActivo?: boolean;
       color?: string;
+      parentCodigo?: string;
+      idCategoriaPadre?: number;
     },
     @Req() req: any,
   ) {
@@ -248,7 +250,7 @@ export class MantenimientoController {
   @Patch('categorias-servicio/:id')
   @ApiOperation({
     summary:
-      'Actualizar una categoría de servicio por id. Exclusivo Coordinador GIM. Permite modificar codigo, nombre, descripcion, orden, isActivo y color. Código duplicado devuelve 409.',
+      'Actualizar una categoría o subcategoría de servicio por id. Exclusivo Coordinador GIM. Permite modificar codigo, nombre, descripcion, orden, isActivo, color y parentCodigo.',
   })
   actualizarCategoriaServicio(
     @Param('id', ParseIntPipe) idCatalogo: number,
@@ -260,6 +262,8 @@ export class MantenimientoController {
       codigo?: string;
       isActivo?: boolean;
       color?: string;
+      parentCodigo?: string | null;
+      idCategoriaPadre?: number | null;
     },
     @Req() req: any,
   ) {
