@@ -4877,3 +4877,139 @@ export interface RadicarModificacion {
   justificacion: string;
   datosContrato?: Record<string, string | number>;
 }
+
+// ------------------------------------- trámite de liquidación y cierre (151) --
+
+export type ClaseTramiteLiquidacion = 'LIQUIDACION' | 'CIERRE';
+
+export type EstadoTramiteLiquidacion =
+  | 'RADICADA'
+  | 'EN_REVISION'
+  | 'DEVUELTA'
+  | 'ACTA'
+  | 'EN_VISTO_BUENO'
+  | 'EN_FIRMA'
+  | 'PERFECCIONADA'
+  | 'PUBLICADA'
+  | 'CERRADA'
+  | 'DESISTIDA';
+
+export interface TramiteLiquidacionResumen {
+  id: string;
+  radicado: string;
+  clase: ClaseTramiteLiquidacion;
+  claseNombre: string;
+  procesoId: string;
+  contratoId: string;
+  estado: EstadoTramiteLiquidacion;
+  estadoNombre: string;
+  abogadoNombre: string | null;
+  liderNombre: string | null;
+  fechaPublicacion: string | null;
+  secopNumero: string | null;
+  secopUrl: string | null;
+  motivoCierre: string | null;
+  radicadaPor: string | null;
+  radicadaAt: string;
+  updatedAt: string;
+  /** Solo en la bandeja. */
+  radicadoProceso?: string | null;
+  contratoNumero?: string | null;
+  contratistaNombre?: string | null;
+  meToca?: boolean;
+}
+
+export interface DocumentoTramiteLiquidacion {
+  id: string;
+  clase: 'REQUISITO' | 'ACTA' | 'ACTA_FIRMADA' | 'PAZ_Y_SALVO' | 'EVIDENCIA_SECOP';
+  requisitoId: string | null;
+  nombre: string;
+  archivoUrl: string;
+  archivoNombreOriginal: string | null;
+  version: number;
+  vigente: boolean;
+  subidoPor: string | null;
+  createdAt: string;
+}
+
+export interface RequisitoTramiteLiquidacion {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  obligatorio: boolean;
+  plantillaCodigo: string | null;
+  documento?: DocumentoTramiteLiquidacion | null;
+}
+
+export interface EscalonLiquidacionEnRonda {
+  orden: number;
+  nombre: string;
+  papel: 'ABOGADO' | 'LIDER' | null;
+  roles: string[];
+  acciones: ('APROBAR' | 'DEVOLVER')[];
+  estado: 'BLOQUEADO' | 'PENDIENTE' | 'APROBADO' | 'DEVUELTO' | 'ANULADO';
+  decididoPor?: string | null;
+  decididoAt?: string | null;
+}
+
+export interface TramiteLiquidacionDetalle extends TramiteLiquidacionResumen {
+  observaciones: string | null;
+  tipoActa: 'BILATERAL' | 'UNILATERAL' | null;
+  fechaActa: string | null;
+  proceso: { id: string; radicado: string; objeto: string } | null;
+  contrato: {
+    id: string;
+    numero: string;
+    objeto: string;
+    estado: string;
+    valor: number;
+    contratistaNombre: string;
+  } | null;
+  requisitos: RequisitoTramiteLiquidacion[];
+  documentos: DocumentoTramiteLiquidacion[];
+  rondas: {
+    id: string;
+    fase: 'REVISION' | 'VISTO_BUENO';
+    ronda: number;
+    estado: string;
+    escalonActual: number | null;
+    escalones: EscalonLiquidacionEnRonda[];
+    iniciadaAt: string;
+    cerradaAt: string | null;
+  }[];
+  eventos: { id: string; accion: string; observaciones: string | null; detalle: Record<string, unknown>; por: string | null; at: string }[];
+  acciones: {
+    asignar: boolean;
+    devolverAlArea: boolean;
+    decidir: ('APROBAR' | 'DEVOLVER')[];
+    escalonPendiente: { nombre: string; fase: 'REVISION' | 'VISTO_BUENO' } | null;
+    corregirDocumentos: boolean;
+    reenviar: boolean;
+    enviarActa: boolean;
+    perfeccionar: boolean;
+    publicar: boolean;
+    cerrarEnSecop: boolean;
+    desistir: boolean;
+  };
+}
+
+/** Lo que el proceso sabe del trámite: qué clase le toca, si se puede radicar y el vivo. */
+export interface SituacionTramiteLiquidacion {
+  clase: ClaseTramiteLiquidacion | null;
+  claseNombre: string | null;
+  puedeRadicar: boolean;
+  motivoNoPuede: string | null;
+  faltan: string[];
+  requisitos: RequisitoTramiteLiquidacion[];
+  /** La etapa 10 se abre al radicar (151). */
+  etapa10Abierta: boolean;
+  tramite: TramiteLiquidacionDetalle | null;
+  anteriores: TramiteLiquidacionResumen[];
+}
+
+export interface EvidenciaSecop {
+  fecha: string;
+  secopNumero?: string;
+  secopUrl?: string;
+  observaciones?: string;
+}

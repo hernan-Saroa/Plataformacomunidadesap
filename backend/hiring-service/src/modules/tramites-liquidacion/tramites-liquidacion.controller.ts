@@ -182,7 +182,7 @@ export class TramitesLiquidacionController {
     FileFieldsInterceptor(
       [
         { name: 'acta', maxCount: 1 },
-        { name: 'pazYSalvo', maxCount: 1 },
+        { name: 'soportePazYSalvo', maxCount: 1 },
       ],
       CARGA,
     ),
@@ -192,11 +192,11 @@ export class TramitesLiquidacionController {
   perfeccionar(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: PerfeccionarLiquidacionDto,
-    @UploadedFiles() files: { acta?: any[]; pazYSalvo?: any[] } = {},
+    @UploadedFiles() files: { acta?: any[]; soportePazYSalvo?: any[] } = {},
     @Req() req: any,
   ) {
     const acta = files.acta?.[0];
-    const pazYSalvo = files.pazYSalvo?.[0] ?? null;
+    const pazYSalvo = files.soportePazYSalvo?.[0] ?? null;
     exigirArchivo(acta, 'el acta firmada');
     if (dto.pazYSalvo && !pazYSalvo) throw new BadRequestException('Adjunta el soporte del paz y salvo');
     return conArchivos([acta, ...(pazYSalvo ? [pazYSalvo] : [])], ([a, p]) =>

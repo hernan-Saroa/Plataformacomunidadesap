@@ -27,7 +27,7 @@ import { tienePermiso } from './permisos';
 // Con tercer nivel para las intercaladas, como la 5.6.1 (migración 113).
 const PATRON_NUMERAL = /^(\d{1,2})\.(\d{1,2})(?:\.\d{1,2})?$/;
 const PATRON_ETAPA = /^E(\d{1,2})$/;
-const TRAMITES = ['INC.1', 'INC.2', 'PAA', 'PAA.R', 'MOD'];
+const TRAMITES = ['INC.1', 'INC.2', 'PAA', 'PAA.R', 'MOD', 'LIQ', 'CIE'];
 
 const LA_SATISFACEN: Record<AccionAlcance, AccionAlcance[]> = {
   // Editar, aprobar o decidir en un punto implican verlo.

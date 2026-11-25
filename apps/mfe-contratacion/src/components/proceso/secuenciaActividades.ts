@@ -221,7 +221,30 @@ function dependenciaSatisfecha(numeral: string, flujo: PasoDelFlujo[], alcanzada
  * Lo que sí bloquea es una actividad aplicable y construida que quedó a medias:
  * ahí es donde el proceso tiene que detenerse.
  */
-export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
+/**
+ * Lo que la secuencia necesita saber del proceso además de sus actividades.
+ *
+ * `etapa10Abierta` (151): la etapa 10 se abre al radicar la liquidación o el
+ * cierre del contrato, no al terminar la 9. Sin decirlo, abierta, como antes.
+ * Misma regla que `OpcionesDeSecuencia` en el servidor.
+ */
+export interface OpcionesDeSecuencia {
+  etapa10Abierta?: boolean;
+}
+
+export const esDeLaEtapa10 = (numeral: string) => numeral.startsWith('10.');
+
+/** Por qué la etapa 10 tiene candado mientras no se radique el trámite. */
+export const MOTIVO_ETAPA_10 =
+  'Se abre al radicar la liquidación o el cierre del contrato (en la 10.2), con la etapa 9 terminada';
+
+export function actividadesDisponibles(flujo: PasoDelFlujo[], opciones: OpcionesDeSecuencia = {}): Set<string> {
+  if (opciones.etapa10Abierta === false) {
+    const sinLaDiez = actividadesDisponibles(flujo);
+    for (const numeral of [...sinLaDiez]) if (esDeLaEtapa10(numeral)) sinLaDiez.delete(numeral);
+    return sinLaDiez;
+  }
+
   const disponibles = new Set<string>();
   const alcanzadas = alcanzadasSinTrabajo(flujo);
   let alcanzado = true;
@@ -281,7 +304,13 @@ export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
 export function motivoDelBloqueo(
   numeral: string,
   flujo: PasoDelFlujo[],
+  opciones: OpcionesDeSecuencia = {},
 ): string | null {
+  if (opciones.etapa10Abierta === false && esDeLaEtapa10(numeral)) {
+    // Si antes falta algo de la 9, eso es lo primero que hay que decir.
+    const propio = motivoDelBloqueo(numeral, flujo);
+    return propio && !/ 10\./.test(propio) ? propio : MOTIVO_ETAPA_10;
+  }
   const propio = flujo.find((p) => p.numeral === numeral);
   // Con dependencia declarada, el motivo es esa dependencia y no la actividad
   // que la matriz numera justo antes: decir «termina la 5.3» cuando la 5.4 no
