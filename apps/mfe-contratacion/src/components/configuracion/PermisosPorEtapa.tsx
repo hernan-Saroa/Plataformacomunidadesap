@@ -64,6 +64,16 @@ const GRUPOS_DE_TRAMITES = [
       { lugar: 'PAA.R', nombre: 'Revisiones de procesos afectados (aprobar: autorizar migraciones)' },
     ],
   },
+  {
+    titulo: 'Modificaciones',
+    ayuda: 'Viven fuera del proceso: sirven también para contratos que no están en la plataforma',
+    tramites: [
+      {
+        lugar: 'MOD',
+        nombre: 'Modificaciones (editar: radicar · aprobar: ser abogado o revisor · decidir: asignar y recibir)',
+      },
+    ],
+  },
 ];
 
 const clave = (accion: AccionAlcance, lugar: string) => `${accion}|${lugar}`;
