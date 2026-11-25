@@ -36,7 +36,6 @@ describe('EstudioPrevioService · devolver desde la radicación', () => {
     const servicio = new EstudioPrevioService(
       dataSource as never,
       {} as never,
-      {} as never,
       participacion as never,
       {} as never,
       {} as never,

@@ -13,10 +13,8 @@ import {
 } from '../../entities/paa.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { NUMERAL_ESTUDIO_PREVIO, ProcesoActividad } from '../../entities/proceso-actividad.entity';
-import { Modalidad } from '../../entities/modalidad.entity';
 import type { HiringAccess } from '../../auth/hiring-access';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
-import { UmbralesService } from '../umbrales/umbrales.service';
 import { PaaAdminService } from './paa-admin.service';
 import { diferencias } from './comparador-paa';
 import { origenDesdeLinea } from './estructura-paa';
@@ -43,8 +41,6 @@ export interface ProcesoAfectado {
 const DE_LAS_REGIONES_DEL_DOCUMENTO =
   'p.paa_region_id IN (SELECT r.id FROM hiring.paa_regiones r WHERE r.documento_id = :documento)';
 
-const MOTIVO_UMBRAL = 'La nueva cuantía no admite esta modalidad';
-
 /**
  * Activa una versión del PAA y lleva sus cambios a los procesos.
  *
@@ -59,7 +55,6 @@ export class PaaActivacionService {
     private readonly dataSource: DataSource,
     private readonly admin: PaaAdminService,
     private readonly configuracion: ConfiguracionService,
-    private readonly umbrales: UmbralesService,
   ) {}
 
   /** Lo que haría la activación, sin hacerlo. */
@@ -338,7 +333,6 @@ export class PaaActivacionService {
         estudio: estudio?.datos ?? {},
         estadoEstudio: estudio?.estado ?? null,
       });
-      await this.revisarUmbral(em, p, plan);
 
       const relevante = plan.campos.length > 0;
       resultado.push({
@@ -352,33 +346,6 @@ export class PaaActivacionService {
       });
     }
     return resultado;
-  }
-
-  /**
-   * La misma regla que al crear y al corregir la cuantía en la 3.1: si el valor
-   * nuevo obliga a licitación, la modalidad de menor cuantía no se aplica. Ni
-   * el valor ni la modalidad, porque van juntos: aplicar uno solo dejaría al
-   * proceso en una combinación que la 3.1 no admitiría.
-   */
-  async revisarUmbral(em: EntityManager, proceso: Proceso, plan: PlanDeActualizacion) {
-    if (plan.proceso.valorEstimado === undefined && plan.proceso.modalidad === undefined) return;
-    const codigo = plan.proceso.modalidad ?? proceso.modalidad;
-    const modalidad = codigo ? await em.findOne(Modalidad, { where: { codigo } }) : null;
-    if (!modalidad) return;
-    try {
-      await this.umbrales.exigirModalidadPermitida(plan.proceso.valorEstimado ?? proceso.valorEstimado ?? 0, modalidad);
-    } catch (error) {
-      const detalle = error instanceof Error ? error.message : MOTIVO_UMBRAL;
-      for (const campo of plan.campos) {
-        if (campo.aplicado && (campo.campo === 'valorEstimado' || campo.campo === 'modalidad')) {
-          campo.aplicado = false;
-          campo.motivo = `${MOTIVO_UMBRAL}: ${detalle}`;
-          plan.origen[campo.campo] = campo.antes;
-        }
-      }
-      delete plan.proceso.valorEstimado;
-      delete plan.proceso.modalidad;
-    }
   }
 
   private async aplicar(

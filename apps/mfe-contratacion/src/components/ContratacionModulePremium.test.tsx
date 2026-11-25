@@ -71,7 +71,7 @@ describe('ContratacionModulePremium · menú según el alcance', () => {
     conAlcance(GESTOR);
     render(<ContratacionModulePremium />);
 
-    for (const tab of ['Umbrales', 'Plazos', 'MIPYME', 'Plantillas']) {
+    for (const tab of ['Salario mínimo', 'Plazos', 'MIPYME', 'Plantillas']) {
       expect(screen.queryByText(tab)).toBeNull();
     }
   });
@@ -80,7 +80,7 @@ describe('ContratacionModulePremium · menú según el alcance', () => {
     conAlcance([['ver', 'E3']], [CONFIGURAR]);
     render(<ContratacionModulePremium />);
 
-    expect(screen.getByText('Umbrales')).toBeInTheDocument();
+    expect(screen.getByText('Salario mínimo')).toBeInTheDocument();
     expect(screen.getByText('Plantillas')).toBeInTheDocument();
   });
 
@@ -90,7 +90,7 @@ describe('ContratacionModulePremium · menú según el alcance', () => {
     render(<ContratacionModulePremium />);
 
     expect(screen.getByText('Expedientes')).toBeInTheDocument();
-    expect(screen.getByText('Umbrales')).toBeInTheDocument();
+    expect(screen.getByText('Salario mínimo')).toBeInTheDocument();
   });
 
   it('ofrece Alertas a quien trabaja procesos, no solo a quien configura', () => {
@@ -98,7 +98,7 @@ describe('ContratacionModulePremium · menú según el alcance', () => {
     render(<ContratacionModulePremium />);
 
     expect(screen.getByText('Alertas')).toBeInTheDocument();
-    expect(screen.queryByText('Umbrales')).toBeNull();
+    expect(screen.queryByText('Salario mínimo')).toBeNull();
   });
 
   it('no se la ofrece a quien no ve ningún proceso', () => {

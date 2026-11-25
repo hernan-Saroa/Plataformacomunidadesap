@@ -7,7 +7,6 @@ import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { ConfiguracionModule } from '../configuracion/configuracion.module';
-import { UmbralesModule } from '../umbrales/umbrales.module';
 import { EstudioPrevioModule } from '../estudio-previo/estudio-previo.module';
 import { PaaController } from './paa.controller';
 import { PaaAdminService } from './paa-admin.service';
@@ -22,9 +21,8 @@ import { ProcesoSinBloqueoGuard } from './proceso-sin-bloqueo.guard';
   imports: [
     TypeOrmModule.forFeature([...ENTIDADES_PAA, Trazabilidad, Proceso, ProcesoActividad, Modalidad]),
     // Un cambio de modalidad que trae el PAA reinstancia el riel, como el que
-    // se hace a mano en la 3.1, y pasa por los mismos umbrales.
+    // se hace a mano en la 3.1.
     ConfiguracionModule,
-    UmbralesModule,
     // Devolver por un cambio del PAA es la devolución de la 3.4, no otra.
     EstudioPrevioModule,
   ],

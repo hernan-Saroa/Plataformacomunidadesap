@@ -144,11 +144,8 @@ import {
   PlazosPublicacion,
   ProcesoResumen,
   RevisionEstudioPrevio,
+  SalariosMinimos,
   SmmlvAnual,
-  SugerenciaModalidad,
-  UmbralesVigentes,
-  UmbralVigente,
-  UnidadUmbral,
   AfectadosPaa,
   AfectadosPorCambioDeVigencia,
   BusquedaLineasPaa,
@@ -413,13 +410,6 @@ export const contratacionService = {
         (dependencia ? `&dependencia=${encodeURIComponent(dependencia)}` : '') +
         (cargo ? `&cargo=${encodeURIComponent(cargo)}` : ''),
     ),
-
-  /**
-   * Modalidad que corresponde a una cuantía. Se consulta mientras se digita el
-   * valor, antes de que el proceso exista.
-   */
-  sugerenciaModalidad: (valorEstimado: number, signal?: AbortSignal) =>
-    pedir<SugerenciaModalidad>(`/umbrales/sugerencia?valorEstimado=${valorEstimado}`, { signal }),
 
   // ------------------------------------------------------ etapa 4 · CDP ----
 
@@ -2173,31 +2163,14 @@ export const contratacionService = {
       body: JSON.stringify(datos),
     }),
 
-  // ------------------------------------------- administración de umbrales ---
+  // ----------------------------------------------------- salario mínimo ---
 
-  umbrales: () => pedir<UmbralesVigentes>('/umbrales'),
-
-  smmlv: () => pedir<SmmlvAnual[]>('/umbrales/smmlv'),
+  salariosMinimos: () => pedir<SalariosMinimos>('/salario-minimo'),
 
   guardarSmmlv: (anio: number, valor: number) =>
-    pedir<SmmlvAnual>('/umbrales/smmlv', {
+    pedir<SmmlvAnual>('/salario-minimo', {
       method: 'PUT',
       body: JSON.stringify({ anio, valor }),
-    }),
-
-  /** Cierra el umbral vigente de la modalidad y abre el nuevo. */
-  guardarUmbral: (
-    modalidad: string,
-    cambio: {
-      limiteInferior: number | null;
-      limiteSuperior: number | null;
-      unidad: UnidadUmbral;
-      vigenciaDesde?: string;
-    },
-  ) =>
-    pedir<UmbralVigente>(`/umbrales/${modalidad}`, {
-      method: 'PUT',
-      body: JSON.stringify(cambio),
     }),
 
   /**

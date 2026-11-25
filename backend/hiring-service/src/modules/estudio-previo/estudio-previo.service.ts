@@ -45,7 +45,6 @@ import {
   CrearProcesoDto,
   GuardarBorradorDto,
 } from './dto/estudio-previo.dto';
-import { UmbralesService } from '../umbrales/umbrales.service';
 import { STORAGE_PATH } from '../archivos';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
 import {
@@ -207,7 +206,6 @@ export class EstudioPrevioService implements OnModuleInit {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    private readonly umbrales: UmbralesService,
     private readonly configuracionService: ConfiguracionService,
     private readonly participacion: ParticipacionService,
     private readonly permisos: PermisosService,
@@ -345,12 +343,6 @@ export class EstudioPrevioService implements OnModuleInit {
         `La modalidad "${dto.modalidad}" no existe o ya no está vigente`,
       );
     }
-
-    // Antes de gastar consecutivos: si la cuantía obliga a licitación
-    // pública, el proceso no puede nacer con una modalidad de menor cuantía
-    // (RF-EST-03). Se valida aquí y no solo en el formulario porque es una
-    // regla de negocio, no una ayuda de interfaz.
-    await this.umbrales.exigirModalidadPermitida(dto.valorEstimado, modalidad);
 
     // Secuencias en vez de SELECT MAX: dos creaciones simultáneas no colisionan.
     const [{ n: nRad }] = await em.query(`SELECT nextval('hiring.radicado_seq') AS n`);

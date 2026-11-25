@@ -24,7 +24,7 @@ import '../styles/layout.css';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { VistaProcesos } from './procesos/VistaProcesos';
 import { DetalleProceso } from './proceso/DetalleProceso';
-import { VistaUmbrales } from './umbrales/VistaUmbrales';
+import { VistaSalarioMinimo } from './salario-minimo/VistaSalarioMinimo';
 import { VistaConfiguracion } from './configuracion/VistaConfiguracion';
 import { VistaPlantillas } from './plantillas/VistaPlantillas';
 import { VistaPlazosPublicacion } from './plazos/VistaPlazosPublicacion';
@@ -46,7 +46,7 @@ type Seccion =
   | 'alertas'
   | 'expedientes'
   | 'estadisticas'
-  | 'umbrales'
+  | 'salario-minimo'
   | 'plazos'
   | 'mipyme'
   | 'plantillas'
@@ -64,7 +64,7 @@ type Seccion =
  */
 /** Las que exigen `config.manage`: escriben parámetros, no trabajan un proceso. */
 const SECCIONES_DE_CONFIGURACION: Seccion[] = [
-  'umbrales',
+  'salario-minimo',
   'plazos',
   'mipyme',
   'plantillas',
@@ -216,7 +216,7 @@ export default function ContratacionModulePremium() {
       ],
     },
     {
-      // Aparte del trabajo diario: no se administra un umbral mientras se
+      // Aparte del trabajo diario: no se administra un parámetro mientras se
       // diligencia un proceso.
       //
       // El grupo entero exige `config.manage`: sus seis pantallas escriben
@@ -229,10 +229,9 @@ export default function ContratacionModulePremium() {
         // participar— y con el mismo morado había que leer la etiqueta para
         // distinguirlos.
         {
-          id: 'umbrales',
-          label: 'Umbrales',
-          subtitle: 'Cuantías por modalidad',
-          // La balanza es de justicia; aquí lo que se configura son pesos.
+          id: 'salario-minimo',
+          label: 'Salario mínimo',
+          subtitle: 'SMMLV por año',
           icon: <Coins className="w-5 h-5" />,
           color: '#7C3AED',
         },
@@ -438,7 +437,7 @@ export default function ContratacionModulePremium() {
         />
       );
     if (seccion === 'expedientes') return <VistaExpedientes />;
-    if (seccion === 'umbrales') return <VistaUmbrales />;
+    if (seccion === 'salario-minimo') return <VistaSalarioMinimo />;
     if (seccion === 'plazos') return <VistaPlazosPublicacion />;
     if (seccion === 'mipyme') return <VistaCondicionesMipyme />;
     if (seccion === 'plantillas') return <VistaPlantillas />;

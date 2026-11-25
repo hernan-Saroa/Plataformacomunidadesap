@@ -20,7 +20,6 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Revision } from '../../entities/revision.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
-import { UmbralesModule } from '../umbrales/umbrales.module';
 import { AprobacionModule } from '../aprobacion/aprobacion.module';
 import { CdpModule } from '../cdp/cdp.module';
 import { DocumentosActividadModule } from '../documentos-actividad/documentos-actividad.module';
@@ -31,8 +30,6 @@ import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.modu
     // Aprobar la 3.4 cierra la revisión, y con ella puede cerrarse la etapa 3:
     // la solicitud de CDP se radica sola en ese momento.
     CdpModule,
-    // La creación del proceso valida la modalidad contra los umbrales vigentes.
-    UmbralesModule,
     // El envio consulta si alguien revisa la 3.1 antes de dejarla en revision.
     AprobacionModule,
     // La 3.1 puede aprobarse por una cadena de escalones (migración 101).

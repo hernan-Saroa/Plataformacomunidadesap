@@ -58,7 +58,6 @@ describe('EstudioPrevioService · obtenerProceso de otro', () => {
     return new EstudioPrevioService(
       dataSource as never,
       {} as never,
-      {} as never,
       participacion as never,
       permisosService as never,
       {} as never,

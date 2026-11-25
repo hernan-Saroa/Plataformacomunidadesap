@@ -299,7 +299,6 @@ export class PaaRevisionesService {
       estudio: estudio?.datos ?? {},
       estadoEstudio: estudio?.estado ?? null,
     });
-    await this.activacion.revisarUmbral(em, proceso, plan);
     return plan;
   }
 }
