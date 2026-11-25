@@ -143,7 +143,7 @@ export function ModalSeguimientoControl({ open, onClose, riesgoId, control, cuat
 
   return (
     <Dialog open={open} onOpenChange={(abierto) => { if (!abierto && !guardando) onClose(); }}>
-      <DialogContent className="w-[95vw] max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90vh] overflow-y-auto p-5 sm:p-6">
         <DialogTitle className="flex items-center gap-2">
           <ClipboardCheck className="w-5 h-5 text-blue-600" />
           {existente ? 'Editar seguimiento del control' : 'Registrar seguimiento del control'}
