@@ -413,6 +413,20 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   const [exportandoExcel, setExportandoExcel] = useState(false);
   const [toastExport, setToastExport] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
   const [mostrarModalCargaMasiva, setMostrarModalCargaMasiva] = useState(false);
+  const [totalHistorico, setTotalHistorico] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!esRolReportes) return;
+    let cancelado = false;
+    infraestructuraService.getHistoricoEstadisticas()
+      .then((res) => {
+        if (!cancelado && res) setTotalHistorico(res.totalRegistros ?? 0);
+      })
+      .catch(() => {
+        if (!cancelado) setTotalHistorico(0);
+      });
+    return () => { cancelado = true; };
+  }, [esRolReportes, vista]);
 
 
   useEffect(() => {
@@ -663,7 +677,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
               <Database className="w-4 h-4 text-sky-600" />
               Histórico Planner / GLPI
               <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-sky-100 text-sky-800 font-bold">
-                1.107
+                {totalHistorico !== null ? totalHistorico.toLocaleString('es-CO') : '...'}
               </span>
             </button>
           )}
@@ -672,7 +686,10 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
 
       {vista === 'historicoPlanner' ? (
         <div className="p-6">
-          <HistoricoMantenimientosExterno esRolReportes={esRolReportes} />
+          <HistoricoMantenimientosExterno
+            esRolReportes={esRolReportes}
+            onTotalChange={(nuevoTotal) => setTotalHistorico(nuevoTotal)}
+          />
         </div>
       ) : (
         <div className="p-6 space-y-4">

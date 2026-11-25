@@ -82,12 +82,54 @@ describe('EFDS-2238, entrega SMTP local', () => {
     expect(envio).toHaveBeenCalledWith(expect.objectContaining({ to: profesional, subject: '[PROD] Auto' }));
   });
 
-  it.each(['MAIL_ENVIRONMENT', 'JURIDICA_EMAIL', 'MAIL_TEST_INBOX'])('sin %s registra el error y no entrega nada', async variable => {
+  it.each(['MAIL_ENVIRONMENT', 'JURIDICA_EMAIL'])('sin %s registra el error y no entrega nada', async variable => {
     process.env.EMAIL_REDIRECT_TO = 'PRE;legado@example.test';
     delete process.env[variable];
     const log = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     await expect(new EmailsService().enviarSiPermitido({ modulo, to: profesional, subject: 'Prueba' })).rejects.toThrow();
     expect(log).toHaveBeenCalledWith(expect.stringContaining('Envío cancelado'));
+    expect(mensajes).toHaveLength(0);
+  });
+
+  it.each(['qa', 'pre'])('%s respeta remitente y destinatario del .env con la captura apagada', async ambiente => {
+    process.env.MAIL_ENVIRONMENT = ambiente;
+    process.env.JURIDICA_EMAIL = 'judicial@example.test';
+    process.env.MAIL_TEST_INBOX = '';
+    process.env.SMTP_FROM = 'remitente@example.test';
+    const servicio = new EmailsService();
+    expect(servicio.problemaDeBuzones()).toBeNull();
+    await servicio.enviarSiPermitido({ modulo, to: profesional, subject: 'Entrega normal' });
+    await servicio.enviarSiPermitido({ modulo, evento: 'PLIEGO_CARGOS_TRASLADO_JURIDICA',
+      to: process.env.JURIDICA_EMAIL, subject: 'Traslado',
+      attachments: [{filename:'auto.pdf',contentBase64:Buffer.from('expediente').toString('base64')}] });
+    expect(mensajes).toHaveLength(2);
+    expect(mensajes[0]).toContain('To: ' + profesional);
+    expect(mensajes[0]).toContain('From: remitente@example.test');
+    expect(mensajes[1]).toContain('To: judicial@example.test');
+    expect(mensajes[1]).toContain('auto.pdf');
+    expect(mensajes.join(' ')).not.toContain('avisos@qa.invalid');
+  });
+
+  it('permite el proveedor Graph configurado cuando no se solicita captura', async () => {
+    process.env.MAIL_TEST_INBOX = '';
+    process.env.EMAIL_PROVIDER = 'microsoft_graph';
+    process.env.AZURE_TENANT_ID = 'tenant-ficticio';
+    process.env.AZURE_CLIENT_ID = 'cliente-ficticio';
+    process.env.AZURE_CLIENT_SECRET = 'secreto-ficticio';
+    process.env.NOTIFICATIONS_EMAIL_ACCOUNT = 'remitente@example.test';
+    const servicio = new EmailsService();
+    const post = jest.fn().mockResolvedValue(undefined);
+    const api = jest.fn().mockReturnValue({ post });
+    jest.spyOn(servicio as any, 'getGraphClient').mockReturnValue({ api });
+    const logError = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    servicio.onModuleInit();
+    await servicio.enviarSiPermitido({ modulo, to: profesional, subject: 'Proveedor configurado' });
+    expect(logError).not.toHaveBeenCalled();
+    expect(api).toHaveBeenCalledWith('/users/remitente@example.test/sendMail');
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({ message: expect.objectContaining({
+      subject: '[QA] Proveedor configurado',
+      toRecipients: [{ emailAddress: { address: profesional } }],
+    }) }));
     expect(mensajes).toHaveLength(0);
   });
 });
