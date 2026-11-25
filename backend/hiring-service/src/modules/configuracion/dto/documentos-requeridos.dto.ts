@@ -66,6 +66,16 @@ class CamposDocumentoRequerido {
   @IsString({ each: true })
   tipologias?: string[];
 
+  @ApiPropertyOptional({
+    example: ['ADICION'],
+    description:
+      'Solo en la 9.5: tipos de modificación (Configuración › Tipos de modificación) a los que se pide. Lista vacía significa todos.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tiposModificacion?: string[];
+
   @ApiPropertyOptional({ description: 'Posición en la lista de la actividad.' })
   @IsOptional()
   @IsInt()

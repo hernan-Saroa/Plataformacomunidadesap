@@ -17,6 +17,8 @@ import { Accion, Alcance, alcanceDeLugar, puede } from './alcance';
 const SQL = [
   '092_roles_de_contratacion_desde_cero.sql',
   '098_permisos_del_plan_anual_de_adquisiciones.sql',
+  // La 150 suma el módulo de Modificaciones (`MOD`) con los mismos roles.
+  '150_tramite_de_modificaciones.sql',
 ]
   .map((archivo) => readFileSync(join(__dirname, '../../db/migrations', archivo), 'utf8'))
   .join('\n');

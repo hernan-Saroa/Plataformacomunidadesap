@@ -55,6 +55,10 @@ export class DocumentoRequerido {
    * requisito tiene que ofrecer la versión vigente sin reconfigurarse cada vez
    * que el SIG publica una nueva.
    */
+  /** Solo en la 9.5: tipos de modificación a los que se pide (150). Vacío = todos. */
+  @Column({ name: 'tipos_modificacion', type: 'jsonb', default: () => "'[]'::jsonb" })
+  tiposModificacion: string[];
+
   @Column({ name: 'plantilla_codigo', type: 'varchar', length: 40, nullable: true })
   plantillaCodigo: string | null;
 

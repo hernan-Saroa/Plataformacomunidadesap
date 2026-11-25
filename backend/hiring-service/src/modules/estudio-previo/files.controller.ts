@@ -109,6 +109,16 @@ export class FilesController {
     );
     if (documento?.nombre) return documento.nombre;
 
+    // Los del módulo de Modificaciones (150) tienen su propia tabla: un
+    // contrato antiguo no tiene expediente.
+    const [deModificacion] = await this.dataSource.query(
+      `SELECT archivo_nombre_original AS nombre FROM hiring.documentos_tramite_modificacion
+        WHERE archivo_url LIKE $1 AND archivo_nombre_original IS NOT NULL
+        ORDER BY created_at DESC LIMIT 1`,
+      [sufijo],
+    );
+    if (deModificacion?.nombre) return deModificacion.nombre;
+
     const [plantilla] = await this.dataSource.query(
       `SELECT codigo, nombre, version FROM hiring.plantillas
         WHERE archivo_url LIKE $1 ORDER BY created_at DESC LIMIT 1`,

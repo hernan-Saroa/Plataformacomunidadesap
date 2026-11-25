@@ -229,6 +229,14 @@ export class ModificacionContrato {
 
   @Column({ name: 'motivo_revocacion', type: 'text', nullable: true })
   motivoRevocacion: string | null;
+
+  /** El trámite del módulo de Modificaciones del que es un cambio (150); nulo en las de la 9.5. */
+  @Column({ name: 'tramite_id', type: 'uuid', nullable: true })
+  tramiteId: string | null;
+
+  /** El tipo del catálogo con que se radicó (150). `tipo` sigue diciendo su efecto. */
+  @Column({ name: 'tipo_codigo', type: 'varchar', length: 60, nullable: true })
+  tipoCodigo: string | null;
 }
 
 /**
