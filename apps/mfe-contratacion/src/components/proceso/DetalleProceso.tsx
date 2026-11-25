@@ -22,6 +22,7 @@ import {
   actividadesDisponibles,
   estaTerminada,
   motivoDelBloqueo,
+  OpcionesDeSecuencia,
   noDetiene,
   PasoDelFlujo,
 } from './secuenciaActividades';
@@ -142,6 +143,7 @@ export const actividadReabierta = (flujo: PasoDelFlujo[]): PasoDelFlujo | null =
 export const actividadEnCurso = (
   catalogo: any[],
   estadoDelEstudio: string,
+  opciones: OpcionesDeSecuencia = {},
 ): string | null => {
   if (catalogo.length === 0) return null;
 
@@ -152,7 +154,7 @@ export const actividadEnCurso = (
     construida: TIENEN_PANEL(act.numeral),
     secuencia: act.secuencia ?? null,
   }));
-  const disponibles = actividadesDisponibles(flujo);
+  const disponibles = actividadesDisponibles(flujo, opciones);
 
   for (const act of catalogo) {
     if (!TIENEN_PANEL(act.numeral)) continue;
@@ -299,6 +301,12 @@ export function DetalleProceso({
   const recortado = soloPresupuesto && !verTodasLasEtapas;
   /** Actividades de la etapa, con su estado. Vacío mientras carga o si falla. */
   const [catalogo, setCatalogo] = useState<ActividadProceso[]>([]);
+  /**
+   * Si la etapa 10 ya se abrió (151): se abre al radicar la liquidación o el
+   * cierre del contrato. Mientras no se sepa, abierta, como antes.
+   */
+  const [etapa10Abierta, setEtapa10Abierta] = useState<boolean | undefined>(undefined);
+  const secuencia = { etapa10Abierta };
   const [tokenExpediente, setTokenExpediente] = useState(0);
   /** Los plazos que aprietan, releídos cuando algo cambia en el expediente. */
   const plazos = usePlazos(tokenExpediente);
@@ -444,7 +452,7 @@ export function DetalleProceso({
     const nombreSiguiente =
       catalogo.find((a: any) => a.numeral === siguiente.numeral)?.nombre ?? siguiente.numeral;
 
-    const disponibles = actividadesDisponibles(flujoActual);
+    const disponibles = actividadesDisponibles(flujoActual, secuencia);
     if (disponibles.has(siguiente.numeral)) {
       // Si lo que sigue es un grupo en paralelo, se dice que hay varias: no
       // hay una «siguiente», cualquiera de ellas lo es.
@@ -475,7 +483,7 @@ export function DetalleProceso({
     } else {
       setAvisoPaso({
         tipo: 'bloqueado',
-        motivo: motivoDelBloqueo(siguiente.numeral, flujoActual) ?? 'Debe continuar otra persona del equipo',
+        motivo: motivoDelBloqueo(siguiente.numeral, flujoActual, secuencia) ?? 'Debe continuar otra persona del equipo',
       });
     }
   }, [tokenExpediente, expandida, catalogo, datos]);
@@ -491,6 +499,10 @@ export function DetalleProceso({
     contratacionService
       .puestosDelProceso(procesoId)
       .then((p) => vigente && setPuestos(p))
+      .catch(() => undefined);
+    contratacionService
+      .situacionTramiteLiquidacion(procesoId)
+      .then((s) => vigente && setEtapa10Abierta(s.etapa10Abierta))
       .catch(() => undefined);
     return () => {
       vigente = false;
@@ -566,7 +578,7 @@ export function DetalleProceso({
   // cambia el número de hooks entre renders y React rompe la pantalla.
   useEffect(() => {
     if (abiertaLaPrimera || expandida || !datos) return;
-    const enCurso = actividadEnCurso(catalogo, datos.estado);
+    const enCurso = actividadEnCurso(catalogo, datos.estado, secuencia);
     if (!enCurso) return;
     setAbiertaLaPrimera(true);
     setExpandida(enCurso);
@@ -634,7 +646,7 @@ export function DetalleProceso({
     secuencia: act.secuencia ?? null,
   }));
 
-  const disponibles = actividadesDisponibles(flujo);
+  const disponibles = actividadesDisponibles(flujo, secuencia);
 
   /**
    * Dónde está el proceso y a quién le toca, con la misma secuencia del riel.
@@ -665,6 +677,7 @@ export function DetalleProceso({
     puedo: alcanceCargado ? puede : undefined,
     estadoProceso: datos.proceso.estado,
     detenidoPorPaa: datos.proceso.paaDetenido,
+    etapa10Abierta,
   };
   const situacion = situacionDelProceso(entradaSituacion);
 
@@ -706,7 +719,7 @@ export function DetalleProceso({
             ? 'No aplica a esta modalidad'
             : // Un candado sin explicación se lee como un fallo: decir cuál es
               // la actividad que falta lo convierte en una instrucción.
-              (alcanzada ? undefined : motivoDelBloqueo(act.numeral, flujo) ?? undefined),
+              (alcanzada ? undefined : motivoDelBloqueo(act.numeral, flujo, secuencia) ?? undefined),
           adjuntos,
         };
       }
@@ -773,7 +786,7 @@ export function DetalleProceso({
         // algo que no destrabaría nada.
         !TIENEN_PANEL(actividadSeleccionada.numeral)
         ? 'Esta actividad todavía no está construida en la plataforma'
-        : (motivoDelBloqueo(actividadSeleccionada.numeral, flujo) ??
+        : (motivoDelBloqueo(actividadSeleccionada.numeral, flujo, secuencia) ??
           'Esta actividad todavía no está habilitada')
       : null;
 
@@ -875,7 +888,7 @@ export function DetalleProceso({
   const motivoDe = (numeral: string): string | null => {
     const act = actividades.find((a) => a.numeral === numeral);
     if (!act || act.disponible) return null;
-    return motivoDelBloqueo(numeral, flujo) ?? act.detalle ?? 'Esta actividad todavía no está habilitada';
+    return motivoDelBloqueo(numeral, flujo, secuencia) ?? act.detalle ?? 'Esta actividad todavía no está habilitada';
   };
 
   // La cuantía se muestra en la cabecera porque desde EFDS-1147 es dato del

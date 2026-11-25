@@ -23,10 +23,14 @@ export function pendientesParaArchivar(estado: {
   actaVigente: boolean;
   publicadaEnSecop: boolean;
   cierreVigente: boolean;
+  /** PSPAG cerrado por el trámite (151): no hay acta, y el cierre ya se hizo en SECOP II. */
+  cerradoSinLiquidar?: boolean;
 }): string[] {
   const pendientes: string[] = [];
 
-  if (!estado.actaVigente) {
+  if (estado.cerradoSinLiquidar) {
+    // Nada que pedir del acta: el contrato no se liquida.
+  } else if (!estado.actaVigente) {
     pendientes.push('el contrato todavía no tiene acta de liquidación vigente (10.2)');
   } else if (!estado.publicadaEnSecop) {
     // Solo tiene sentido pedir la publicación cuando hay acta que publicar.

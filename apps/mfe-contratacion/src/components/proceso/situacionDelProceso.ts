@@ -76,6 +76,8 @@ export interface EntradaSituacion {
   estadoProceso?: EstadoDelProceso;
   /** Una revisión por cambio del PAA lo tiene detenido. */
   detenidoPorPaa?: boolean;
+  /** La etapa 10 se abre al radicar la liquidación o el cierre (151). */
+  etapa10Abierta?: boolean;
 }
 
 export interface Situacion {
@@ -340,7 +342,7 @@ export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
   }
 
   // -------------------------------------------------------- lo que sigue --
-  const disponibles = actividadesDisponibles(pasos);
+  const disponibles = actividadesDisponibles(pasos, { etapa10Abierta: entrada.etapa10Abierta });
   const pendientes = pasos.filter(
     (p) =>
       p.numeral !== ESTUDIO_PREVIO &&
@@ -387,7 +389,7 @@ export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
       titulo: primera.nombre,
       quien: r.quien,
       teToca: false,
-      espera: motivoDelBloqueo(primera.numeral, pasos) ?? 'Esperando un paso anterior',
+      espera: motivoDelBloqueo(primera.numeral, pasos, { etapa10Abierta: entrada.etapa10Abierta }) ?? 'Esperando un paso anterior',
     };
   }
 

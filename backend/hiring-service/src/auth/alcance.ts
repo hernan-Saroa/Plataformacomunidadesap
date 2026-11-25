@@ -59,7 +59,7 @@ const LA_SATISFACEN: Record<Accion, readonly Accion[]> = {
  * `MOD` es el módulo de Modificaciones (150), que vive fuera del proceso: sirve
  * también para contratos que nunca se cargaron en la plataforma.
  */
-export const TRAMITES = ['INC.1', 'INC.2', 'PAA', 'PAA.R', 'MOD'] as const;
+export const TRAMITES = ['INC.1', 'INC.2', 'PAA', 'PAA.R', 'MOD', 'LIQ', 'CIE'] as const;
 export type Tramite = (typeof TRAMITES)[number];
 
 /**

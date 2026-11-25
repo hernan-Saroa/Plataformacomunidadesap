@@ -17,7 +17,7 @@ import { PanelTraslado } from '../traslado/PanelTraslado';
 import { PanelAdjudicacion } from '../adjudicacion/PanelAdjudicacion';
 import { PanelPagos } from '../pagos/PanelPagos';
 import { PanelInformeFinal } from '../informe-final/PanelInformeFinal';
-import { PanelLiquidacion } from '../liquidacion/PanelLiquidacion';
+import { PanelDeLaLiquidacion } from '../tramites-liquidacion/PanelDeLaLiquidacion';
 import { PanelCierreFinanciero } from '../cierre-financiero/PanelCierreFinanciero';
 import { PanelArchivoExpediente } from '../archivo-expediente/PanelArchivoExpediente';
 import { PanelModificaciones } from '../modificaciones/PanelModificaciones';
@@ -172,10 +172,7 @@ export function PanelDeLaActividad({
         /* El balance financiero y el cierre del saldo van con la liquidación,
            no en la etapa de cierre, que queda solo para publicar y archivar
            (revisión de QA de EFDS-1172). La 10.3 sigue guardando el cierre. */
-        <div className="space-y-3">
-          <PanelLiquidacion procesoId={procesoId} onCambio={onCambio} />
-          <PanelCierreFinanciero procesoId={procesoId} onCambio={onCambio} />
-        </div>
+        <PanelDeLaLiquidacion procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_INFORME_FINAL ? (
         <PanelInformeFinal procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_MODIFICACIONES ? (

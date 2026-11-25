@@ -190,6 +190,10 @@ import {
   RadicarModificacion,
   TipoModificacionConfigurable,
   TramiteModificacionDetalle,
+  TramiteLiquidacionDetalle,
+  TramiteLiquidacionResumen,
+  SituacionTramiteLiquidacion,
+  EvidenciaSecop,
   TramiteModificacionResumen,
 } from '../types';
 
@@ -2512,6 +2516,97 @@ export const contratacionService = {
 
   desistirModificacion: (id: string, motivo: string) =>
     pedir<TramiteModificacionDetalle>(`/modificaciones/${id}/desistir`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ------------------------------- liquidación y cierre del contrato (151) --
+
+  /** Qué trámite le toca al contrato, si ya se puede radicar y el que está vivo. */
+  situacionTramiteLiquidacion: (procesoId: string) =>
+    pedir<SituacionTramiteLiquidacion>(`/procesos/${procesoId}/tramite-liquidacion`),
+
+  /** Radica: un archivo por documento, con el id del requisito como campo. Abre la etapa 10. */
+  radicarTramiteLiquidacion: (procesoId: string, documentos: Record<string, File>, observaciones?: string) => {
+    const cuerpo = new FormData();
+    if (observaciones) cuerpo.append('observaciones', observaciones);
+    for (const [requisitoId, archivo] of Object.entries(documentos)) cuerpo.append(requisitoId, archivo);
+    return pedir<TramiteLiquidacionDetalle>(`/procesos/${procesoId}/tramite-liquidacion`, { method: 'POST', body: cuerpo });
+  },
+
+  bandejaLiquidaciones: () => pedir<TramiteLiquidacionResumen[]>('/tramites-liquidacion'),
+
+  tramiteLiquidacion: (id: string) => pedir<TramiteLiquidacionDetalle>(`/tramites-liquidacion/${id}`),
+
+  candidatosLiquidacion: (clase: 'LIQUIDACION' | 'CIERRE') =>
+    pedir<{ id: string; nombre: string }[]>(`/tramites-liquidacion/candidatos?clase=${clase}`),
+
+  subirDocumentoLiquidacion: (id: string, requisitoId: string, archivo: File) =>
+    pedir<TramiteLiquidacionDetalle>(`/tramites-liquidacion/${id}/documentos/${requisitoId}`, {
+      method: 'POST',
+      body: conArchivo({}, archivo),
+    }),
+
+  asignarLiquidacion: (id: string, abogadoId: string) =>
+    pedir<TramiteLiquidacionDetalle>(`/tramites-liquidacion/${id}/asignar`, {
+      method: 'POST',
+      body: JSON.stringify({ abogadoId }),
+    }),
+
+  devolverLiquidacionAlArea: (id: string, observaciones: string) =>
+    pedir<TramiteLiquidacionDetalle>(`/tramites-liquidacion/${id}/devolver`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
+  decidirLiquidacion: (id: string, accion: 'APROBAR' | 'DEVOLVER', observaciones?: string) =>
+    pedir<TramiteLiquidacionDetalle>(`/tramites-liquidacion/${id}/decidir`, {
+      method: 'POST',
+      body: JSON.stringify({ accion, observaciones }),
+    }),
+
+  reenviarLiquidacion: (id: string, observaciones?: string) =>
+    pedir<TramiteLiquidacionDetalle>(`/tramites-liquidacion/${id}/reenviar`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
+  enviarActaLiquidacion: (id: string, archivo: File, observaciones?: string) =>
+    pedir<TramiteLiquidacionDetalle>(`/tramites-liquidacion/${id}/acta`, {
+      method: 'POST',
+      body: conArchivo({ observaciones }, archivo),
+    }),
+
+  perfeccionarLiquidacion: (
+    id: string,
+    datos: { tipo: 'BILATERAL' | 'UNILATERAL'; fechaActa: string; pazYSalvo: boolean; observaciones?: string },
+    acta: File,
+    pazYSalvo: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('tipo', datos.tipo);
+    cuerpo.append('fechaActa', datos.fechaActa);
+    cuerpo.append('pazYSalvo', String(datos.pazYSalvo));
+    if (datos.observaciones) cuerpo.append('observaciones', datos.observaciones);
+    cuerpo.append('acta', acta);
+    if (pazYSalvo) cuerpo.append('soportePazYSalvo', pazYSalvo);
+    return pedir<TramiteLiquidacionDetalle>(`/tramites-liquidacion/${id}/perfeccionar`, { method: 'POST', body: cuerpo });
+  },
+
+  publicarLiquidacion: (id: string, datos: EvidenciaSecop, archivo: File) =>
+    pedir<TramiteLiquidacionDetalle>(`/tramites-liquidacion/${id}/publicar`, {
+      method: 'POST',
+      body: conArchivo(datos, archivo),
+    }),
+
+  cerrarEnSecop: (id: string, datos: EvidenciaSecop, archivo: File) =>
+    pedir<TramiteLiquidacionDetalle>(`/tramites-liquidacion/${id}/cerrar`, {
+      method: 'POST',
+      body: conArchivo(datos, archivo),
+    }),
+
+  desistirLiquidacion: (id: string, motivo: string) =>
+    pedir<TramiteLiquidacionDetalle>(`/tramites-liquidacion/${id}/desistir`, {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),

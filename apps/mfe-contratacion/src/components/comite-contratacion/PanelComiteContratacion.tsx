@@ -32,10 +32,10 @@ const formatoPesos = new Intl.NumberFormat('es-CO', {
 });
 
 const ROTULO: Record<DecisionComite, string> = {
-  APROBADO: 'Aprobado',
-  APROBADO_CON_CONDICIONES: 'Aprobado con condiciones',
-  OBSERVADO: 'Observado',
-  RECHAZADO: 'Rechazado',
+  APROBADO: 'Se recomienda la contratación.',
+  APROBADO_CON_CONDICIONES: 'Se recomienda la contratación, sujeto a los ajustes solicitados.',
+  OBSERVADO: 'No se recomienda, se devuelve para ajuste.',
+  RECHAZADO: 'No se recomienda la contratación.',
 };
 
 /**
@@ -350,10 +350,10 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
             onChange={(e) => setDecision(e.target.value as DecisionComite)}
             className={campo}
           >
-            <option value="APROBADO">Aprobado</option>
-            <option value="APROBADO_CON_CONDICIONES">Aprobado con condiciones</option>
-            <option value="OBSERVADO">Observado: devuelve los documentos</option>
-            <option value="RECHAZADO">Rechazado: el proceso no sale al mercado</option>
+            <option value="APROBADO">{ROTULO.APROBADO}</option>
+            <option value="APROBADO_CON_CONDICIONES">{ROTULO.APROBADO_CON_CONDICIONES}</option>
+            <option value="OBSERVADO">{ROTULO.OBSERVADO}</option>
+            <option value="RECHAZADO">{ROTULO.RECHAZADO}</option>
           </select>
           {/* Cada desenlace dice qué pasa al registrarlo (AJU-004 de QA, 14/11). */}
           {decision === 'APROBADO_CON_CONDICIONES' && (
@@ -365,7 +365,7 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
           {decision === 'RECHAZADO' && (
             <Aviso tono="aviso" titulo="El rechazo termina el proceso">
               La actividad queda negada y el proceso también: no admite corregir y volver a comité.
-              Si lo que procede es devolver para corregir, el desenlace es «Observado».
+              Si lo que procede es devolver para corregir, el desenlace es «No se recomienda, se devuelve para ajuste».
             </Aviso>
           )}
 

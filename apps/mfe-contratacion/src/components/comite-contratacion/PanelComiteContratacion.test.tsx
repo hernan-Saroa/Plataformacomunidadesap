@@ -349,7 +349,7 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
       }),
     );
 
-    expect(await screen.findByText(/Observado/)).toBeInTheDocument();
+    expect(await screen.findByText(/No se recomienda, se devuelve para ajuste/)).toBeInTheDocument();
     expect(screen.getByText(/no sustenta la experiencia exigida/)).toBeInTheDocument();
     expect(screen.getByText(/volver a llevarlo a comité/)).toBeInTheDocument();
   });
@@ -367,7 +367,7 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
       }),
     );
 
-    expect(await screen.findByText(/Aprobado con condiciones/)).toBeInTheDocument();
+    expect(await screen.findByText(/sujeto a los ajustes solicitados/)).toBeInTheDocument();
     expect(screen.getByText(/Ajustar el análisis del sector/)).toBeInTheDocument();
     expect(screen.getByText('Hay condiciones por atender')).toBeInTheDocument();
   });

@@ -17,6 +17,7 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
+import { estadoDeEjecucion } from '../modificaciones/estado-de-ejecucion';
 import { amparosParaCerrar, AmparoParaCierre, EstadoDeAmparos } from './amparos-de-estabilidad';
 import {
   CerrarDefinitivamenteDto,
@@ -139,69 +140,96 @@ export class CierreDefinitivoService {
   ) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContrato(em, procesoId);
-
-      if (!(await this.actaVigente(em, contrato.id))) {
+      if (await this.tieneTramite(em, contrato.id)) {
         throw new ConflictException(
-          'El contrato todavía no está liquidado: el cierre definitivo va sobre el acta de liquidación (10.2)',
+          'Este contrato tiene un trámite de liquidación o de cierre: el cierre se registra desde el trámite',
         );
       }
-
-      if (await this.cierreVigente(em, contrato.id)) {
-        throw new ConflictException('El contrato ya está cerrado definitivamente');
-      }
-
-      const amparos = await this.evaluarAmparos(em, contrato.id);
-      if (!amparos.puedeCerrar) {
-        throw new ConflictException(
-          `Todavía no se puede cerrar el contrato: ${amparos.motivo}`,
-        );
-      }
-
-      this.validarFecha(dto.fechaCierre);
-
-      let documento: Documento | null = null;
-      if (soporte && hash) {
-        const expediente = await em.findOne(Expediente, { where: { procesoId } });
-        if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
-
-        documento = await this.guardarDocumento(
-          em,
-          expediente.id,
-          `Contrato ${contrato.numero} · soporte del cierre definitivo`,
-          soporte,
-          hash,
-          acceso,
-        );
-      }
-
-      const registro = await em.save(
-        em.create(CierreContrato, {
-          contratoId: contrato.id,
-          fechaCierre: dto.fechaCierre,
-          amparosVerificados: amparos.verificados,
-          ultimoVencimiento: amparos.ultimoVencimiento,
-          soporteDocumentoId: documento?.id ?? null,
-          observaciones: dto.observaciones ?? null,
-          estado: 'VIGENTE' as const,
-          cerradoPor: acceso.userName,
-        } as Partial<CierreContrato>),
-      );
-
-      contrato.estado = 'CERRADO';
-      await em.save(contrato);
-
-      await this.traza(em, procesoId, registro.id, 'CERRAR', acceso, {
-        contrato: contrato.numero,
-        fechaCierre: dto.fechaCierre,
-        ultimoVencimiento: amparos.ultimoVencimiento,
-        amparosVerificados: amparos.verificados.length,
-        // Que el contrato no llevaba estabilidad ni calidad queda dicho: es lo
-        // que explica un cierre inmediato.
-        sinAmparos: amparos.sinAmparos,
-      });
+      await this.registrarCierre(em, procesoId, dto, soporte, hash, acceso, { exigeLiquidacion: true });
     });
 
     return this.estado(procesoId, acceso);
+  }
+
+  /**
+   * Lo que hace `cerrar`, dentro de una transacción ajena.
+   *
+   * El trámite de cierre (151) lo usa sin exigir el acta de liquidación: los
+   * contratos PSPAG no se liquidan, se cierran en SECOP II con la evidencia.
+   */
+  async registrarCierre(
+    em: EntityManager,
+    procesoId: string,
+    dto: CerrarDefinitivamenteDto,
+    soporte: ArchivoCargado | null,
+    hash: string | null,
+    acceso: HiringAccess,
+    opciones: { exigeLiquidacion: boolean },
+  ): Promise<CierreContrato> {
+    const contrato = await this.exigirContrato(em, procesoId);
+
+    if (opciones.exigeLiquidacion && !(await this.actaVigente(em, contrato.id))) {
+      throw new ConflictException(
+        'El contrato todavía no está liquidado: el cierre definitivo va sobre el acta de liquidación (10.2)',
+      );
+    }
+
+    if (await this.cierreVigente(em, contrato.id)) {
+      throw new ConflictException('El contrato ya está cerrado definitivamente');
+    }
+
+    const amparos = await this.evaluarAmparos(em, contrato.id);
+    if (!amparos.puedeCerrar) {
+      throw new ConflictException(
+        `Todavía no se puede cerrar el contrato: ${amparos.motivo}`,
+      );
+    }
+
+    this.validarFecha(dto.fechaCierre);
+
+    let documento: Documento | null = null;
+    if (soporte && hash) {
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
+
+      documento = await this.guardarDocumento(
+        em,
+        expediente.id,
+        `Contrato ${contrato.numero} · soporte del cierre definitivo`,
+        soporte,
+        hash,
+        acceso,
+      );
+    }
+
+    const registro = await em.save(
+      em.create(CierreContrato, {
+        contratoId: contrato.id,
+        fechaCierre: dto.fechaCierre,
+        amparosVerificados: amparos.verificados,
+        ultimoVencimiento: amparos.ultimoVencimiento,
+        soporteDocumentoId: documento?.id ?? null,
+        observaciones: dto.observaciones ?? null,
+        estado: 'VIGENTE' as const,
+        cerradoPor: acceso.userName,
+      } as Partial<CierreContrato>),
+    );
+
+    contrato.estado = 'CERRADO';
+    await em.save(contrato);
+
+    await this.traza(em, procesoId, registro.id, 'CERRAR', acceso, {
+      contrato: contrato.numero,
+      fechaCierre: dto.fechaCierre,
+      ultimoVencimiento: amparos.ultimoVencimiento,
+      amparosVerificados: amparos.verificados.length,
+      // Que el contrato no llevaba estabilidad ni calidad queda dicho: es lo
+      // que explica un cierre inmediato.
+      sinAmparos: amparos.sinAmparos,
+      sinLiquidacion: !opciones.exigeLiquidacion,
+    });
+
+    return registro;
   }
 
   /**
@@ -226,7 +254,11 @@ export class CierreDefinitivoService {
       vigente.motivoReversion = dto.motivo;
       await em.save(vigente);
 
-      contrato.estado = 'LIQUIDADO';
+      // Vuelve a donde salió: liquidado, o —si se cerró sin liquidar, como un
+      // PSPAG (151)— a como quedó su ejecución.
+      contrato.estado = (await this.actaVigente(em, contrato.id))
+        ? 'LIQUIDADO'
+        : await estadoDeEjecucion(em, contrato.id);
       await em.save(contrato);
 
       await this.traza(em, procesoId, vigente.id, 'REVOCAR', acceso, {
@@ -352,6 +384,14 @@ export class CierreDefinitivoService {
     const contrato = await this.contratoDelProceso(em, procesoId, true);
     if (!contrato) throw new NotFoundException('El proceso todavía no tiene contrato: se genera en la 8.1');
     return contrato;
+  }
+
+  private async tieneTramite(em: EntityManager, contratoId: string) {
+    const [fila] = await em.query(
+      `SELECT 1 FROM hiring.tramites_liquidacion WHERE contrato_id = $1 AND estado <> 'DESISTIDA' LIMIT 1`,
+      [contratoId],
+    );
+    return !!fila;
   }
 
   private actaVigente(em: EntityManager, contratoId: string) {

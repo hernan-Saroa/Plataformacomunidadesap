@@ -88,8 +88,27 @@ function dependenciaSatisfecha(
   return estaTerminada(paso);
 }
 
+/**
+ * Lo que la secuencia necesita saber del proceso, más allá de sus actividades.
+ *
+ * `etapa10Abierta` (151): la etapa 10 se abre al radicar la liquidación o el
+ * cierre del contrato, no al terminar la 9. Sin decirlo, abierta, como antes.
+ */
+export interface OpcionesDeSecuencia {
+  etapa10Abierta?: boolean;
+}
+
+/** Si el numeral es de la etapa 10, que espera el trámite de liquidación o cierre. */
+export const esDeLaEtapa10 = (numeral: string) => numeral.startsWith('10.');
+
 /** Los numerales que se pueden trabajar, con la misma regla que el riel. */
-export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
+export function actividadesDisponibles(flujo: PasoDelFlujo[], opciones: OpcionesDeSecuencia = {}): Set<string> {
+  if (opciones.etapa10Abierta === false) {
+    const sinLaDiez = actividadesDisponibles(flujo);
+    for (const numeral of [...sinLaDiez]) if (esDeLaEtapa10(numeral)) sinLaDiez.delete(numeral);
+    return sinLaDiez;
+  }
+
   const disponibles = new Set<string>();
   /** Las que no se trabajan aquí y a cuyo lugar ya llegó el proceso. */
   const alcanzadas = new Set<string>();
@@ -185,11 +204,12 @@ export const SE_RESUELVE_EN_LA_RONDA = '3.4';
  *
  * Incluye las que no tienen pantalla y a las que el proceso ya llegó.
  */
-export function porEmpezar(flujo: PasoDelFlujo[]): string[] {
-  const disponibles = actividadesDisponibles(flujo);
+export function porEmpezar(flujo: PasoDelFlujo[], opciones: OpcionesDeSecuencia = {}): string[] {
+  const disponibles = actividadesDisponibles(flujo, opciones);
   const sinPantalla = sinPantallaAlcanzadas(flujo);
   return flujo
     .filter((p) => disponibles.has(p.numeral) || sinPantalla.has(p.numeral))
+    .filter((p) => opciones.etapa10Abierta !== false || !esDeLaEtapa10(p.numeral))
     .filter((p) => p.numeral !== SE_RESUELVE_EN_LA_RONDA)
     .filter((p) => p.estado === null || p.estado === 'BORRADOR')
     .map((p) => p.numeral);

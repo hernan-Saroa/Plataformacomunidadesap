@@ -74,6 +74,14 @@ const GRUPOS_DE_TRAMITES = [
       },
     ],
   },
+  {
+    titulo: 'Liquidación y cierre',
+    ayuda: 'Se radican en la 10.2 al terminar la etapa 9; cada uno tiene su asignador líder',
+    tramites: [
+      { lugar: 'LIQ', nombre: 'Liquidación (editar: radicar · aprobar: ser abogado · decidir: asignar y ser la líder)' },
+      { lugar: 'CIE', nombre: 'Cierre de PSPAG (editar: radicar · aprobar: ser abogado · decidir: asignar o devolver)' },
+    ],
+  },
 ];
 
 const clave = (accion: AccionAlcance, lugar: string) => `${accion}|${lugar}`;

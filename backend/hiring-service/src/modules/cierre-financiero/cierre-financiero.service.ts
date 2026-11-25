@@ -7,6 +7,7 @@ import {
 } from '../../entities/cierre-financiero.entity';
 import { RegistroPresupuestal } from '../../entities/registro-presupuestal.entity';
 import { ActaLiquidacion } from '../../entities/acta-liquidacion.entity';
+import { cerradoSinLiquidar } from '../tramites-liquidacion/sin-liquidacion';
 import { PagoContrato } from '../../entities/pago-contrato.entity';
 import { Contrato } from '../../entities/contrato.entity';
 import { Proceso } from '../../entities/proceso.entity';
@@ -114,7 +115,7 @@ export class CierreFinancieroService {
       };
     }
 
-    const liquidacion = await this.liquidacionVigente(contrato.id);
+    const liquidacion = await this.hayBaseParaCerrar(contrato.id);
     const rp = await this.rpExpedido(contrato.id);
     const vigente = await this.cierreVigente(contrato.id);
 
@@ -189,7 +190,7 @@ export class CierreFinancieroService {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContrato(em, procesoId);
 
-      if (!(await this.liquidacionVigente(contrato.id, em))) {
+      if (!(await this.hayBaseParaCerrar(contrato.id, em))) {
         throw new ConflictException(
           'El contrato todavía no está liquidado: el cierre financiero va sobre el acta de liquidación (10.2)',
         );
@@ -321,6 +322,15 @@ export class CierreFinancieroService {
     if (!hayLiquidacion) return 'falta el acta de liquidación del contrato (10.2)';
     if (!hayRp) return 'falta el registro presupuestal expedido (8.3)';
     return null;
+  }
+
+  /**
+   * El acta de liquidación vigente o, en un PSPAG, el cierre del trámite (151):
+   * lo que deja el contrato sin nada más que ejecutar ni pagar.
+   */
+  private async hayBaseParaCerrar(contratoId: string, em?: EntityManager): Promise<boolean> {
+    const manager = em ?? this.dataSource.manager;
+    return !!(await this.liquidacionVigente(contratoId, manager)) || (await cerradoSinLiquidar(manager, contratoId));
   }
 
   private liquidacionVigente(contratoId: string, em?: EntityManager) {

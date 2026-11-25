@@ -13,6 +13,7 @@ import {
   Store,
   Settings,
   FilePen,
+  FileCheck2,
 } from 'lucide-react';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
@@ -34,6 +35,7 @@ import { VistaExpedientes } from './expedientes/VistaExpedientes';
 import { VistaAlertas } from './alertas/VistaAlertas';
 import { VistaEstadisticas } from './estadisticas/VistaEstadisticas';
 import { VistaModificaciones } from './tramites-modificacion/VistaModificaciones';
+import { VistaLiquidaciones } from './tramites-liquidacion/VistaLiquidaciones';
 import { RevisionDeActividad } from './revision/RevisionDeActividad';
 import { RevisionDelPaa } from './paa/RevisionDelPaa';
 import { PestanaTrabajo, VistaMiTrabajo } from './trabajo/VistaMiTrabajo';
@@ -44,6 +46,7 @@ import { useAlcance } from '../auth/alcance';
 type Seccion =
   | 'estudios-previos'
   | 'modificaciones'
+  | 'liquidaciones'
   | 'mi-trabajo'
   | 'revision'
   | 'alertas'
@@ -169,6 +172,19 @@ export default function ContratacionModulePremium() {
                 subtitle: 'Adiciones, prórrogas y más',
                 icon: <FilePen className="w-5 h-5" />,
                 color: '#0F766E',
+              },
+            ]),
+        // La liquidación y el cierre se radican en la 10.2 (151); la bandeja es
+        // para quien los asigna, revisa y da visto bueno.
+        ...(!puede('ver', 'LIQ') && !puede('ver', 'CIE')
+          ? []
+          : [
+              {
+                id: 'liquidaciones' as Seccion,
+                label: 'Liquidaciones',
+                subtitle: 'Liquidación y cierre de contratos',
+                icon: <FileCheck2 className="w-5 h-5" />,
+                color: '#7C3AED',
               },
             ]),
         /*
@@ -459,6 +475,16 @@ export default function ContratacionModulePremium() {
             setSeccion('estudios-previos');
             setProcesoId(id);
             setActividad('9.5');
+          }}
+        />
+      );
+    if (seccion === 'liquidaciones')
+      return (
+        <VistaLiquidaciones
+          onVerProceso={(id) => {
+            setSeccion('estudios-previos');
+            setProcesoId(id);
+            setActividad('10.2');
           }}
         />
       );

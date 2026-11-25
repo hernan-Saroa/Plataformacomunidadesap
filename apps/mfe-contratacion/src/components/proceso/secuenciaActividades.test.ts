@@ -536,3 +536,22 @@ describe('secuencia de actividades · configurada en el flujo', () => {
     expect(actividadesDisponibles(despues).has('5.2')).toBe(true);
   });
 });
+
+describe('secuencia de actividades · la etapa 10 espera la liquidación o el cierre (151)', () => {
+  const flujo = [paso('9.4', { estado: 'APROBADO' }), paso('9.5'), paso('10.1'), paso('10.2')];
+
+  it('sin trámite radicado la 10 tiene candado y dice por qué', () => {
+    expect(actividadesDisponibles(flujo, { etapa10Abierta: false }).has('10.1')).toBe(false);
+    expect(motivoDelBloqueo('10.1', flujo, { etapa10Abierta: false })).toMatch(/radicar la liquidación o el cierre/);
+  });
+
+  it('si antes falta algo de la 9, eso es lo que se dice', () => {
+    const sinPagos = [paso('9.4'), paso('10.1')];
+    expect(motivoDelBloqueo('10.1', sinPagos, { etapa10Abierta: false })).toBe('Antes hay que terminar 9.4');
+  });
+
+  it('con el trámite radicado se abre como antes', () => {
+    expect(actividadesDisponibles(flujo, { etapa10Abierta: true }).has('10.1')).toBe(true);
+    expect(actividadesDisponibles(flujo).has('10.1')).toBe(true);
+  });
+});

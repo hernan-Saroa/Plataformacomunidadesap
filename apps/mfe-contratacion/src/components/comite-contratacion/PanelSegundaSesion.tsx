@@ -32,10 +32,10 @@ interface Props {
 const NUMERAL = '5.6.1';
 
 const ROTULO: Record<DecisionComite, string> = {
-  APROBADO: 'Aprobado',
-  APROBADO_CON_CONDICIONES: 'Aprobado con condiciones',
-  OBSERVADO: 'Observado',
-  RECHAZADO: 'Rechazado',
+  APROBADO: 'Se recomienda la contratación.',
+  APROBADO_CON_CONDICIONES: 'Se recomienda la contratación, sujeto a los ajustes solicitados.',
+  OBSERVADO: 'No se recomienda, se devuelve para ajuste.',
+  RECHAZADO: 'No se recomienda la contratación.',
 };
 
 /** En qué va la revisión del pliego definitivo, dicho para quien lo trabaja. */
@@ -373,10 +373,10 @@ export function PanelSegundaSesion({ procesoId, onCambio }: Props) {
               onChange={(e) => setDecision(e.target.value as DecisionComite)}
               className={campo}
             >
-              <option value="APROBADO">Aprobado</option>
-              <option value="APROBADO_CON_CONDICIONES">Aprobado con condiciones</option>
-              <option value="OBSERVADO">Observado: hay que ajustar el pliego definitivo</option>
-              <option value="RECHAZADO">Rechazado: el proceso no sale al mercado</option>
+              <option value="APROBADO">{ROTULO.APROBADO}</option>
+              <option value="APROBADO_CON_CONDICIONES">{ROTULO.APROBADO_CON_CONDICIONES}</option>
+              <option value="OBSERVADO">{ROTULO.OBSERVADO}</option>
+              <option value="RECHAZADO">{ROTULO.RECHAZADO}</option>
             </select>
             {decision === 'OBSERVADO' && (
               <Aviso tono="aviso" titulo="Vuelve a revisión">
