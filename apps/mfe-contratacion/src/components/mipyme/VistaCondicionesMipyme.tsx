@@ -201,7 +201,7 @@ export function VistaCondicionesMipyme() {
                   {pesos.format(datos.smmlvAplicado.valor)}
                 </span>
                 {!datos.smmlvAplicado.confirmado && ' (sin confirmar)'}. Se administra desde
-                Umbrales.
+                Configuración › Salario mínimo.
               </p>
             </div>
           )}

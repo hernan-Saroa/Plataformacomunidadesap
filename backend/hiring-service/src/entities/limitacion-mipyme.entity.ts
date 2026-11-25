@@ -61,7 +61,7 @@ export class LimitacionMipyme {
   /**
    * Salario con el que se convirtió el tope a pesos.
    *
-   * Sin él, corregir el salario del año en la pantalla de Umbrales dejaría esta
+   * Sin él, corregir el salario del año en Salario mínimo dejaría esta
    * decisión sin forma de reconstruir contra cuántos pesos se comparó. Null si
    * el tope se aplicó en pesos —el salario no entró en el cálculo— o si la
    * decisión es anterior a la migración 018.

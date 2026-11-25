@@ -77,9 +77,9 @@ export function EditorSmmlv({ salarios, onListo }: Props) {
         />
         <p className="text-[11px] text-gray-500 mt-1.5 mb-0 leading-relaxed">
           {valor !== null ? `${formatoPesos.format(valor)} · ` : ''}
-          {/* Se dice el efecto porque no es evidente: un número aquí mueve
-              todos los umbrales expresados en salarios. */}
-          Recalcula todos los umbrales en SMMLV de ese año.
+          {/* Se dice el efecto porque no es evidente: un número aquí mueve los
+              topes del Comité, MiPyme y adiciones expresados en salarios. */}
+          Recalcula los topes en SMMLV de ese año: Comité, MiPyme y adiciones.
         </p>
       </div>
 

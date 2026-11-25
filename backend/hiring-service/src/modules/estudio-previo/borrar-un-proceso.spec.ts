@@ -39,7 +39,6 @@ describe('EstudioPrevioService · borrar un proceso', () => {
       dataSource as never,
       {} as never,
       {} as never,
-      {} as never,
       permisosService as never,
       {} as never,
       {} as never,

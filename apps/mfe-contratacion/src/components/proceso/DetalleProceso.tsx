@@ -90,7 +90,7 @@ const ACTIVIDADES_ETAPA_3 = [
     numeral: '3.5',
     etapa: 3,
     nombre: 'Definir modalidad de contratación',
-    descripcion: 'Según cuantía y umbral vigente (Decreto 1082/2015)',
+    descripcion: 'La trae la línea del PAA (Decreto 1082/2015)',
   },
   {
     numeral: '3.6',

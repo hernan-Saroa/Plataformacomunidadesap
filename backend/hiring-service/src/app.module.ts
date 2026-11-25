@@ -7,7 +7,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { HealthController } from './health/health.controller';
 import { HiringModule } from './modules/hiring/hiring.module';
 import { EstudioPrevioModule } from './modules/estudio-previo/estudio-previo.module';
-import { UmbralesModule } from './modules/umbrales/umbrales.module';
+import { SalarioMinimoModule } from './modules/salario-minimo/salario-minimo.module';
 import { CdpModule } from './modules/cdp/cdp.module';
 import { ConfiguracionModule } from './modules/configuracion/configuracion.module';
 import { PublicacionModule } from './modules/publicacion/publicacion.module';
@@ -64,7 +64,6 @@ import { ENTIDADES_APROBACION } from './entities/cadena-aprobacion.entity';
 import { ENTIDADES_PUESTOS } from './entities/puesto-proceso.entity';
 import { Plantilla } from './entities/plantilla.entity';
 import { Modalidad } from './entities/modalidad.entity';
-import { UmbralModalidad } from './entities/umbral-modalidad.entity';
 import { Smmlv } from './entities/smmlv.entity';
 import { Cdp, CdpAntesDeRadicar } from './entities/cdp.entity';
 import { Actividad, ActividadExcluida, ActividadSalvedad } from './entities/actividad.entity';
@@ -157,7 +156,7 @@ import {
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, CausalContratacion, SesionComiteContratacion, UmbralComiteContratacion, UmbralModalidad, Smmlv, Cdp, CdpAntesDeRadicar, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, ResultadoEvaluacion, EvidenciaEvaluacion, InformeEvaluacion, Subsanacion, PlazoTraslado, AudienciaAdjudicacion, PiezaAudiencia, SobreEconomico, InformeDefinitivo, ActoAdjudicacion, DeclaratoriaDesierta, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, TipoPoliza, AfiliacionArl, SupervisionContrato, ParticipacionProceso, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, SuscripcionActaInicio, PagoContrato, SoportePago, InformeFinal, EntregableInforme, ActaLiquidacion, CierreFinanciero, PublicacionActa, PlazoPublicacionActa, CierreContrato, ModificacionContrato, TopeAdicion, PublicacionModificacion, SeguimientoContrato, RegistroActividad, ActividadConSoporte, CasoIncumplimiento, AudienciaSancionatoria, ResolucionSancionatoria, ...ENTIDADES_PAA, ...ENTIDADES_APROBACION, ...ENTIDADES_PUESTOS],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, CausalContratacion, SesionComiteContratacion, UmbralComiteContratacion, Smmlv, Cdp, CdpAntesDeRadicar, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, ResultadoEvaluacion, EvidenciaEvaluacion, InformeEvaluacion, Subsanacion, PlazoTraslado, AudienciaAdjudicacion, PiezaAudiencia, SobreEconomico, InformeDefinitivo, ActoAdjudicacion, DeclaratoriaDesierta, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, TipoPoliza, AfiliacionArl, SupervisionContrato, ParticipacionProceso, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, SuscripcionActaInicio, PagoContrato, SoportePago, InformeFinal, EntregableInforme, ActaLiquidacion, CierreFinanciero, PublicacionActa, PlazoPublicacionActa, CierreContrato, ModificacionContrato, TopeAdicion, PublicacionModificacion, SeguimientoContrato, RegistroActividad, ActividadConSoporte, CasoIncumplimiento, AudienciaSancionatoria, ResolucionSancionatoria, ...ENTIDADES_PAA, ...ENTIDADES_APROBACION, ...ENTIDADES_PUESTOS],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -167,7 +166,7 @@ import {
     AlcanceModule,
     HiringModule,
     EstudioPrevioModule,
-    UmbralesModule,
+    SalarioMinimoModule,
     CdpModule,
     ConfiguracionModule,
     PublicacionModule,

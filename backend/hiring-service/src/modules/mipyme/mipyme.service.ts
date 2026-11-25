@@ -426,7 +426,7 @@ export class MipymeService {
       decision.topeValorAplicado = tope.valor;
       decision.unidadTopeAplicada = tope.unidad;
       // El salario también entró en el cálculo, y vive en una tabla que se
-      // edita desde Umbrales: sin congelarlo, corregirlo mañana dejaría esta
+      // edita en Salario mínimo: sin congelarlo, corregirlo mañana dejaría esta
       // decisión sin forma de rehacer la conversión del tope a pesos.
       decision.smmlvAplicado = smmlvAplicado;
       decision.minimoManifestaciones = minimo.valor;

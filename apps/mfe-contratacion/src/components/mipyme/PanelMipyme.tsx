@@ -341,7 +341,7 @@ function Manifestaciones({ estado }: { estado: EstadoMipyme }) {
  *
  * Cuando se aplicó en SMMLV se muestra también el equivalente en pesos hecho
  * con el salario que quedó congelado. Sin ese salario, corregirlo después en
- * Umbrales dejaría la comparación sin forma de rehacerse: "300 SMMLV" no dice
+ * Salario mínimo dejaría la comparación sin forma de rehacerse: "300 SMMLV" no dice
  * contra cuántos pesos se midió el proceso.
  */
 function topeAplicado(decision: DecisionMipyme): string | null {
@@ -396,7 +396,7 @@ function DecisionTomada({ decision }: { decision: DecisionMipyme }) {
       )}
 
       {/* Congelado: si mañana se corrigen los parámetros —o el salario mínimo,
-          que se edita desde Umbrales—, esta decisión debe seguir explicándose
+          que se edita en Salario mínimo—, esta decisión debe seguir explicándose
           con los que regían el día en que se tomó. */}
       <div className="pt-2 border-t border-gray-200">
         <p className="text-xs text-slate-500 m-0 leading-relaxed">
