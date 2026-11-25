@@ -1612,6 +1612,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     orden?: number;
     isActivo?: boolean;
     color?: string;
+    parentCodigo?: string;
+    idCategoriaPadre?: number;
   }): Promise<CatalogoItem> {
     const cod = (data.codigo || '').trim();
     const nom = (data.nombre || '').trim();
@@ -1627,6 +1629,25 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    let catPadre: CatalogoItem | null = null;
+    if (data.idCategoriaPadre) {
+      catPadre = await this.catalogoRepo.findOne({
+        where: { idCatalogo: data.idCategoriaPadre, catalogo: 'CATEGORIA_SERVICIO' },
+      });
+    } else if (data.parentCodigo && data.parentCodigo.trim()) {
+      catPadre = await this.catalogoRepo.findOne({
+        where: { codigo: data.parentCodigo.trim(), catalogo: 'CATEGORIA_SERVICIO' },
+      });
+    }
+
+    if (data.idCategoriaPadre || (data.parentCodigo && data.parentCodigo.trim())) {
+      if (!catPadre) {
+        throw new NotFoundException(`La categoría padre especificada no existe.`);
+      }
+    }
+
+    const esSubcategoria = !!catPadre;
+
     const maxOrden = await this.catalogoRepo
       .createQueryBuilder('c')
       .where("c.catalogo = 'CATEGORIA_SERVICIO'")
@@ -1638,6 +1659,17 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         : (Number(maxOrden?.max || 0) + 1);
 
     const desc = data.descripcion?.trim();
+    const metadata: Record<string, any> = {
+      tipo: esSubcategoria ? 'SUBCATEGORIA' : 'CATEGORIA_PRINCIPAL',
+      fase2: true,
+      color: data.color || (esSubcategoria ? (catPadre!.metadata?.color || 'bg-slate-100 text-slate-800 border border-slate-200') : 'bg-slate-100 text-slate-800 border border-slate-200'),
+    };
+    if (esSubcategoria && catPadre) {
+      metadata.parentCodigo = catPadre.codigo;
+      metadata.parentId = catPadre.idCatalogo;
+      metadata.parentNombre = catPadre.nombre;
+    }
+
     const nuevo = this.catalogoRepo.create({
       catalogo: 'CATEGORIA_SERVICIO',
       codigo: cod,
@@ -1645,11 +1677,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       descripcion: desc ? desc : undefined,
       orden,
       isActivo: data.isActivo ?? true,
-      metadata: {
-        tipo: 'CATEGORIA_PRINCIPAL',
-        fase2: true,
-        color: data.color || 'bg-slate-100 text-slate-800 border border-slate-200',
-      },
+      metadata,
     });
     const [guardado] = await this.catalogoRepo.save([nuevo as any]);
     return guardado as CatalogoItem;
@@ -1664,6 +1692,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       codigo?: string;
       isActivo?: boolean;
       color?: string;
+      parentCodigo?: string | null;
+      idCategoriaPadre?: number | null;
     },
   ): Promise<CatalogoItem> {
     const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: 'CATEGORIA_SERVICIO' } });
@@ -1694,10 +1724,38 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 
     if (data.orden !== undefined) it.orden = data.orden;
     if (data.isActivo !== undefined) it.isActivo = !!data.isActivo;
-    if (data.color !== undefined && it.metadata && typeof it.metadata === 'object') {
+
+    if (!it.metadata || typeof it.metadata !== 'object') {
+      it.metadata = {};
+    }
+
+    if (data.color !== undefined) {
       (it.metadata as any).color = data.color;
-    } else if (data.color !== undefined && (!it.metadata || typeof it.metadata !== 'object')) {
-      it.metadata = { color: data.color } as any;
+    }
+
+    if (data.parentCodigo !== undefined || data.idCategoriaPadre !== undefined) {
+      if (data.parentCodigo === null || data.idCategoriaPadre === null || data.parentCodigo === '' || data.idCategoriaPadre === 0) {
+        (it.metadata as any).tipo = 'CATEGORIA_PRINCIPAL';
+        delete (it.metadata as any).parentCodigo;
+        delete (it.metadata as any).parentId;
+        delete (it.metadata as any).parentNombre;
+      } else {
+        let catPadre: CatalogoItem | null = null;
+        if (data.idCategoriaPadre) {
+          catPadre = await this.catalogoRepo.findOne({
+            where: { idCatalogo: data.idCategoriaPadre, catalogo: 'CATEGORIA_SERVICIO' },
+          });
+        } else if (data.parentCodigo) {
+          catPadre = await this.catalogoRepo.findOne({
+            where: { codigo: data.parentCodigo.trim(), catalogo: 'CATEGORIA_SERVICIO' },
+          });
+        }
+        if (!catPadre) throw new NotFoundException('Categoría padre especificada no existe.');
+        (it.metadata as any).tipo = 'SUBCATEGORIA';
+        (it.metadata as any).parentCodigo = catPadre.codigo;
+        (it.metadata as any).parentId = catPadre.idCatalogo;
+        (it.metadata as any).parentNombre = catPadre.nombre;
+      }
     }
 
     return this.catalogoRepo.save(it);
@@ -1713,6 +1771,45 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
   async eliminarCategoriaServicio(idCatalogo: number): Promise<{ idCatalogo: number; eliminado: boolean }> {
     const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: 'CATEGORIA_SERVICIO' } });
     if (!it) throw new NotFoundException(`Categoría #${idCatalogo} no existe.`);
+
+    // 1. Bloqueo de categorías oficiales del sistema (CS_001 a CS_008)
+    const CODIGOS_OFICIALES = new Set(['CS_001', 'CS_002', 'CS_003', 'CS_004', 'CS_005', 'CS_006', 'CS_007', 'CS_008']);
+    const esOficial = CODIGOS_OFICIALES.has(it.codigo) || it.metadata?.esOficial === true || it.metadata?.lineaBase745 === true;
+    if (esOficial) {
+      throw new BadRequestException(
+        `La categoría ${it.codigo} (${it.nombre}) es una de las 8 categorías oficiales del sistema y está protegida contra eliminación.`,
+      );
+    }
+
+    // 2. Bloqueo de integridad referencial si tiene solicitudes de mantenimiento asociadas
+    const totalSolicitudes =
+      typeof this.mantenimientoRepo?.count === 'function'
+        ? await this.mantenimientoRepo.count({
+            where: [{ idCategoria: idCatalogo }, { idSubcategoria: idCatalogo }],
+          })
+        : 0;
+    if (totalSolicitudes > 0) {
+      throw new ConflictException(
+        `No es posible eliminar la categoría "${it.nombre}" porque tiene ${totalSolicitudes} solicitud(es) de mantenimiento asociadas. Desactívela en su lugar.`,
+      );
+    }
+
+    // 3. Bloqueo si es una categoría principal con subcategorías hijas asociadas
+    const subcategorias =
+      typeof this.catalogoRepo?.find === 'function'
+        ? await this.catalogoRepo.find({
+            where: { catalogo: 'CATEGORIA_SERVICIO' },
+          })
+        : [];
+    const hijas = subcategorias.filter(
+      (sub) => sub.metadata?.parentCodigo === it.codigo || sub.metadata?.parentId === it.idCatalogo,
+    );
+    if (hijas.length > 0) {
+      throw new ConflictException(
+        `No es posible eliminar la categoría "${it.nombre}" porque tiene ${hijas.length} subcategoría(s) asociada(s). Elimine o reasigne las subcategorías primero.`,
+      );
+    }
+
     await this.catalogoRepo.delete({ idCatalogo });
     return { idCatalogo, eliminado: true };
   }
