@@ -488,6 +488,7 @@ export interface ReporteGestionPorCategoriaItem {
   codigoCategoria?: string | null;
   nombreCategoria: string;
   radicados: number;
+  porcentaje?: number;
   completados: number;
   enCurso: number;
   vencidos: number;
@@ -518,6 +519,7 @@ export interface ReporteGestionPercepcionServicio {
   porDistribucion: DistribucionCalificacion;
   porCategoria: ConsolidadoCalificacionItem[];
   porTecnico: ConsolidadoCalificacionItem[];
+  porArea?: ConsolidadoCalificacionItem[];
 }
 export interface ReporteGestionRollupGeograficoItem {
   idSede: string | null;
