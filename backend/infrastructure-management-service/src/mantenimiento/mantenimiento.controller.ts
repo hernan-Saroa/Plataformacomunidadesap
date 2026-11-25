@@ -1156,6 +1156,7 @@ export class MantenimientoController {
     @Query('solicitante') solicitante?: string,
     @Query('fechaDesde') fechaDesde?: string,
     @Query('fechaHasta') fechaHasta?: string,
+    @Query('origen') origen?: string,
     @Req() req?: any,
   ) {
     return this.mantenimientoService.listarHistorico(
@@ -1169,6 +1170,7 @@ export class MantenimientoController {
         solicitante,
         fechaDesde,
         fechaHasta,
+        origen,
       },
       req?.user,
     );
@@ -1204,13 +1206,14 @@ export class MantenimientoController {
   }
 
   @Delete('historico')
-  @Public()
+  @ApiBearerAuth()
   @ApiOperation({
     summary:
-      'Fase 4 Req. #10: Vaciar todos los registros del repositorio histórico de Planner/GLPI.',
+      'Fase 4 Req. #10: Vaciar todos los registros del repositorio histórico de Planner/GLPI (Exclusivo Administrador/Coordinador GIM).',
   })
   async vaciarHistorico(@Req() req: any) {
-    return this.mantenimientoService.vaciarHistorico(req?.user);
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    return this.mantenimientoService.vaciarHistorico(user);
   }
 
   @Get('estadisticas/reporte-gestion/pdf')
