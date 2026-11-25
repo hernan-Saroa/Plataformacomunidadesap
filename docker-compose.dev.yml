@@ -311,7 +311,7 @@ services:
       dockerfile: Dockerfile
     container_name: internal-disciplinary-control-service
     environment:
-      JURIDICA_EMAIL: judicial@dev.invalid
+      JURIDICA_EMAIL: ${JURIDICA_EMAIL:-${DEV_LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT:-}}}}
       MAIL_ENVIRONMENT: dev
       NODE_ENV: production
       PORT: 3005
@@ -427,7 +427,7 @@ services:
       dockerfile: Dockerfile
     container_name: legal-management-service
     environment:
-      JURIDICA_EMAIL: judicial@dev.invalid
+      JURIDICA_EMAIL: ${JURIDICA_EMAIL:-${DEV_LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT:-}}}}
       MAIL_ENVIRONMENT: dev
       NODE_ENV: production
       PORT: 3008
@@ -445,9 +445,9 @@ services:
       AZURE_TENANT_ID: ${AZURE_TENANT_ID}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
-      LEGAL_EMAIL_ACCOUNT: ""
-      LEGAL_EMAIL_ACCOUNT_JUDICIAL: ${DEV_LEGAL_EMAIL_ACCOUNT_JUDICIAL:-}
-      LEGAL_EMAIL_ACCOUNT_CORREOS: ${DEV_LEGAL_EMAIL_ACCOUNT_CORREOS:-}
+      LEGAL_EMAIL_ACCOUNT: ${LEGAL_EMAIL_ACCOUNT:-}
+      LEGAL_EMAIL_ACCOUNT_JUDICIAL: ${DEV_LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-}}
+      LEGAL_EMAIL_ACCOUNT_CORREOS: ${DEV_LEGAL_EMAIL_ACCOUNT_CORREOS:-${LEGAL_EMAIL_ACCOUNT_CORREOS:-}}
       NOTIFICATIONS_EMAIL_ACCOUNT: ${NOTIFICATIONS_EMAIL_ACCOUNT:-}
       LEGAL_SYNC_EXCLUDED_SENDERS: ${LEGAL_SYNC_EXCLUDED_SENDERS:-}
 
@@ -475,8 +475,8 @@ services:
       dockerfile: Dockerfile
     container_name: notifications-service
     environment:
-      MAIL_TEST_INBOX: avisos@dev.invalid
-      JURIDICA_EMAIL: judicial@dev.invalid
+      MAIL_TEST_INBOX: ${MAIL_TEST_INBOX:-}
+      JURIDICA_EMAIL: ${JURIDICA_EMAIL:-${DEV_LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT:-}}}}
       MAIL_ENVIRONMENT: dev
       NODE_ENV: production
       PORT: 3009
@@ -491,12 +491,12 @@ services:
       # JWT - debe coincidir con gateway y auth-service
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
 
-      SMTP_HOST: mailpit
-      SMTP_PORT: "1025"
-      SMTP_USER: ""
-      SMTP_PASS: ""
-      SMTP_FROM: notificaciones@dev.invalid
-      EMAIL_PROVIDER: smtp
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
