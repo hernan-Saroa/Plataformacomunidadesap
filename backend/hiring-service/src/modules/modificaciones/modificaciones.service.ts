@@ -625,6 +625,90 @@ export class ModificacionesService {
   }
 
   /**
+   * Perfecciona un cambio de un trámite del módulo de Modificaciones (150).
+   *
+   * Las mismas comprobaciones y los mismos efectos que aprobar desde la 9.5:
+   * el respaldo de la adición, el aviso del tope, la regla del objeto y lo que
+   * cada tipo le hace al contrato. La diferencia es de dónde sale el acto: aquí
+   * es la minuta firmada que el área subió al trámite, ya copiada al
+   * expediente. Corre dentro de la transacción de quien llama.
+   */
+  async perfeccionarCambio(
+    em: EntityManager,
+    procesoId: string,
+    contrato: Contrato,
+    modificacion: ModificacionContrato,
+    datos: { numero: string; fechaSuscripcion: string; documentoId: string },
+    acceso: HiringAccess,
+  ): Promise<Record<string, unknown>> {
+    if (modificacion.estado !== 'EN_TRAMITE') {
+      throw new ConflictException(`${NOMBRE_TIPO[modificacion.tipo]} ya no está en trámite`);
+    }
+
+    let avisoDelTope: string | null = null;
+    if (modificacion.tipo === 'ADICION') {
+      const faltan = await this.respaldoPendiente(em, modificacion.id);
+      if (faltan.length > 0) {
+        throw new ConflictException(`No se puede perfeccionar la adición: ${faltan.join('; ')}`);
+      }
+      const tope = await this.topeConfigurado(em);
+      const previas = await this.modificacionesDe(em, contrato.id);
+      const margen = this.margenDe(
+        contrato,
+        previas.filter((m) => m.id !== modificacion.id),
+        modificacion.valorAdicionado ?? 0,
+        tope.porcentaje,
+      );
+      if (!margen.cabe) avisoDelTope = margen.motivo;
+      modificacion.topePorcentaje = tope.porcentaje;
+    }
+
+    if (objetoCambio(modificacion.objetoContrato, contrato.objeto)) {
+      throw new ConflictException(
+        'No se puede perfeccionar la modificación: el objeto del contrato no es el mismo sobre el que se radicó, ' +
+          'y el objeto de un contrato no se modifica.',
+      );
+    }
+
+    this.validarFecha(datos.fechaSuscripcion);
+
+    modificacion.estado = 'APROBADA';
+    modificacion.numero = datos.numero;
+    modificacion.fechaSuscripcion = datos.fechaSuscripcion;
+    modificacion.documentoId = datos.documentoId;
+    modificacion.aprobadaPor = acceso.userName;
+    modificacion.aprobadaAt = new Date();
+
+    const efecto = await this.aplicarEfecto(em, contrato, modificacion);
+    await em.save(modificacion);
+    await em.save(contrato);
+
+    await this.traza(em, procesoId, modificacion.id, 'APROBAR', acceso, {
+      actividad: NUMERAL_MODIFICACIONES,
+      contrato: contrato.numero,
+      tipo: modificacion.tipo,
+      numero: datos.numero,
+      tramite: modificacion.tramiteId,
+      ...efecto,
+      ...(avisoDelTope ? { superaElTope: true, aviso: avisoDelTope } : {}),
+    });
+
+    return { tipo: modificacion.tipo, ...efecto, ...(avisoDelTope ? { aviso: avisoDelTope } : {}) };
+  }
+
+  /**
+   * Deja la 9.5 del proceso al día con lo que pasó en el trámite (150).
+   *
+   * Si la actividad pide firma para cerrarse, no se cierra desde aquí: el
+   * trámite no tiene a mano la firma de quien cierra la 9.5, y quien la lleve
+   * la cerrará desde el proceso.
+   */
+  async reflejarEnLaActividad(em: EntityManager, procesoId: string, contratoId: string, acceso: HiringAccess) {
+    if (await this.cierre.exigeFirma(em, NUMERAL_MODIFICACIONES)) return;
+    await this.marcarActividad(em, procesoId, contratoId, acceso);
+  }
+
+  /**
    * Lo que cada tipo le hace al contrato al aprobarse.
    *
    * Un solo sitio con todos los efectos, y no un `if` repartido por el
@@ -1300,7 +1384,7 @@ export class ModificacionesService {
    * estado dice que está suspendido, y esto dice por cuál acto. Guardarlo dos
    * veces daría dos sitios que pueden discrepar.
    */
-  private async suspensionVigente(em: EntityManager, contratoId: string) {
+  async suspensionVigente(em: EntityManager, contratoId: string) {
     const suspensiones = await em.getRepository(ModificacionContrato).find({
       where: { contratoId, tipo: 'SUSPENSION' as TipoModificacion, estado: 'APROBADA' as EstadoModificacion },
       order: { createdAt: 'ASC' },

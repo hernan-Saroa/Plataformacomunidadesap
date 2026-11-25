@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, CalendarRange, FileSignature, FileSpreadsheet, Grid3x3, Landmark, ListOrdered, Settings, Shield, ShieldCheck, Users, Workflow } from 'lucide-react';
+import { AlertTriangle, CalendarRange, FilePen, FileSignature, FileSpreadsheet, Grid3x3, Landmark, ListOrdered, Settings, Shield, ShieldCheck, Users, Workflow } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -12,6 +12,7 @@ import { MatrizGeneral } from './MatrizGeneral';
 import { PermisosPorEtapa } from './PermisosPorEtapa';
 import { TipologiasContrato } from './TipologiasContrato';
 import { PolizasYAmparos } from './PolizasYAmparos';
+import { TiposDeModificacion } from './TiposDeModificacion';
 import { CdpAntesDeRadicar } from './CdpAntesDeRadicar';
 import { CuantiaDelComite } from './CuantiaDelComite';
 import { CronogramaPredeterminado } from './CronogramaPredeterminado';
@@ -25,6 +26,7 @@ const PESTANAS = [
   { clave: 'matriz' as const, etiqueta: 'Matriz de actividades', icono: Grid3x3 },
   { clave: 'tipologias' as const, etiqueta: 'Tipologías', titulo: 'Tipologías de contrato', icono: FileSignature },
   { clave: 'polizas' as const, etiqueta: 'Pólizas y amparos', titulo: 'Tipos de póliza y amparos', icono: Shield },
+  { clave: 'modificaciones' as const, etiqueta: 'Modificaciones', titulo: 'Tipos de modificación, documentos y cadenas', icono: FilePen },
   { clave: 'comite' as const, etiqueta: 'Comité', titulo: 'Cuantía para ir al Comité de Contratación', icono: Users },
   { clave: 'cronograma' as const, etiqueta: 'Cronograma', titulo: 'Cronograma predeterminado por modalidad', icono: CalendarRange },
   { clave: 'flujo' as const, etiqueta: 'Flujo', titulo: 'Flujo de trabajo', icono: Workflow },
@@ -38,7 +40,7 @@ type Pestana = (typeof PESTANAS)[number]['clave'];
 
 /** Las pestañas agrupadas por para qué sirven: siete sueltas no se leían. */
 const GRUPOS: { nombre: string; claves: Pestana[] }[] = [
-  { nombre: 'Actividades', claves: ['matriz', 'tipologias', 'polizas', 'comite', 'cronograma'] },
+  { nombre: 'Actividades', claves: ['matriz', 'tipologias', 'polizas', 'modificaciones', 'comite', 'cronograma'] },
   { nombre: 'Quién hace qué', claves: ['flujo', 'cadenas', 'roles'] },
   { nombre: 'Presupuesto', claves: ['cdp', 'paa'] },
 ];
@@ -211,6 +213,7 @@ export function VistaConfiguracion() {
       )}
       {pestana === 'tipologias' && <TipologiasContrato />}
       {pestana === 'polizas' && <PolizasYAmparos />}
+      {pestana === 'modificaciones' && <TiposDeModificacion />}
       {pestana === 'comite' && <CuantiaDelComite />}
       {pestana === 'cronograma' && <CronogramaPredeterminado />}
       {/* De solo lectura: los roles se administran desde la plataforma, y un

@@ -12,6 +12,7 @@ import {
   FileText,
   Store,
   Settings,
+  FilePen,
 } from 'lucide-react';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
@@ -32,6 +33,7 @@ import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
 import { VistaExpedientes } from './expedientes/VistaExpedientes';
 import { VistaAlertas } from './alertas/VistaAlertas';
 import { VistaEstadisticas } from './estadisticas/VistaEstadisticas';
+import { VistaModificaciones } from './tramites-modificacion/VistaModificaciones';
 import { RevisionDeActividad } from './revision/RevisionDeActividad';
 import { RevisionDelPaa } from './paa/RevisionDelPaa';
 import { PestanaTrabajo, VistaMiTrabajo } from './trabajo/VistaMiTrabajo';
@@ -41,6 +43,7 @@ import { useAlcance } from '../auth/alcance';
 
 type Seccion =
   | 'estudios-previos'
+  | 'modificaciones'
   | 'mi-trabajo'
   | 'revision'
   | 'alertas'
@@ -155,6 +158,19 @@ export default function ContratacionModulePremium() {
           icon: <FileSignature className="w-5 h-5" />,
           color: '#003DA5',
         },
+        // Las modificaciones viven fuera del proceso (150): sirven también para
+        // contratos que nunca se cargaron en la plataforma.
+        ...(!puede('ver', 'MOD')
+          ? []
+          : [
+              {
+                id: 'modificaciones' as Seccion,
+                label: 'Modificaciones',
+                subtitle: 'Adiciones, prórrogas y más',
+                icon: <FilePen className="w-5 h-5" />,
+                color: '#0F766E',
+              },
+            ]),
         /*
          * Aquí había una sección «Revisión · Aprobación de documentos» marcada
          * como «Próx.». Se creó con la UI de aprobar y devolver del estudio
@@ -433,6 +449,16 @@ export default function ContratacionModulePremium() {
             setSeccion('estudios-previos');
             setProcesoId(id);
             setActividad(numeral ?? null);
+          }}
+        />
+      );
+    if (seccion === 'modificaciones')
+      return (
+        <VistaModificaciones
+          onVerProceso={(id) => {
+            setSeccion('estudios-previos');
+            setProcesoId(id);
+            setActividad('9.5');
           }}
         />
       );

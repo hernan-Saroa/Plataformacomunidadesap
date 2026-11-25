@@ -1384,6 +1384,8 @@ export interface DocumentoRequeridoConfig {
   modalidades: string[];
   /** Tipologías contractuales (3.1) a las que se pide; vacío = todas. */
   tipologias: string[];
+  /** Solo en la 9.5: tipos de modificación a los que se pide (150); vacío = todos. */
+  tiposModificacion?: string[];
   orden: number;
   activo: boolean;
   confirmado: boolean;
@@ -1410,6 +1412,7 @@ export interface DatosDocumentoRequerido {
   informativo?: boolean;
   modalidades?: string[];
   tipologias?: string[];
+  tiposModificacion?: string[];
   orden?: number;
   activo?: boolean;
 }
@@ -4641,4 +4644,236 @@ export interface ProblemaDePuestos {
   puestoId: string | null;
   numeral: string | null;
   mensaje: string;
+}
+
+// ------------------------------------------ módulo de Modificaciones (150) --
+
+export type EfectoModificacion =
+  | 'ADICION'
+  | 'PRORROGA'
+  | 'CESION'
+  | 'ACLARATORIO'
+  | 'SUSPENSION'
+  | 'REANUDACION'
+  | 'TERMINACION_ANTICIPADA'
+  | 'OTRO';
+
+/** Un tipo del catálogo de Configuración › Tipos de modificación. */
+export interface TipoModificacionConfigurable {
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  efecto: EfectoModificacion;
+  /** No se combina con otros cambios en la misma modificación. */
+  vaSola: boolean;
+  activo: boolean;
+  orden: number;
+  confirmado: boolean;
+}
+
+export interface GuardarTipoModificacion {
+  codigo: string;
+  nombre: string;
+  descripcion?: string;
+  efecto: EfectoModificacion;
+  vaSola?: boolean;
+  activo?: boolean;
+}
+
+export type FaseCadenaModificacion = 'REVISION' | 'VISTO_BUENO';
+export type AccionModificacion = 'APROBAR' | 'DEVOLVER' | 'NEGAR';
+
+export interface EscalonModificacion {
+  nombre: string;
+  papel: 'ABOGADO' | 'REVISOR' | null;
+  roles: string[];
+  acciones: AccionModificacion[];
+}
+
+export interface CadenaModificacionConfig {
+  fase: FaseCadenaModificacion;
+  escalones: EscalonModificacion[];
+  confirmado: boolean;
+  updatedBy: string | null;
+  updatedAt: string;
+}
+
+export interface RequisitoModificacion {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  obligatorio: boolean;
+  plantillaCodigo: string | null;
+  tiposModificacion: string[];
+}
+
+export interface ParaRadicarModificacion {
+  tipos: Pick<TipoModificacionConfigurable, 'codigo' | 'nombre' | 'descripcion' | 'efecto' | 'vaSola'>[];
+  requisitos: RequisitoModificacion[];
+}
+
+export type ContratoBuscado =
+  | { encontrado: false; numero: string }
+  | {
+      encontrado: true;
+      numero: string;
+      contrato: {
+        id: string;
+        numero: string;
+        objeto: string;
+        estado: string;
+        valor: number;
+        plazoDias: number | null;
+        contratistaNombre: string;
+        contratistaDocumento: string;
+        procesoId: string;
+        radicadoProceso: string | null;
+        suspendido: boolean;
+      };
+      tipos: { codigo: string; puede: boolean; motivo: string | null }[];
+    };
+
+export type EstadoTramiteModificacion =
+  | 'RADICADA'
+  | 'RECIBIDA'
+  | 'EN_REVISION'
+  | 'DEVUELTA'
+  | 'MINUTA'
+  | 'EN_VISTO_BUENO'
+  | 'EN_FIRMA'
+  | 'PERFECCIONADA'
+  | 'PUBLICADA'
+  | 'DESISTIDA'
+  | 'NEGADA';
+
+export interface TramiteModificacionResumen {
+  id: string;
+  radicado: string;
+  contratoNumero: string;
+  vinculada: boolean;
+  procesoId: string | null;
+  tipos: { codigo: string; nombre: string }[];
+  estado: EstadoTramiteModificacion;
+  estadoNombre: string;
+  abogadoNombre: string | null;
+  revisorNombre: string | null;
+  numeroModificacion: string | null;
+  fechaSuscripcion: string | null;
+  fechaPublicacion: string | null;
+  secopNumero: string | null;
+  secopUrl: string | null;
+  notaRecibido: string | null;
+  motivoCierre: string | null;
+  radicadaPor: string | null;
+  radicadaAt: string;
+  updatedAt: string;
+  meToca?: boolean;
+}
+
+export interface DocumentoTramiteModificacion {
+  id: string;
+  clase: 'REQUISITO' | 'MINUTA' | 'MINUTA_FIRMADA' | 'EVIDENCIA_SECOP' | 'OTRO';
+  requisitoId: string | null;
+  nombre: string;
+  archivoUrl: string;
+  archivoNombreOriginal: string | null;
+  version: number;
+  vigente: boolean;
+  subidoPor: string | null;
+  createdAt: string;
+}
+
+export interface EscalonEnRondaModificacion extends EscalonModificacion {
+  orden: number;
+  estado: 'BLOQUEADO' | 'PENDIENTE' | 'APROBADO' | 'DEVUELTO' | 'NEGADO' | 'ANULADO';
+  decididoPor?: string | null;
+  decididoAt?: string | null;
+}
+
+export interface CambioDeTramite {
+  id: string;
+  tipoCodigo: string | null;
+  tipoNombre: string;
+  efecto: EfectoModificacion;
+  estado: string;
+  valorAdicionado: number | null;
+  cdp: { numero: string | null; valor: number | null; estado: string } | null;
+  diasProrroga: number | null;
+  cesionarioNombre: string | null;
+  cesionarioDocumento: string | null;
+  suspensionDesde: string | null;
+  suspensionHasta: string | null;
+  reanudadaEl: string | null;
+  terminacionCausal: string | null;
+  terminacionEl: string | null;
+  descripcion: string | null;
+  valorAntes: number | null;
+  valorDespues: number | null;
+  plazoAntes: number | null;
+  plazoDespues: number | null;
+}
+
+export interface TramiteModificacionDetalle extends TramiteModificacionResumen {
+  justificacion: string;
+  datosContrato: Record<string, string | number | undefined>;
+  contrato: {
+    id: string;
+    numero: string;
+    objeto: string;
+    estado: string;
+    valor: number;
+    plazoDias: number | null;
+    contratistaNombre: string;
+    procesoId: string;
+  } | null;
+  cambios: CambioDeTramite[];
+  requisitos: (Omit<RequisitoModificacion, 'tiposModificacion'> & { documento: DocumentoTramiteModificacion | null })[];
+  documentos: DocumentoTramiteModificacion[];
+  rondas: {
+    id: string;
+    fase: FaseCadenaModificacion;
+    ronda: number;
+    estado: string;
+    escalonActual: number | null;
+    escalones: EscalonEnRondaModificacion[];
+    iniciadaAt: string;
+    cerradaAt: string | null;
+  }[];
+  eventos: { id: string; accion: string; observaciones: string | null; detalle: Record<string, unknown>; por: string | null; at: string }[];
+  acciones: {
+    recibir: boolean;
+    asignar: boolean;
+    decidir: AccionModificacion[];
+    escalonPendiente: { nombre: string; fase: FaseCadenaModificacion } | null;
+    corregirDocumentos: boolean;
+    reenviar: boolean;
+    enviarMinuta: boolean;
+    perfeccionar: boolean;
+    pideRp: boolean;
+    publicar: boolean;
+    desistir: boolean;
+  };
+}
+
+/** Un cambio tal como se radica. */
+export interface CambioARadicar {
+  tipo: string;
+  valorAdicionado?: number;
+  cdp?: { numero: string; valor: number; fechaExpedicion: string; rubro: string };
+  diasProrroga?: number;
+  cesionario?: { documento: string; nombre: string; tipo: 'NATURAL' | 'JURIDICA' };
+  suspensionDesde?: string;
+  suspensionHasta?: string;
+  reanudadaEl?: string;
+  terminacionCausal?: 'MUTUO_ACUERDO' | 'UNILATERAL';
+  terminacionEl?: string;
+  descripcion?: string;
+}
+
+export interface RadicarModificacion {
+  contratoNumero: string;
+  contratoId?: string;
+  cambios: CambioARadicar[];
+  justificacion: string;
+  datosContrato?: Record<string, string | number>;
 }

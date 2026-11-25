@@ -57,6 +57,18 @@ const SIN_DECORADOR: Record<string, string> = {
   'EstudioPrevioController.obtener': 'participación · pendiente de decidir',
   'EstudioPrevioController.revisiones': 'participación · pendiente de decidir',
   'EstudioPrevioController.expediente': 'participación · pendiente de decidir',
+  // Módulo de Modificaciones (150): lo decide la persona del trámite, no la
+  // clase de usuario. Radica el área o quien creó el proceso; el escalón lo
+  // decide el abogado o el revisor asignados, o el rol del escalón; la minuta
+  // y la publicación son del abogado asignado; corregir, firmar y desistir, del área.
+  'TramitesModificacionController.radicar': 'editar MOD o quien creó el proceso',
+  'TramitesModificacionController.subirDocumento': 'el área que radicó',
+  'TramitesModificacionController.decidir': 'el responsable del escalón pendiente',
+  'TramitesModificacionController.reenviar': 'el área que radicó',
+  'TramitesModificacionController.enviarMinuta': 'el abogado asignado',
+  'TramitesModificacionController.perfeccionar': 'el área que radicó',
+  'TramitesModificacionController.publicar': 'el abogado asignado',
+  'TramitesModificacionController.desistir': 'el área que radicó',
   // Infraestructura y lo que cada quien pregunta de sí mismo.
   'AlcanceController.mio': 'el alcance de quien pregunta',
   'FilesController.descargar': 'descarga por nombre firmado',

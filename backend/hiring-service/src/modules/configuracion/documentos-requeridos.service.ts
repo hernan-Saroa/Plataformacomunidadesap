@@ -95,6 +95,7 @@ export class DocumentosRequeridosService {
         informativo: f.informativo,
         modalidades: f.modalidades,
         tipologias: f.tipologias,
+        tiposModificacion: f.tiposModificacion ?? [],
         orden: f.orden,
         activo: f.activo,
         confirmado: f.confirmado,
@@ -138,6 +139,7 @@ export class DocumentosRequeridosService {
         obligatorio: informativo ? false : (dto.obligatorio ?? true),
         modalidades: dto.modalidades ?? [],
         tipologias: dto.tipologias ?? [],
+        tiposModificacion: dto.tiposModificacion ?? [],
         // Al final de la lista si no se dice otra cosa.
         orden: dto.orden ?? Math.max(0, ...existentes.map((e) => e.orden)) + 10,
         activo: true,
@@ -168,6 +170,7 @@ export class DocumentosRequeridosService {
       exigirArchivoSiEsDeConsulta(fila.informativo, fila.plantillaCodigo);
       if (dto.modalidades !== undefined) fila.modalidades = dto.modalidades;
       if (dto.tipologias !== undefined) fila.tipologias = dto.tipologias;
+      if (dto.tiposModificacion !== undefined) fila.tiposModificacion = dto.tiposModificacion;
       if (dto.orden !== undefined) fila.orden = dto.orden;
       if (dto.activo !== undefined) fila.activo = dto.activo;
 
@@ -214,6 +217,7 @@ export class DocumentosRequeridosService {
           informativo: origen.informativo,
           modalidades: origen.modalidades,
           tipologias: origen.tipologias,
+          tiposModificacion: origen.tiposModificacion,
           orden: Math.max(0, ...existentes.map((e) => e.orden)) + 10,
           activo: true,
           confirmado: true,

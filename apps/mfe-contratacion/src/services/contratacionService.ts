@@ -182,6 +182,15 @@ import {
   EscalonConfigurado,
   PapelEscalon,
   RondaDeAprobacion,
+  CadenaModificacionConfig,
+  ContratoBuscado,
+  EscalonModificacion,
+  GuardarTipoModificacion,
+  ParaRadicarModificacion,
+  RadicarModificacion,
+  TipoModificacionConfigurable,
+  TramiteModificacionDetalle,
+  TramiteModificacionResumen,
 } from '../types';
 
 const SERVICE_PREFIX = '/hiring/api/v1';
@@ -2418,6 +2427,117 @@ export const contratacionService = {
     pedir<TipologiaConfigurable>(`/configuracion/tipologias/${codigo}/retirar`, {
       method: 'PUT',
       body: JSON.stringify({}),
+    }),
+
+  // ------------------------------- módulo de Modificaciones (fuera del proceso, 150) --
+
+  /** La bandeja: Contratación ve todas; el área, las suyas. */
+  bandejaModificaciones: () => pedir<TramiteModificacionResumen[]>('/modificaciones'),
+
+  /** Tipos activos y documentos que se piden, para el formulario de radicación. */
+  paraRadicarModificacion: () => pedir<ParaRadicarModificacion>('/modificaciones/para-radicar'),
+
+  /** El contrato de la plataforma con ese número, si lo hay; si no, es una notificación. */
+  buscarContratoParaModificar: (numero: string) =>
+    pedir<ContratoBuscado>(`/modificaciones/contrato?numero=${encodeURIComponent(numero)}`),
+
+  /** Quiénes pueden ser abogado o revisor de una modificación. */
+  candidatosModificacion: () => pedir<{ id: string; nombre: string }[]>('/modificaciones/candidatos'),
+
+  tramiteModificacion: (id: string) => pedir<TramiteModificacionDetalle>(`/modificaciones/${id}`),
+
+  /** Radica: los datos como JSON y un archivo por documento, con el id del requisito como campo. */
+  radicarModificacion: (datos: RadicarModificacion, documentos: Record<string, File>) => {
+    const cuerpo = new FormData();
+    cuerpo.append('datos', JSON.stringify(datos));
+    for (const [requisitoId, archivo] of Object.entries(documentos)) cuerpo.append(requisitoId, archivo);
+    return pedir<TramiteModificacionDetalle>('/modificaciones', { method: 'POST', body: cuerpo });
+  },
+
+  subirDocumentoModificacion: (id: string, requisitoId: string, archivo: File) =>
+    pedir<TramiteModificacionDetalle>(`/modificaciones/${id}/documentos/${requisitoId}`, {
+      method: 'POST',
+      body: conArchivo({}, archivo),
+    }),
+
+  recibirModificacion: (id: string, nota?: string) =>
+    pedir<TramiteModificacionDetalle>(`/modificaciones/${id}/recibir`, {
+      method: 'POST',
+      body: JSON.stringify({ nota }),
+    }),
+
+  asignarModificacion: (id: string, abogadoId: string, revisorId: string) =>
+    pedir<TramiteModificacionDetalle>(`/modificaciones/${id}/asignar`, {
+      method: 'POST',
+      body: JSON.stringify({ abogadoId, revisorId }),
+    }),
+
+  decidirModificacion: (id: string, accion: 'APROBAR' | 'DEVOLVER' | 'NEGAR', observaciones?: string) =>
+    pedir<TramiteModificacionDetalle>(`/modificaciones/${id}/decidir`, {
+      method: 'POST',
+      body: JSON.stringify({ accion, observaciones }),
+    }),
+
+  reenviarModificacion: (id: string, observaciones?: string) =>
+    pedir<TramiteModificacionDetalle>(`/modificaciones/${id}/reenviar`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
+  enviarMinutaModificacion: (id: string, archivo: File, observaciones?: string) =>
+    pedir<TramiteModificacionDetalle>(`/modificaciones/${id}/minuta`, {
+      method: 'POST',
+      body: conArchivo({ observaciones }, archivo),
+    }),
+
+  perfeccionarModificacion: (
+    id: string,
+    datos: { numero: string; fechaSuscripcion: string; rpNumero?: string; rpFechaExpedicion?: string },
+    archivo: File,
+  ) =>
+    pedir<TramiteModificacionDetalle>(`/modificaciones/${id}/perfeccionar`, {
+      method: 'POST',
+      body: conArchivo(datos, archivo),
+    }),
+
+  publicarModificacionTramite: (
+    id: string,
+    datos: { fechaPublicacion: string; secopNumero?: string; secopUrl?: string },
+    archivo: File,
+  ) =>
+    pedir<TramiteModificacionDetalle>(`/modificaciones/${id}/publicar`, {
+      method: 'POST',
+      body: conArchivo(datos, archivo),
+    }),
+
+  desistirModificacion: (id: string, motivo: string) =>
+    pedir<TramiteModificacionDetalle>(`/modificaciones/${id}/desistir`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ------------------------------- configuración · tipos de modificación y cadenas (150) --
+
+  tiposModificacion: () => pedir<TipoModificacionConfigurable[]>('/configuracion/tipos-modificacion'),
+
+  guardarTipoModificacion: (datos: GuardarTipoModificacion) =>
+    pedir<TipoModificacionConfigurable>('/configuracion/tipos-modificacion', {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  retirarTipoModificacion: (codigo: string) =>
+    pedir<TipoModificacionConfigurable>(`/configuracion/tipos-modificacion/${encodeURIComponent(codigo)}/retirar`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
+    }),
+
+  cadenasModificacion: () => pedir<CadenaModificacionConfig[]>('/configuracion/cadenas-modificacion'),
+
+  guardarCadenaModificacion: (fase: string, escalones: EscalonModificacion[]) =>
+    pedir<CadenaModificacionConfig>(`/configuracion/cadenas-modificacion/${fase}`, {
+      method: 'PUT',
+      body: JSON.stringify({ escalones }),
     }),
 
   // ------------- configuración · tipos de póliza y de amparo (8.4, 145) -----
