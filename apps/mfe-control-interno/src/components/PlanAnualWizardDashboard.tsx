@@ -91,6 +91,11 @@ interface Auditor {
 
 const NOMBRES_PERSONA_INVALIDOS = new Set(['usuario sin nombre', 'sin nombre']);
 
+/** Clave de una actividad del asistente mientras conserva su identificador provisional (EFDS-2450). */
+export function claveActividadAsistente(rolNumero: unknown, idProvisional: unknown): string {
+  return `${rolNumero}::${idProvisional}`;
+}
+
 /** Plan en estado borrador (editable en el wizard; no bloquea la vigencia). */
 export function esEstadoPlanBorrador(estado?: string | null): boolean {
   const e = String(estado ?? '')
@@ -982,8 +987,103 @@ function mergeRolesConfigResponsablesFromDraft(base: RolConfig[], draft: RolConf
   });
 }
 
+/**
+ * Selección con la que arranca un plan nuevo: las actividades de la plantilla de cada rol, todas
+ * marcadas, con sus cortes según la periodicidad y las tareas repartidas en esos cortes.
+ */
+function rolesConfigIniciales(vigencia: number): RolConfig[] {
+  return ROLES_DECRETO_648.map(rol => {
+    const actividades = getActividadesPorRol(rol.numero);
+    
+    // a Auto-generar puntos de control según la periodicidad de cada actividad
+    const actividadesConPuntos = actividades.map((act, idx) => {
+      const uniqueId = `rol-${rol.numero}-act-${idx}`;
+      const año = Number(vigencia || new Date().getFullYear());
+
+      // Las actividades del Rol 4 que se alimentan solas (auditorías y planes de
+      // mejoramiento) también llevan sus cortes según el "Control": mensual o trimestral (EFDS-2237).
+      const mkPC = (pcId: string, orden: number, fi: string, ff: string): PuntoControl => ({
+        id: pcId, orden, nombre: `Corte ${orden}`, descripcion: '',
+        fechaProgramada: fi, fechaSeguimiento: ff,
+        fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: []
+      });
+      const ctrl = (act.control || '').toLowerCase();
+      let puntosDefault: PuntoControl[];
+      let frecuencia: FrecuenciaPuntoControl = 'trimestral';
+      if (ctrl.includes('semestral')) {
+        frecuencia = 'semestral';
+        puntosDefault = [
+          mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-06-30`),
+          mkPC(`pc-${uniqueId}-2`, 2, `${año}-07-01`, `${año}-12-31`),
+        ];
+      } else if (ctrl.includes('cuatrimestral')) {
+        frecuencia = 'cuatrimestral';
+        puntosDefault = [
+          mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-04-30`),
+          mkPC(`pc-${uniqueId}-2`, 2, `${año}-05-01`, `${año}-08-31`),
+          mkPC(`pc-${uniqueId}-3`, 3, `${año}-09-01`, `${año}-12-31`),
+        ];
+      } else if (ctrl.includes('trimestral')) {
+        frecuencia = 'trimestral';
+        puntosDefault = [
+          mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-03-31`),
+          mkPC(`pc-${uniqueId}-2`, 2, `${año}-04-01`, `${año}-06-30`),
+          mkPC(`pc-${uniqueId}-3`, 3, `${año}-07-01`, `${año}-09-30`),
+          mkPC(`pc-${uniqueId}-4`, 4, `${año}-10-01`, `${año}-12-31`),
+        ];
+      } else if (ctrl.includes('anual')) {
+        frecuencia = 'anual';
+        puntosDefault = [
+          mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-12-31`),
+        ];
+      } else if (ctrl.includes('mensual')) {
+        frecuencia = 'mensual';
+        puntosDefault = Array.from({length: 12}, (_, i) => {
+          const m = (i+1).toString().padStart(2, '0');
+          const lastDay = new Date(año, i+1, 0).getDate().toString().padStart(2, '0');
+          return mkPC(`pc-${uniqueId}-${i+1}`, i+1, `${año}-${m}-01`, `${año}-${m}-${lastDay}`);
+        });
+      } else {
+        // Default: anual para actividades sin periodicidad definida
+        frecuencia = 'anual';
+        puntosDefault = [
+          mkPC(`pc-${uniqueId}-1`, 1, act.fechaInicio || `${año}-01-01`, act.fechaFin || `${año}-12-31`),
+        ];
+      }
+      puntosDefault = alinearCortesConFechasOficiales(puntosDefault, act, año);
+
+      // Auto-asignar tareas al corte correspondiente (tarea N -> corte N)
+      const tareasConCorte = (act.tareasSeguimiento || []).map((t, tIdx) => ({
+        ...t,
+        puntoControlId: puntosDefault[tIdx % puntosDefault.length]?.id,
+      }));
+      return {
+        ...act,
+        id: uniqueId,
+        tipoEvidencia: 'SOLO_CHECK' as const,
+        fechaInicio: act.fechaInicio || `${año}-01-01`,
+        fechaFin: act.fechaFin || `${año}-12-31`,
+        fechaCorte: puntosDefault[puntosDefault.length - 1]?.fechaSeguimiento || `${año}-12-31`,
+        puntosControl: puntosDefault,
+        frecuenciaPuntosControl: frecuencia,
+        tareasSeguimiento: tareasConCorte,
+      };
+    });
+    
+    return {
+      ...rol,
+      actividadesSeleccionadas: actividadesConPuntos,
+      actividadesCustom: [],
+      responsables: []
+    };
+  });
+}
+
 /** Reconstruye roles del paso 2 desde un plan ya guardado (edición / borrador cargado). */
-function buildRolesConfigFromPlanAnual(plan: PlanAnual): RolConfig[] {
+function buildRolesConfigFromPlanAnual(
+  plan: PlanAnual,
+  opciones?: { proponerSeleccionInicial?: boolean },
+): RolConfig[] {
   if (!plan?.roles?.length) {
     return ROLES_DECRETO_648.map((rolDef) => ({
       ...rolDef,
@@ -999,6 +1099,18 @@ function buildRolesConfigFromPlanAnual(plan: PlanAnual): RolConfig[] {
       responsables: [],
     }));
   }
+
+  // Un borrador que tiene sus roles pero ninguna actividad es un plan cuya creación quedó a medias:
+  // los roles los crea el servidor y las actividades las guarda el asistente después. Se le propone
+  // la selección inicial completa, como a un plan nuevo, en vez de abrirlo todo desmarcado; al
+  // guardar quedan creadas una sola vez (EFDS-2450).
+  const borradorSinActividades =
+    opciones?.proponerSeleccionInicial === true &&
+    esEstadoPlanBorrador(plan.estado) &&
+    plan.roles.every((r) => !(r.actividades || []).some((a: any) => a?.activo !== false));
+  const seleccionInicial = borradorSinActividades
+    ? rolesConfigIniciales(Number(plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear()))
+    : null;
 
   const standardRoles = ROLES_DECRETO_648.map((rolDef) => {
     const rolEdit = plan.roles.find((r) => (r.rol_numero ?? r.numero) === rolDef.numero);
@@ -1109,7 +1221,8 @@ function buildRolesConfigFromPlanAnual(plan: PlanAnual): RolConfig[] {
     return {
       ...rolDef,
       id: rolEdit.id,
-      actividadesSeleccionadas: actividadesSeleccionadas as any,
+      actividadesSeleccionadas: (seleccionInicial?.find((r) => r.numero === rolDef.numero)?.actividadesSeleccionadas ??
+        actividadesSeleccionadas) as any,
       actividadesCustom: actividadesCustom as any,
       responsables: mapResponsablesRolDesdeBackend(rolEdit),
       activo: rolEdit.activo !== false,
@@ -1908,7 +2021,11 @@ interface WizardCreacionProps {
     fechaFin: string,
     comiteAprobacion?: Auditor[],
     ordenAprobacion?: 'secuencial' | 'paralelo',
-    opciones?: { silencioso?: boolean },
+    opciones?: {
+      silencioso?: boolean;
+      /** Recibe el identificador real de las actividades guardadas con uno provisional. */
+      alResolverIds?: (ids: Record<string, string>) => void;
+    },
   ) => Promise<boolean>;
   onTerminado?: () => void;
   planesExistentes?: PlanAnual[];
@@ -2193,96 +2310,37 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
 
     // 2. Si no hay borrador pero hay un plan para editar, mapearlo desde el backend
     if (planAEditar && planAEditar.roles) {
-      return buildRolesConfigFromPlanAnual(planAEditar);
+      return buildRolesConfigFromPlanAnual(planAEditar, { proponerSeleccionInicial: !soloLectura });
     }
 
     // Comportamiento por defecto (nuevo plan sin borrador)
-    return ROLES_DECRETO_648.map(rol => {
-      const actividades = getActividadesPorRol(rol.numero);
-      
-      // a Auto-generar puntos de control según la periodicidad de cada actividad
-      const actividadesConPuntos = actividades.map((act, idx) => {
-        const uniqueId = `rol-${rol.numero}-act-${idx}`;
-        const año = Number(vigencia || new Date().getFullYear());
+    return rolesConfigIniciales(Number(vigencia || new Date().getFullYear()));
+  });
 
-        // Las actividades del Rol 4 que se alimentan solas (auditorías y planes de
-        // mejoramiento) también llevan sus cortes según el "Control": mensual o trimestral (EFDS-2237).
-        const mkPC = (pcId: string, orden: number, fi: string, ff: string): PuntoControl => ({
-          id: pcId, orden, nombre: `Corte ${orden}`, descripcion: '',
-          fechaProgramada: fi, fechaSeguimiento: ff,
-          fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: []
-        });
-        const ctrl = (act.control || '').toLowerCase();
-        let puntosDefault: PuntoControl[];
-        let frecuencia: FrecuenciaPuntoControl = 'trimestral';
-        if (ctrl.includes('semestral')) {
-          frecuencia = 'semestral';
-          puntosDefault = [
-            mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-06-30`),
-            mkPC(`pc-${uniqueId}-2`, 2, `${año}-07-01`, `${año}-12-31`),
-          ];
-        } else if (ctrl.includes('cuatrimestral')) {
-          frecuencia = 'cuatrimestral';
-          puntosDefault = [
-            mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-04-30`),
-            mkPC(`pc-${uniqueId}-2`, 2, `${año}-05-01`, `${año}-08-31`),
-            mkPC(`pc-${uniqueId}-3`, 3, `${año}-09-01`, `${año}-12-31`),
-          ];
-        } else if (ctrl.includes('trimestral')) {
-          frecuencia = 'trimestral';
-          puntosDefault = [
-            mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-03-31`),
-            mkPC(`pc-${uniqueId}-2`, 2, `${año}-04-01`, `${año}-06-30`),
-            mkPC(`pc-${uniqueId}-3`, 3, `${año}-07-01`, `${año}-09-30`),
-            mkPC(`pc-${uniqueId}-4`, 4, `${año}-10-01`, `${año}-12-31`),
-          ];
-        } else if (ctrl.includes('anual')) {
-          frecuencia = 'anual';
-          puntosDefault = [
-            mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-12-31`),
-          ];
-        } else if (ctrl.includes('mensual')) {
-          frecuencia = 'mensual';
-          puntosDefault = Array.from({length: 12}, (_, i) => {
-            const m = (i+1).toString().padStart(2, '0');
-            const lastDay = new Date(año, i+1, 0).getDate().toString().padStart(2, '0');
-            return mkPC(`pc-${uniqueId}-${i+1}`, i+1, `${año}-${m}-01`, `${año}-${m}-${lastDay}`);
-          });
-        } else {
-          // Default: anual para actividades sin periodicidad definida
-          frecuencia = 'anual';
-          puntosDefault = [
-            mkPC(`pc-${uniqueId}-1`, 1, act.fechaInicio || `${año}-01-01`, act.fechaFin || `${año}-12-31`),
-          ];
-        }
-        puntosDefault = alinearCortesConFechasOficiales(puntosDefault, act, año);
-
-        // Auto-asignar tareas al corte correspondiente (tarea N -> corte N)
-        const tareasConCorte = (act.tareasSeguimiento || []).map((t, tIdx) => ({
-          ...t,
-          puntoControlId: puntosDefault[tIdx % puntosDefault.length]?.id,
-        }));
+  /**
+   * Al guardar, cada actividad nueva recibe su identificador real. El asistente lo adopta en el acto,
+   * sin tocar lo que el usuario esté editando; si se quedara con el provisional, el siguiente
+   * guardado la tomaría por nueva y la crearía otra vez (EFDS-2450).
+   */
+  const adoptarIdsDeActividades = useCallback((ids: Record<string, string>) => {
+    setRolesConfig((previo) => {
+      let huboCambio = false;
+      const siguiente = previo.map((rol) => {
+        const conIdReal = <T extends { id: string }>(act: T): T => {
+          const idReal = ids[claveActividadAsistente(rol.numero, act.id)];
+          if (!idReal || idReal === act.id) return act;
+          huboCambio = true;
+          return { ...act, id: idReal };
+        };
         return {
-          ...act,
-          id: uniqueId,
-          tipoEvidencia: 'SOLO_CHECK' as const,
-          fechaInicio: act.fechaInicio || `${año}-01-01`,
-          fechaFin: act.fechaFin || `${año}-12-31`,
-          fechaCorte: puntosDefault[puntosDefault.length - 1]?.fechaSeguimiento || `${año}-12-31`,
-          puntosControl: puntosDefault,
-          frecuenciaPuntosControl: frecuencia,
-          tareasSeguimiento: tareasConCorte,
+          ...rol,
+          actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map(conIdReal),
+          actividadesCustom: (rol.actividadesCustom || []).map(conIdReal),
         };
       });
-      
-      return {
-        ...rol,
-        actividadesSeleccionadas: actividadesConPuntos,
-        actividadesCustom: [],
-        responsables: []
-      };
-    })
-  });
+      return huboCambio ? siguiente : previo;
+    });
+  }, []);
 
   // Re-vincular responsables de cada rol con profesionales OCI al editar (id_person vs config OCI).
   useEffect(() => {
@@ -2550,7 +2608,7 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
 
   useEffect(() => {
     if (!planAEditar?.id || !Array.isArray(planAEditar.roles) || planAEditar.roles.length === 0) return;
-    let config = buildRolesConfigFromPlanAnual(planAEditar);
+    let config = buildRolesConfigFromPlanAnual(planAEditar, { proponerSeleccionInicial: !soloLectura });
     try {
       const editRaw = localStorage.getItem(`esap:wizard_plan_anual_edit_${planAEditar.id}`);
       if (editRaw) {
@@ -2739,7 +2797,7 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
             fechaFin,
             comiteAprobacion,
             ordenAprobacion,
-            { silencioso: true }
+            { silencioso: true, alResolverIds: adoptarIdsDeActividades }
           );
           if (ok) {
             lastServerAutosaveSignatureRef.current = serverAutosaveSignature;
@@ -2930,7 +2988,7 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
           fechaFin,
           comiteAprobacion,
           ordenAprobacion,
-          { silencioso: true }
+          { silencioso: true, alResolverIds: adoptarIdsDeActividades }
         );
         if (!ok) return; // Si falla la creación, no avanzamos de paso
       } catch (e) {
@@ -3272,6 +3330,7 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
                     fechaFin,
                     comiteAprobacion,
                     ordenAprobacion,
+                    { alResolverIds: adoptarIdsDeActividades },
                   );
                   setIsSubmitting(false);
                   if (ok) setLastSaved(new Date());
