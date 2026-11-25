@@ -103,6 +103,7 @@ export interface HistoricoListResponse {
   semanasDisponibles: Array<{ semana: string; cantidad: number }>;
   tecnicosDisponibles?: Array<{ tecnico: string; cantidad: number }>;
   solicitantesDisponibles?: Array<{ solicitante: string; cantidad: number }>;
+  origenesDisponibles?: Array<{ origen: string; cantidad: number }>;
 }
 
 export interface HistoricoEstadisticas {
@@ -584,6 +585,8 @@ export interface CategoriaServicioPayload {
   orden?: number;
   isActivo?: boolean;
   color?: string;
+  parentCodigo?: string | null;
+  idCategoriaPadre?: number | null;
 }
 
 export interface TecnicoMantenimientoPayload {
@@ -2528,6 +2531,7 @@ export const infraestructuraService = {
     solicitante?: string;
     fechaDesde?: string;
     fechaHasta?: string;
+    origen?: string;
   }): Promise<HistoricoListResponse> {
     const sp = new URLSearchParams();
     if (filtros?.page) sp.append('page', String(filtros.page));
@@ -2539,6 +2543,7 @@ export const infraestructuraService = {
     if (filtros?.solicitante && filtros.solicitante !== 'TODOS') sp.append('solicitante', filtros.solicitante);
     if (filtros?.fechaDesde) sp.append('fechaDesde', filtros.fechaDesde);
     if (filtros?.fechaHasta) sp.append('fechaHasta', filtros.fechaHasta);
+    if (filtros?.origen && filtros.origen !== 'TODOS') sp.append('origen', filtros.origen);
     const qs = sp.toString();
     const res = await fetch(`${API_BASE_URL}/mantenimiento/historico${qs ? `?${qs}` : ''}`, {
       credentials: 'include',
@@ -2600,6 +2605,7 @@ export const infraestructuraService = {
     solicitante?: string;
     fechaDesde?: string;
     fechaHasta?: string;
+    origen?: string;
   }): Promise<Blob> {
     const sp = new URLSearchParams();
     if (filtros?.search) sp.append('search', filtros.search);
@@ -2609,6 +2615,7 @@ export const infraestructuraService = {
     if (filtros?.solicitante && filtros.solicitante !== 'TODOS') sp.append('solicitante', filtros.solicitante);
     if (filtros?.fechaDesde) sp.append('fechaDesde', filtros.fechaDesde);
     if (filtros?.fechaHasta) sp.append('fechaHasta', filtros.fechaHasta);
+    if (filtros?.origen && filtros.origen !== 'TODOS') sp.append('origen', filtros.origen);
     const qs = sp.toString();
     const res = await fetch(`${API_BASE_URL}/mantenimiento/historico/exportar-excel${qs ? `?${qs}` : ''}`, {
       credentials: 'include',

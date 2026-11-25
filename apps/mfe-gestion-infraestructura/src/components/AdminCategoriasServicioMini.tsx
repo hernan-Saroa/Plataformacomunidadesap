@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Plus,
   Pencil,
@@ -11,6 +11,9 @@ import {
   FolderKanban,
   AlertCircle,
   AlertTriangle,
+  Layers,
+  Lock,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -27,7 +30,28 @@ interface FormValues {
   orden: string;
   isActivo: boolean;
   color: string;
+  tipoJerarquia: 'PRINCIPAL' | 'SUBCATEGORIA';
+  parentCodigo: string;
 }
+
+const CODIGOS_OFICIALES = new Set([
+  'CS_001',
+  'CS_002',
+  'CS_003',
+  'CS_004',
+  'CS_005',
+  'CS_006',
+  'CS_007',
+  'CS_008',
+]);
+
+const esCategoriaOficial = (it: CatalogoItem): boolean => {
+  return (
+    CODIGOS_OFICIALES.has(it.codigo) ||
+    it.metadata?.esOficial === true ||
+    it.metadata?.lineaBase745 === true
+  );
+};
 
 const VALORES_VACIOS: FormValues = {
   codigo: '',
@@ -36,6 +60,8 @@ const VALORES_VACIOS: FormValues = {
   orden: '',
   isActivo: true,
   color: 'bg-slate-100 text-slate-800 border border-slate-200',
+  tipoJerarquia: 'SUBCATEGORIA',
+  parentCodigo: 'CS_001',
 };
 
 const OPCIONES_COLORES: Array<{ label: string; css: string }> = [
@@ -92,10 +118,53 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
     return () => clearTimeout(t);
   }, [toast]);
 
-  // ---------------------------------------------------------------------------
-  // Toast global (FUERA del contenedor + z-index > modal 80) para que nunca
-  // quede tapado por el backdrop del modal crear/editar.
-  // ---------------------------------------------------------------------------
+  // Lista de categorías principales disponibles como padre
+  const categoriasPrincipales = useMemo(() => {
+    return items.filter(
+      (it) =>
+        it.metadata?.tipo === 'CATEGORIA_PRINCIPAL' ||
+        (!it.metadata?.parentCodigo && it.metadata?.tipo !== 'SUBCATEGORIA'),
+    );
+  }, [items]);
+
+  // Ordenar para mostrar subcategorías agrupadas bajo su categoría principal
+  const itemsOrdenados = useMemo(() => {
+    const padres = items.filter(
+      (it) =>
+        it.metadata?.tipo !== 'SUBCATEGORIA' &&
+        !it.metadata?.parentCodigo,
+    );
+    padres.sort((a, b) => (a.orden || 0) - (b.orden || 0));
+
+    const subs = items.filter(
+      (it) =>
+        it.metadata?.tipo === 'SUBCATEGORIA' ||
+        !!it.metadata?.parentCodigo,
+    );
+    subs.sort((a, b) => (a.orden || 0) - (b.orden || 0));
+
+    const resultado: CatalogoItem[] = [];
+    for (const p of padres) {
+      resultado.push(p);
+      const hijas = subs.filter(
+        (s) =>
+          s.metadata?.parentCodigo === p.codigo ||
+          s.metadata?.parentId === p.idCatalogo,
+      );
+      resultado.push(...hijas);
+    }
+    const huerfanas = subs.filter(
+      (s) =>
+        !padres.some(
+          (p) =>
+            p.codigo === s.metadata?.parentCodigo ||
+            p.idCatalogo === s.metadata?.parentId,
+        ),
+    );
+    resultado.push(...huerfanas);
+    return resultado;
+  }, [items]);
+
   const ToastGlobal = toast ? (
     <div
       className={`fixed top-4 right-4 z-[90] max-w-sm px-4 py-2.5 rounded-xl text-sm font-black border shadow-lg animate-in slide-in-from-top fade-in ${
@@ -104,16 +173,36 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
           : 'bg-pink-50 border-pink-300 text-pink-700'
       }`}
     >
-      {toast.tipo === 'ok' ? '✅  ' : '❌  '}
       {toast.texto}
     </div>
   ) : null;
+
+  const alCambiarPadre = (nuevoPadre: string) => {
+    const subsExistentes = items.filter((s) => s.metadata?.parentCodigo === nuevoPadre);
+    const sugeridoCodigo = nuevoPadre
+      ? `${nuevoPadre}_S${String(subsExistentes.length + 1).padStart(2, '0')}`
+      : '';
+    setForm((prev) => ({
+      ...prev,
+      parentCodigo: nuevoPadre,
+      codigo: sugeridoCodigo || prev.codigo,
+    }));
+  };
 
   const abrirCrear = () => {
     if (readOnly) return;
     setModo('crear');
     setIdEditando(null);
-    setForm({ ...VALORES_VACIOS, orden: String((items.at(-1)?.orden || 0) + 1) });
+    const primerPadre = categoriasPrincipales[0]?.codigo || 'CS_001';
+    const subsExistentes = items.filter((s) => s.metadata?.parentCodigo === primerPadre);
+    const sugeridoCodigo = `${primerPadre}_S${String(subsExistentes.length + 1).padStart(2, '0')}`;
+    setForm({
+      ...VALORES_VACIOS,
+      tipoJerarquia: 'SUBCATEGORIA',
+      parentCodigo: primerPadre,
+      codigo: sugeridoCodigo,
+      orden: String((items.at(-1)?.orden || 0) + 1),
+    });
     setErrores({});
     setErrorForm(null);
   };
@@ -122,6 +211,7 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
     if (readOnly) return;
     setModo('editar');
     setIdEditando(it.idCatalogo);
+    const esSub = it.metadata?.tipo === 'SUBCATEGORIA' || !!it.metadata?.parentCodigo;
     setForm({
       codigo: it.codigo,
       nombre: it.nombre,
@@ -129,6 +219,8 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
       orden: String(it.orden ?? ''),
       isActivo: !!it.isActivo,
       color: colorCss(it),
+      tipoJerarquia: esSub ? 'SUBCATEGORIA' : 'PRINCIPAL',
+      parentCodigo: it.metadata?.parentCodigo || '',
     });
     setErrores({});
     setErrorForm(null);
@@ -144,6 +236,9 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
 
   const validar = (): boolean => {
     const e: Record<string, string> = {};
+    if (form.tipoJerarquia === 'SUBCATEGORIA' && !form.parentCodigo) {
+      e.parentCodigo = 'Debe seleccionar la categoría padre.';
+    }
     if (!form.codigo.trim()) e.codigo = 'Código requerido.';
     else if (form.codigo.trim().length < 2) e.codigo = 'Mínimo 2 caracteres.';
     if (!form.nombre.trim()) e.nombre = 'Nombre requerido.';
@@ -160,6 +255,7 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
     orden: form.orden !== '' && Number.isInteger(+form.orden) ? Number(form.orden) : undefined,
     isActivo: form.isActivo,
     color: form.color,
+    parentCodigo: form.tipoJerarquia === 'SUBCATEGORIA' && form.parentCodigo ? form.parentCodigo : null,
   });
 
   const guardar = async () => {
@@ -170,7 +266,13 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
     try {
       if (modo === 'crear') {
         await infraestructuraService.crearCategoriaServicio(payloadFromForm());
-        setToast({ tipo: 'ok', texto: 'Categoría creada correctamente.' });
+        setToast({
+          tipo: 'ok',
+          texto:
+            form.tipoJerarquia === 'SUBCATEGORIA'
+              ? 'Subcategoría agregada correctamente.'
+              : 'Categoría creada correctamente.',
+        });
       } else if (modo === 'editar' && idEditando != null) {
         await infraestructuraService.actualizarCategoriaServicio(idEditando, payloadFromForm());
         setToast({ tipo: 'ok', texto: 'Categoría actualizada correctamente.' });
@@ -199,6 +301,13 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
 
   const pedirConfirmarEliminar = (it: CatalogoItem) => {
     if (readOnly) return;
+    if (esCategoriaOficial(it)) {
+      setToast({
+        tipo: 'err',
+        texto: `La categoría ${it.codigo} es oficial y está protegida contra eliminación.`,
+      });
+      return;
+    }
     setConfirmEliminar(it);
   };
 
@@ -225,6 +334,9 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
   const inputBase =
     'w-full rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ';
 
+  const itemEditandoObj = idEditando != null ? items.find((x) => x.idCatalogo === idEditando) : null;
+  const esItemEditandoOficial = itemEditandoObj ? esCategoriaOficial(itemEditandoObj) : false;
+
   return (
     <div className="bg-white rounded-2xl border border-slate-300 shadow-sm p-5 md:p-6 space-y-4">
       {/* Header */}
@@ -238,7 +350,7 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
               Administrar Categorías de Servicio
             </h2>
             <p className="text-xs text-slate-600 font-medium mt-0.5">
-              Listado de las 8 categorías oficiales precargadas + nuevas creadas por administración.
+              Listado de las 8 categorías oficiales precargadas y subcategorías vinculadas.
             </p>
           </div>
         </div>
@@ -259,7 +371,7 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-md ring-1 ring-blue-500 transition-all"
             >
               <Plus className="w-4 h-4" />
-              Nueva categoría
+              Nueva subcategoría / categoría
             </button>
           )}
         </div>
@@ -280,8 +392,9 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
           <thead className="bg-slate-100 text-slate-600">
             <tr>
               <th className="px-4 py-3 text-left font-semibold w-16">#</th>
-              <th className="px-4 py-3 text-left font-semibold w-28">Código</th>
+              <th className="px-4 py-3 text-left font-semibold w-32">Código</th>
               <th className="px-4 py-3 text-left font-semibold">Nombre</th>
+              <th className="px-4 py-3 text-left font-semibold w-40">Jerarquía</th>
               <th className="px-4 py-3 text-left font-semibold hidden md:table-cell">Descripción</th>
               <th className="px-4 py-3 text-left font-semibold w-24">Color</th>
               <th className="px-4 py-3 text-left font-semibold w-24">Activa</th>
@@ -291,104 +404,156 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
           <tbody className="divide-y bg-white">
             {loading && (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-xs">
+                <td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-xs">
                   Cargando categorías…
                 </td>
               </tr>
             )}
-            {!loading && items.length === 0 && (
+            {!loading && itemsOrdenados.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-xs">
-                  No hay categorías. Crea la primera.
+                <td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-xs">
+                  No hay categorías registradas.
                 </td>
               </tr>
             )}
             {!loading &&
-              items.map((it) => (
-                <tr key={it.idCatalogo} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 text-slate-500 font-mono text-xs">{it.orden}</td>
-                  <td className="px-4 py-3 font-mono text-slate-900 font-semibold">{it.codigo}</td>
-                  <td className="px-4 py-3 text-slate-900 font-semibold">{it.nombre}</td>
-                  <td className="px-4 py-3 text-slate-600 text-xs hidden md:table-cell">
-                    {it.descripcion ? (
-                      <span className="line-clamp-2">{it.descripcion}</span>
-                    ) : (
-                      <span className="text-slate-300">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-block px-2.5 py-1 rounded-lg text-xs font-bold ${colorCss(it)}`}>
-                      {it.codigo}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {readOnly ? (
-                      <span
-                        className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-lg ${
-                          it.isActivo
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-slate-100 text-slate-500'
-                        }`}
-                      >
-                        {it.isActivo ? (
-                          <>
-                            <ToggleRight className="w-4 h-4" /> Si
-                          </>
-                        ) : (
-                          <>
-                            <ToggleLeft className="w-4 h-4" /> No
-                          </>
-                        )}
+              itemsOrdenados.map((it) => {
+                const oficial = esCategoriaOficial(it);
+                const esSub = it.metadata?.tipo === 'SUBCATEGORIA' || !!it.metadata?.parentCodigo;
+                return (
+                  <tr
+                    key={it.idCatalogo}
+                    className={`hover:bg-slate-50 transition-colors ${
+                      esSub ? 'bg-slate-50/40' : 'bg-white'
+                    }`}
+                  >
+                    <td className="px-4 py-3 text-slate-500 font-mono text-xs">{it.orden}</td>
+                    <td className="px-4 py-3 font-mono text-slate-900 font-semibold">{it.codigo}</td>
+                    <td className="px-4 py-3 text-slate-900 font-semibold">
+                      {esSub ? (
+                        <div className="flex items-center gap-1.5 pl-2">
+                          <span className="text-slate-400 font-mono text-xs">↳</span>
+                          <span>{it.nombre}</span>
+                        </div>
+                      ) : (
+                        <span>{it.nombre}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {esSub ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                          <Layers className="w-3 h-3 text-slate-500" />
+                          <span>Sub de {it.metadata?.parentCodigo || 'Padre'}</span>
+                        </span>
+                      ) : (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            oficial
+                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                              : 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                          }`}
+                        >
+                          {oficial ? (
+                            <ShieldCheck className="w-3 h-3 text-blue-600" />
+                          ) : (
+                            <FolderKanban className="w-3 h-3 text-indigo-600" />
+                          )}
+                          <span>{oficial ? 'Oficial UMI' : 'Principal'}</span>
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 text-xs hidden md:table-cell">
+                      {it.descripcion ? (
+                        <span className="line-clamp-2">{it.descripcion}</span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-block px-2.5 py-1 rounded-lg text-xs font-bold ${colorCss(it)}`}>
+                        {it.codigo}
                       </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => toggle(it)}
-                        className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-lg transition-colors ${
-                          it.isActivo
-                            ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                        }`}
-                        aria-label="toggle activo"
-                      >
-                        {it.isActivo ? (
-                          <>
-                            <ToggleRight className="w-4 h-4" /> Si
-                          </>
-                        ) : (
-                          <>
-                            <ToggleLeft className="w-4 h-4" /> No
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {readOnly ? (
-                      <span className="text-xs font-semibold text-slate-400">Solo lectura</span>
-                    ) : (
-                      <div className="flex items-center justify-end gap-1.5">
+                    </td>
+                    <td className="px-4 py-3">
+                      {readOnly ? (
+                        <span
+                          className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-lg ${
+                            it.isActivo
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          {it.isActivo ? (
+                            <>
+                              <ToggleRight className="w-4 h-4" /> Si
+                            </>
+                          ) : (
+                            <>
+                              <ToggleLeft className="w-4 h-4" /> No
+                            </>
+                          )}
+                        </span>
+                      ) : (
                         <button
                           type="button"
-                          onClick={() => abrirEditar(it)}
-                          className="p-2 rounded-lg hover:bg-indigo-50 text-indigo-700 transition-colors"
-                          aria-label="editar"
+                          onClick={() => toggle(it)}
+                          className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-lg transition-colors ${
+                            it.isActivo
+                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                              : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                          }`}
+                          aria-label="toggle activo"
                         >
-                          <Pencil className="w-4 h-4" />
+                          {it.isActivo ? (
+                            <>
+                              <ToggleRight className="w-4 h-4" /> Si
+                            </>
+                          ) : (
+                            <>
+                              <ToggleLeft className="w-4 h-4" /> No
+                            </>
+                          )}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => pedirConfirmarEliminar(it)}
-                          className="p-2 rounded-lg hover:bg-red-50 text-red-600 transition-colors"
-                          aria-label="eliminar"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {readOnly ? (
+                        <span className="text-xs font-semibold text-slate-400">Solo lectura</span>
+                      ) : (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => abrirEditar(it)}
+                            className="p-2 rounded-lg hover:bg-indigo-50 text-indigo-700 transition-colors"
+                            aria-label="editar"
+                            title="Editar"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          {oficial ? (
+                            <span
+                              className="p-2 rounded-lg text-slate-400 bg-slate-100 cursor-not-allowed inline-flex items-center"
+                              title="Categoría oficial del sistema (Protegida contra eliminación)"
+                            >
+                              <Lock className="w-4 h-4 text-slate-400" />
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => pedirConfirmarEliminar(it)}
+                              className="p-2 rounded-lg hover:bg-red-50 text-red-600 transition-colors"
+                              aria-label="eliminar"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
       </div>
@@ -399,7 +564,13 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
           <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95">
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-black text-slate-900 text-lg">
-                {modo === 'crear' ? 'Nueva categoría de servicio' : 'Editar categoría'}
+                {modo === 'crear'
+                  ? form.tipoJerarquia === 'SUBCATEGORIA'
+                    ? 'Nueva Subcategoría de Servicio'
+                    : 'Nueva Categoría Principal'
+                  : esItemEditandoOficial
+                  ? `Editar Categoría Oficial (${form.codigo})`
+                  : 'Editar Categoría / Subcategoría'}
               </h3>
               <button
                 type="button"
@@ -419,6 +590,100 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
                   <span>{errorForm}</span>
                 </div>
               )}
+
+              {/* Selector de Nivel Jerárquico */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Nivel de Catálogo <span className="text-red-600">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({
+                        ...prev,
+                        tipoJerarquia: 'SUBCATEGORIA',
+                        parentCodigo: prev.parentCodigo || categoriasPrincipales[0]?.codigo || 'CS_001',
+                      }));
+                      alCambiarPadre(form.parentCodigo || categoriasPrincipales[0]?.codigo || 'CS_001');
+                    }}
+                    disabled={modo === 'editar' && esItemEditandoOficial}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left flex items-center gap-2 ${
+                      form.tipoJerarquia === 'SUBCATEGORIA'
+                        ? 'bg-blue-50 border-blue-500 text-blue-900 ring-1 ring-blue-500'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    } ${modo === 'editar' && esItemEditandoOficial ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <Layers className="w-4 h-4 text-blue-600 shrink-0" />
+                    <div>
+                      <div>Subcategoría</div>
+                      <div className="text-[10px] font-normal text-slate-500">Bajo una de las 8 oficiales</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({
+                        ...prev,
+                        tipoJerarquia: 'PRINCIPAL',
+                        parentCodigo: '',
+                      }));
+                    }}
+                    disabled={modo === 'editar' && esItemEditandoOficial}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left flex items-center gap-2 ${
+                      form.tipoJerarquia === 'PRINCIPAL'
+                        ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-1 ring-indigo-500'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    } ${modo === 'editar' && esItemEditandoOficial ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <FolderKanban className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <div>
+                      <div>Categoría Principal</div>
+                      <div className="text-[10px] font-normal text-slate-500">Grupo de 1er nivel</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Si es Subcategoría: Selección de Categoría Padre obligatoria */}
+              {form.tipoJerarquia === 'SUBCATEGORIA' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Categoría Padre (8 oficiales UMI) <span className="text-red-600">*</span>
+                  </label>
+                  <select
+                    value={form.parentCodigo}
+                    onChange={(e) => alCambiarPadre(e.target.value)}
+                    disabled={modo === 'editar' && esItemEditandoOficial}
+                    className={inputBase + (errores.parentCodigo ? 'border-red-200 bg-red-50' : 'border-slate-200')}
+                  >
+                    <option value="">-- Seleccione la categoría oficial padre --</option>
+                    {categoriasPrincipales.map((cat) => (
+                      <option key={cat.idCatalogo} value={cat.codigo}>
+                        {cat.codigo} - {cat.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  {errores.parentCodigo && (
+                    <p className="mt-1 text-[11px] text-red-600 font-semibold">{errores.parentCodigo}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Si es Principal y no es oficial: Alerta informativa */}
+              {form.tipoJerarquia === 'PRINCIPAL' && !esItemEditandoOficial && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Aviso sobre agrupación de 8 categorías:</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-amber-800 leading-relaxed">
+                    La plataforma institucional opera con una línea base de 8 categorías oficiales (CS_001 a CS_008). Para no alterar esta agrupación en reportes e indicadores, se recomienda crear <strong>Subcategorías</strong>.
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
@@ -428,7 +693,8 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
                     type="text"
                     value={form.codigo}
                     onChange={(e) => setForm({ ...form, codigo: e.target.value })}
-                    placeholder="Ej: CS_009"
+                    placeholder={form.tipoJerarquia === 'SUBCATEGORIA' ? 'Ej: CS_001_S01' : 'Ej: CS_009'}
+                    disabled={modo === 'editar' && esItemEditandoOficial}
                     className={inputBase + (errores.codigo ? 'border-red-200 bg-red-50' : 'border-slate-200')}
                   />
                   {errores.codigo && <p className="mt-1 text-[11px] text-red-600 font-semibold">{errores.codigo}</p>}
@@ -457,7 +723,11 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
                   type="text"
                   value={form.nombre}
                   onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-                  placeholder="Ej: Servicios especiales UPS / CCTV"
+                  placeholder={
+                    form.tipoJerarquia === 'SUBCATEGORIA'
+                      ? 'Ej: Reparación de cerraduras y candados'
+                      : 'Ej: Servicios especiales UPS / CCTV'
+                  }
                   className={inputBase + (errores.nombre ? 'border-red-200 bg-red-50' : 'border-slate-200')}
                 />
                 {errores.nombre && <p className="mt-1 text-[11px] text-red-600 font-semibold">{errores.nombre}</p>}
@@ -471,7 +741,7 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
                   rows={3}
                   value={form.descripcion}
                   onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
-                  placeholder="Opcional. Explica brevemente qué cubre esta categoría."
+                  placeholder="Opcional. Explica brevemente qué cubre esta categoría o subcategoría."
                   className={inputBase + 'border-slate-200 resize-none'}
                 />
               </div>
@@ -500,7 +770,7 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
                     onChange={(e) => setForm({ ...form, isActivo: e.target.checked })}
                     className="w-4 h-4 peer rounded-md"
                   />
-                  <span className="text-sm font-semibold text-slate-700">Categoría activa</span>
+                  <span className="text-sm font-semibold text-slate-700">Activa</span>
                 </label>
               </div>
 
@@ -528,14 +798,20 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-sm transition-colors disabled:opacity-60"
               >
                 <Save className="w-4 h-4" />
-                {guardando ? 'Guardando…' : modo === 'crear' ? 'Crear categoría' : 'Guardar cambios'}
+                {guardando
+                  ? 'Guardando…'
+                  : modo === 'crear'
+                  ? form.tipoJerarquia === 'SUBCATEGORIA'
+                    ? 'Crear subcategoría'
+                    : 'Crear categoría'
+                  : 'Guardar cambios'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal confirmación ELIMINAR categoría */}
+      {/* Modal confirmación ELIMINAR categoría / subcategoría */}
       {confirmEliminar && (
         <div className="fixed inset-0 z-[85] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95">
@@ -546,10 +822,13 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-black text-slate-900 text-base tracking-tight">
-                    Eliminar categoría de servicio
+                    Eliminar{' '}
+                    {confirmEliminar.metadata?.tipo === 'SUBCATEGORIA' || confirmEliminar.metadata?.parentCodigo
+                      ? 'subcategoría'
+                      : 'categoría'}
                   </h3>
                   <p className="mt-1.5 text-[13px] leading-relaxed text-slate-600">
-                    ¿Estás seguro que deseas eliminar la categoría{' '}
+                    ¿Estás seguro que deseas eliminar{' '}
                     <span className="font-bold text-slate-900">
                       &ldquo;{confirmEliminar.nombre}&rdquo;
                     </span>{' '}
@@ -559,7 +838,7 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
                     ?
                   </p>
                   <p className="mt-2 text-[12px] font-bold text-pink-700 bg-pink-50 border border-pink-300 rounded-lg px-2.5 py-1.5 shadow-sm">
-                    Esta acción no se puede deshacer.
+                    Esta acción no se puede deshacer. Si existen solicitudes asociadas, la base de datos impedirá la eliminación.
                   </p>
                 </div>
               </div>
@@ -582,7 +861,7 @@ export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
                 style={{ opacity: eliminando ? 0.7 : 1 }}
               >
                 <Trash2 className="w-4 h-4" />
-                {eliminando ? 'Eliminando…' : 'Sí, eliminar categoría'}
+                {eliminando ? 'Eliminando…' : 'Sí, eliminar'}
               </button>
             </div>
           </div>

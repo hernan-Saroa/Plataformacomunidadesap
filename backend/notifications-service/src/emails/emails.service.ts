@@ -326,8 +326,8 @@ export class EmailsService {
   /**
    * EFDS-2238 — configuración de buzones. Es la MISMA regla al arrancar (onModuleInit) y en cada envío
    * (sendMail): si falla, no sale NINGÚN correo. Devuelve qué falta, o null si está completa.
-   * Fuera de producción exige además el capturador de pruebas (dominio .invalid) y SMTP, para que un
-   * ambiente de pruebas nunca escriba a un buzón real.
+   * MAIL_TEST_INBOX activa explícitamente la captura fuera de producción.
+   * Sin captura, se usa el proveedor y los destinatarios configurados por operaciones.
    */
   problemaDeBuzones(): string | null {
     const environment = process.env.MAIL_ENVIRONMENT;
@@ -337,8 +337,8 @@ export class EmailsService {
       return `MAIL_ENVIRONMENT inválido o ausente («${environment || ''}»; se espera dev, qa, pre, prod o local)`;
     }
     if (!judicial || !isEmail(judicial)) return 'JURIDICA_EMAIL ausente o no es una dirección de correo';
-    if (environment === 'prod') return null;
-    if (!testInbox || !BUZON_DE_PRUEBA.test(testInbox)) return 'MAIL_TEST_INBOX ausente o no es un buzón de prueba (.invalid)';
+    if (environment === 'prod' || !testInbox) return null;
+    if (!BUZON_DE_PRUEBA.test(testInbox)) return 'MAIL_TEST_INBOX no es un buzón de prueba (.invalid)';
     if (!BUZON_DE_PRUEBA.test(judicial)) return 'JURIDICA_EMAIL debe ser un buzón de prueba (.invalid) fuera de producción';
     if (judicial === testInbox) return 'JURIDICA_EMAIL y MAIL_TEST_INBOX no pueden ser el mismo buzón';
     if (this.getConfiguredProvider() !== 'smtp') return 'fuera de producción el correo sale solo por SMTP al capturador (EMAIL_PROVIDER=smtp)';
@@ -359,7 +359,7 @@ export class EmailsService {
       throw new BadRequestException('Destino judicial reservado al traslado del expediente');
     }
     payload.headers = { 'X-ESAP-Environment': environment };
-    if (!production && payload.to.trim().toLowerCase() !== judicial) {
+    if (!production && testInbox && payload.to.trim().toLowerCase() !== judicial) {
       payload.headers['X-ESAP-Original-To'] = payload.to;
       payload.to = testInbox!;
     }

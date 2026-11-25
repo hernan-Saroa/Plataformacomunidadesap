@@ -226,7 +226,7 @@ export class MantenimientoController {
   @Post('categorias-servicio')
   @ApiOperation({
     summary:
-      'Crear una nueva categoría de servicio (por ejemplo CS_009 Servicios Especiales). Exclusivo Coordinador GIM. Si el código se repite devuelve 409 Conflict.',
+      'Crear una nueva categoría o subcategoría de servicio. Exclusivo Coordinador GIM. Si se envía parentCodigo/idCategoriaPadre se registra como subcategoría vinculada.',
   })
   crearCategoriaServicio(
     @Body()
@@ -237,6 +237,8 @@ export class MantenimientoController {
       orden?: number;
       isActivo?: boolean;
       color?: string;
+      parentCodigo?: string;
+      idCategoriaPadre?: number;
     },
     @Req() req: any,
   ) {
@@ -248,7 +250,7 @@ export class MantenimientoController {
   @Patch('categorias-servicio/:id')
   @ApiOperation({
     summary:
-      'Actualizar una categoría de servicio por id. Exclusivo Coordinador GIM. Permite modificar codigo, nombre, descripcion, orden, isActivo y color. Código duplicado devuelve 409.',
+      'Actualizar una categoría o subcategoría de servicio por id. Exclusivo Coordinador GIM. Permite modificar codigo, nombre, descripcion, orden, isActivo, color y parentCodigo.',
   })
   actualizarCategoriaServicio(
     @Param('id', ParseIntPipe) idCatalogo: number,
@@ -260,6 +262,8 @@ export class MantenimientoController {
       codigo?: string;
       isActivo?: boolean;
       color?: string;
+      parentCodigo?: string | null;
+      idCategoriaPadre?: number | null;
     },
     @Req() req: any,
   ) {
@@ -1156,6 +1160,7 @@ export class MantenimientoController {
     @Query('solicitante') solicitante?: string,
     @Query('fechaDesde') fechaDesde?: string,
     @Query('fechaHasta') fechaHasta?: string,
+    @Query('origen') origen?: string,
     @Req() req?: any,
   ) {
     return this.mantenimientoService.listarHistorico(
@@ -1169,6 +1174,7 @@ export class MantenimientoController {
         solicitante,
         fechaDesde,
         fechaHasta,
+        origen,
       },
       req?.user,
     );
@@ -1204,13 +1210,14 @@ export class MantenimientoController {
   }
 
   @Delete('historico')
-  @Public()
+  @ApiBearerAuth()
   @ApiOperation({
     summary:
-      'Fase 4 Req. #10: Vaciar todos los registros del repositorio histórico de Planner/GLPI.',
+      'Fase 4 Req. #10: Vaciar todos los registros del repositorio histórico de Planner/GLPI (Exclusivo Administrador/Coordinador GIM).',
   })
   async vaciarHistorico(@Req() req: any) {
-    return this.mantenimientoService.vaciarHistorico(req?.user);
+    const user = obtenerUsuarioOpcionalDesdeRequest(req);
+    return this.mantenimientoService.vaciarHistorico(user);
   }
 
   @Get('estadisticas/reporte-gestion/pdf')
