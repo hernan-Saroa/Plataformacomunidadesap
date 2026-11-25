@@ -268,9 +268,41 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [clasificacionMantenimiento, setClasificacionMantenimiento] = useState<'MENOR' | 'MAYOR'>('MENOR');
   const [requiereContratacion, setRequiereContratacion] = useState<boolean>(false);
 
-// EFDS-2353: Filtrado reactivo de técnicos según clasificación Menor vs Mayor
+  const csListaCompleta = (catalogoCS && catalogoCS.length > 0) ? catalogoCS : catalogoCSLocal;
+  const esCategoriaElectricas48 = useMemo(() => {
+    if (Number(detalle?.idCategoria) === 48) return true;
+    if (detalle?.idCategoria != null && Array.isArray(csListaCompleta)) {
+      const cat = csListaCompleta.find((c) => Number(c.idCatalogo) === Number(detalle.idCategoria));
+      if (cat) {
+        const cod = String(cat.codigo || '').toUpperCase();
+        const nom = String(cat.nombre || '').toLowerCase();
+        return cod === 'CS_002' || nom.includes('eléctric');
+      }
+    }
+    const catNom = String(detalle?.categoriaServicio || (detalle as any)?.categoriaNombre || '').toLowerCase();
+    return catNom.includes('eléctric') || catNom.includes('cs_002');
+  }, [detalle?.idCategoria, detalle?.categoriaServicio, csListaCompleta]);
+
+// EFDS-2353 / EFDS-1733: Filtrado reactivo de técnicos según categoría y clasificación Menor vs Mayor
   const tecnicosFiltrados = useMemo(() => {
     if (!Array.isArray(tecnicosCatalogo)) return [];
+    // Si la categoría es eléctrica (CS_002), se exige obligatoriamente un técnico eléctrico especializado (P3)
+    if (esCategoriaElectricas48) {
+      const elecList = tecnicosCatalogo.filter((t) => {
+        const rol = String(t.metadata?.roleCod || t.roleCod || '').toUpperCase();
+        const cod = String(t.codigo || '').toUpperCase();
+        const espList = Array.isArray(t.metadata?.especialidades) ? t.metadata.especialidades : [];
+        return (
+          rol === 'P3' ||
+          rol === 'TECNICO_ELECTRICO_ESPECIALIZADO' ||
+          cod.includes('P3') ||
+          espList.includes('CS_002') ||
+          cod.startsWith('TEC-ELEC') ||
+          cod.startsWith('TEC-ELC')
+        );
+      });
+      return elecList.length > 0 ? elecList : tecnicosCatalogo;
+    }
     if (clasificacionMantenimiento === 'MAYOR') {
       const mayorList = tecnicosCatalogo.filter((t) => {
         const rol = String(t.metadata?.roleCod || t.roleCod || '').toUpperCase();
@@ -1707,9 +1739,25 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     String(detalle?.clasificacionMantenimiento || '').toUpperCase() === 'MAYOR' ||
     clasificacionMantenimiento === 'MAYOR'
   );
-  // Filtrado para modal de redistribución (EFDS-2353/2354)
+  // Filtrado para modal de redistribución (EFDS-2353/2354 / EFDS-1733)
   const tecnicosRedistFiltrados = useMemo(() => {
     if (!Array.isArray(tecnicosCatalogo)) return [];
+    if (esCategoriaElectricas48) {
+      const elecList = tecnicosCatalogo.filter((t) => {
+        const rol = String(t.metadata?.roleCod || t.roleCod || '').toUpperCase();
+        const cod = String(t.codigo || '').toUpperCase();
+        const espList = Array.isArray(t.metadata?.especialidades) ? t.metadata.especialidades : [];
+        return (
+          rol === 'P3' ||
+          rol === 'TECNICO_ELECTRICO_ESPECIALIZADO' ||
+          cod.includes('P3') ||
+          espList.includes('CS_002') ||
+          cod.startsWith('TEC-ELEC') ||
+          cod.startsWith('TEC-ELC')
+        );
+      });
+      return elecList.length > 0 ? elecList : tecnicosCatalogo;
+    }
     if (esMantenimientoMayor) {
       const mayorList = tecnicosCatalogo.filter((t) => {
         const rol = String(t.metadata?.roleCod || t.roleCod || '').toUpperCase();
@@ -1733,12 +1781,11 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       );
     });
     return menorList.length > 0 ? menorList : tecnicosCatalogo;
-  }, [tecnicosCatalogo, esMantenimientoMayor]);
+  }, [tecnicosCatalogo, esMantenimientoMayor, esCategoriaElectricas48]);
 
   const puedeConfirmarRecepcionMateriales =
     detalle && estadoActual === 'EN_ESPERA_DE_INSUMOS' &&
     (tienePerm('infraestructura.solicitud.assign') || tienePerm('infraestructura.view_all') || tienePerm('infraestructura.solicitud.execute_assigned') || tienePerm('infraestructura.solicitud.cierre_tecnico'));
-  const esCategoriaElectricas48 = Number(detalle?.idCategoria) === 48;
   // (EFDS-1735 AC-10, AC-12, AC-13) - quien puede confirmar recepcion materiales:
   // 1) P2/P5/P7 Assign / View_all (Encargado / Admin Funcional / Calidad) - principal ERS
   // 2) Tecnico con rol cierre_tecnico / execute_assigned (casos bodega entrega directa, frecuente ESAP) - UX pragmático
@@ -2364,23 +2411,43 @@ const puedeCerrarTecnicamente = Boolean(
 
                   {/* EFDS-2436 / RF-INF-011: Banner de Mantenimiento Preventivo Programado */}
                   {detalle.tipoMantenimiento === 'PREVENTIVO' && (
-                    <div className="rounded-2xl border border-sky-300 bg-sky-50/80 p-4 shadow-sm text-sky-950">
+                    <div
+                      className="rounded-2xl border p-4 shadow-sm"
+                      style={{
+                        backgroundColor: '#f0f9ff',
+                        borderColor: '#7dd3fc',
+                        color: '#082f49',
+                      }}
+                    >
                       <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 shrink-0 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-xs">
-                          <Clock className="w-5 h-5 text-white" />
+                        <div
+                          className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center shadow-xs"
+                          style={{
+                            backgroundColor: '#0284c7',
+                            color: '#ffffff',
+                          }}
+                        >
+                          <Clock className="w-5 h-5" style={{ color: '#ffffff' }} />
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border bg-sky-200 text-sky-900 border-sky-300">
+                            <span
+                              className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border"
+                              style={{
+                                backgroundColor: '#e0f2fe',
+                                color: '#0369a1',
+                                borderColor: '#7dd3fc',
+                              }}
+                            >
                               Mantenimiento Preventivo Programado
                             </span>
                             {detalle.fechaProgramada && (
-                              <span className="text-[11px] font-bold text-sky-800">
+                              <span className="text-[11px] font-bold" style={{ color: '#0369a1' }}>
                                 Fecha de atención: {formatearFecha(detalle.fechaProgramada)}
                               </span>
                             )}
                           </div>
-                          <p className="text-xs mt-1.5 leading-relaxed text-sky-900">
+                          <p className="text-xs mt-1.5 leading-relaxed" style={{ color: '#0c4a6e' }}>
                             Esta orden preventiva cuenta con programación anticipada dentro de la ventana máxima de 15 días calendario. Recorre el ciclo regular de asignación técnica, valoración en campo, ejecución con evidencias y cierre formal.
                           </p>
                         </div>
@@ -2936,6 +3003,12 @@ const puedeCerrarTecnicamente = Boolean(
 
                             {/* Selección de Técnico / Responsable de Diagnóstico */}
                             <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                              {esCategoriaElectricas48 && (
+                                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-50/90 border border-amber-300 text-amber-900 text-[11px] font-bold">
+                                  <Zap className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                                  <span>Categoría CS_002 (Eléctricas): Asignación restringida obligatoriamente a Técnicos Especializados (Perfil P3).</span>
+                                </div>
+                              )}
                               <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
                                 {modalidadEjecutor === 'PROVEEDOR_LOCAL_CONTRATADO' && esSolicitudTerritorial
                                   ? 'Ejecutor Asignado (Proveedor Local)'
@@ -4258,19 +4331,23 @@ const puedeCerrarTecnicamente = Boolean(
                     <button
                       type="button"
                       onClick={confirmarRemitir}
-                      disabled={remitirEnviando}
+                      disabled={remitirEnviando || remitirMotivo.trim().length < 10}
+                      style={{
+                        backgroundColor: (remitirEnviando || remitirMotivo.trim().length < 10) ? '#93c5fd' : '#0284c7',
+                        color: '#ffffff',
+                      }}
                       className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold shadow-sm shadow-sky-500/20 transition-all disabled:opacity-60 active:scale-[0.98]"
                     >
                       {remitirEnviando ? (
                         <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Remitiendo...
-                    </>
+                          <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#ffffff' }} />
+                          <span style={{ color: '#ffffff' }}>Remitiendo...</span>
+                        </>
                       ) : (
                         <>
-                          <Send className="w-4 h-4" />
-                          Confirmar remisión
-                    </>
+                          <Send className="w-4 h-4" style={{ color: '#ffffff' }} />
+                          <span style={{ color: '#ffffff' }}>Confirmar remisión</span>
+                        </>
                       )}
                     </button>
                   </div>
@@ -4701,12 +4778,16 @@ const puedeCerrarTecnicamente = Boolean(
                       type="button"
                       onClick={confirmarRechazoHandler}
                       disabled={ejecutandoRechazo || rechazoMotivo.trim().length < 10}
+                      style={{
+                        backgroundColor: (ejecutandoRechazo || rechazoMotivo.trim().length < 10) ? '#f43f5e' : '#e11d48',
+                        color: '#ffffff',
+                      }}
                       className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold shadow-sm shadow-rose-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
                     >
                       {ejecutandoRechazo ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
+                        <><Loader2 className="w-4 h-4 animate-spin" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Procesando…</span></>
                       ) : (
-                        <><ThumbsDown className="w-4 h-4" /> Confirmar rechazo</>
+                        <><ThumbsDown className="w-4 h-4" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Confirmar rechazo</span></>
                       )}
                     </button>
                   </div>
@@ -4866,12 +4947,16 @@ const puedeCerrarTecnicamente = Boolean(
                       type="button"
                       onClick={confirmarRedistribucionHandler}
                       disabled={ejecutandoRedist || !redistTecnicoCodigo.trim() || cargandoTecnicos}
+                      style={{
+                        backgroundColor: (ejecutandoRedist || !redistTecnicoCodigo.trim() || cargandoTecnicos) ? '#6366f1' : '#4f46e5',
+                        color: '#ffffff',
+                      }}
                       className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm shadow-indigo-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
                     >
                       {ejecutandoRedist ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
+                        <><Loader2 className="w-4 h-4 animate-spin" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Procesando…</span></>
                       ) : (
-                        <><RedistribuirIcon className="w-4 h-4" /> Confirmar redistribución</>
+                        <><RedistribuirIcon className="w-4 h-4" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Confirmar redistribución</span></>
                       )}
                     </button>
                   </div>
@@ -4991,12 +5076,16 @@ const puedeCerrarTecnicamente = Boolean(
                       type="button"
                       onClick={handleConfirmarRecepcion}
                       disabled={ejecutandoRecepcion}
+                      style={{
+                        backgroundColor: ejecutandoRecepcion ? '#fcd34d' : '#d97706',
+                        color: '#ffffff',
+                      }}
                       className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-sm shadow-amber-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
                     >
                       {ejecutandoRecepcion ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
+                        <><Loader2 className="w-4 h-4 animate-spin" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Procesando…</span></>
                       ) : (
-                        <><Truck className="w-4 h-4" /> Confirmar recepción</>
+                        <><Truck className="w-4 h-4" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Confirmar recepción</span></>
                       )}
                     </button>
                   </div>
@@ -5485,16 +5574,20 @@ const puedeCerrarTecnicamente = Boolean(
                       type="button"
                       onClick={registrarVoBoHandler}
                       disabled={ejecutandoVoBo}
+                      style={{
+                        backgroundColor: ejecutandoVoBo ? '#a78bfa' : '#7c3aed',
+                        color: '#ffffff',
+                      }}
                       className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-sm shadow-violet-500/20 transition-all disabled:opacity-60"
                     >
                       {ejecutandoVoBo ? (
                         <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Registrando...
-                    </>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Registrando...</span>
+                        </>
                       ) : (
                         <>
-                          <BadgeCheck className="w-3.5 h-3.5" /> {voboDecision ? (detalle?.requiereContratacion ? "Confirmar Aval de Contratación" : "Confirmar VoBo") : "Registrar con Observaciones"}
-                    </>
+                          <BadgeCheck className="w-3.5 h-3.5" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>{voboDecision ? (detalle?.requiereContratacion ? "Confirmar Aval de Contratación" : "Confirmar VoBo") : "Registrar con Observaciones"}</span>
+                        </>
                       )}
                     </button>
                   </div>
@@ -5667,15 +5760,19 @@ const puedeCerrarTecnicamente = Boolean(
                       type="button"
                       onClick={registrarVoBoCierreDtHandler}
                       disabled={enviandoVoBoCierreDt}
+                      style={{
+                        backgroundColor: enviandoVoBoCierreDt ? '#fcd34d' : '#d97706',
+                        color: '#ffffff',
+                      }}
                       className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm shadow-amber-500/20 transition-all disabled:opacity-60"
                     >
                       {enviandoVoBoCierreDt ? (
                         <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Registrando...
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>Registrando...</span>
                         </>
                       ) : (
                         <>
-                          <ShieldCheck className="w-3.5 h-3.5" /> {voboCierreDtDecision ? "Confirmar VoBo DT Aprobado" : "Registrar VoBo DT con Observaciones"}
+                          <ShieldCheck className="w-3.5 h-3.5" style={{ color: '#ffffff' }} /> <span style={{ color: '#ffffff' }}>{voboCierreDtDecision ? "Confirmar VoBo DT Aprobado" : "Registrar VoBo DT con Observaciones"}</span>
                         </>
                       )}
                     </button>
@@ -6243,17 +6340,21 @@ const puedeCerrarTecnicamente = Boolean(
                 type="button"
                 disabled={guardandoEmergencia}
                 onClick={handleConfirmarEmergencia}
+                style={{
+                  backgroundColor: guardandoEmergencia ? '#fca5a5' : '#dc2626',
+                  color: '#ffffff',
+                }}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-sm transition-all disabled:opacity-50"
               >
                 {guardandoEmergencia ? (
                   <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Confirmando...</span>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: '#ffffff' }} />
+                    <span style={{ color: '#ffffff' }}>Confirmando...</span>
                   </>
                 ) : (
                   <>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Confirmar Emergencia</span>
+                    <CheckCircle2 className="w-3.5 h-3.5" style={{ color: '#ffffff' }} />
+                    <span style={{ color: '#ffffff' }}>Confirmar Emergencia</span>
                   </>
                 )}
               </button>

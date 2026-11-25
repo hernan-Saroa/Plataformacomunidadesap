@@ -6,6 +6,8 @@ import {
   UnprocessableEntityException,
   Logger,
   InternalServerErrorException,
+  HttpException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, In, Raw, Repository } from 'typeorm';
@@ -537,35 +539,51 @@ export class GraduationCertificatesService {
       if (byDiploma) return byDiploma;
     }
 
+    const graduationDate = this.normalizeDateString(
+      record.graduationDate || '',
+    );
+    const programName = this.normalizeName(record.programName || '');
     const numRegistro = this.toNullableText(record.numRegistro);
     const numFolio = this.toNullableText(record.numFolio);
     const numLibro = this.toNullableText(record.numLibro);
+    const hasDetailedRegistration = Boolean(numRegistro && (numLibro || numFolio));
     if (numRegistro || numFolio || numLibro) {
       const byRegistration = candidates.find(
         (graduate) =>
           (!numRegistro ||
             String(graduate.numRegistro || '').trim() === numRegistro) &&
           (!numFolio || String(graduate.numFolio || '').trim() === numFolio) &&
-          (!numLibro || String(graduate.numLibro || '').trim() === numLibro),
+          (!numLibro || String(graduate.numLibro || '').trim() === numLibro) &&
+          // Una referencia parcial (p. ej. solo libro) necesita coincidir
+          // también con los datos académicos disponibles del título.
+          (hasDetailedRegistration ||
+            ((!programName ||
+              this.normalizeName(graduate.programName || '') === programName) &&
+              (!graduationDate ||
+                this.normalizeDateString(graduate.graduationDate) === graduationDate))),
       );
       if (byRegistration) return byRegistration;
     }
 
-    const graduationDate = this.normalizeDateString(
-      record.graduationDate || '',
-    );
-    const programName = this.normalizeName(record.programName || '');
-    if (graduationDate && programName) {
-      const byProgramAndDate = candidates.find(
-        (graduate) =>
-          this.normalizeDateString(graduate.graduationDate) ===
-            graduationDate &&
-          this.normalizeName(graduate.programName || '') === programName,
+    if (programName) {
+      const byProgram = candidates.filter(
+        (graduate) => this.normalizeName(graduate.programName || '') === programName,
       );
-      if (byProgramAndDate) return byProgramAndDate;
+      // La unicidad de documento/programa permite actualizar una fecha
+      // corregida sin crear otro registro del mismo título.
+      if (byProgram.length === 1) return byProgram[0];
+      if (graduationDate) {
+        const byProgramAndDate = byProgram.find(
+          (graduate) =>
+            this.normalizeDateString(graduate.graduationDate) === graduationDate,
+        );
+        if (byProgramAndDate) return byProgramAndDate;
+      }
     }
 
-    return candidates.length === 1 ? candidates[0] : null;
+    // El documento identifica a la persona, no a uno de sus títulos. Si no
+    // hay una coincidencia académica, se debe conservar el título existente.
+    return null;
   }
 
   private buildGraduatePayloadFromOracle(
@@ -1001,6 +1019,58 @@ export class GraduationCertificatesService {
     };
   }
 
+  private async executeGraduateLookupStep<T>(
+    stage: 'mysql_sync' | 'oracle_sync' | 'local_lookup',
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error: unknown) {
+      if (error instanceof HttpException && error.getStatus() < 500) {
+        throw error;
+      }
+
+      const databaseError = error as {
+        code?: unknown;
+        errorNum?: unknown;
+        driverError?: { code?: unknown };
+      } | null;
+      const rawCode = databaseError?.driverError?.code ?? databaseError?.code;
+      const code =
+        typeof rawCode === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(rawCode)
+          ? rawCode
+          : 'UNKNOWN';
+      // No registrar el documento, parámetros SQL ni mensajes del driver,
+      // que pueden contener datos personales o credenciales de conexión.
+      const stackFrames = error instanceof Error
+        ? error.stack?.split('\n').filter((line) => /^\s+at /.test(line)).join('\n')
+        : undefined;
+      this.logger.error(
+        `[buscar-coincidencias] stage=${stage} code=${code}`,
+        stackFrames,
+      );
+
+      const message =
+        'No fue posible consultar los registros académicos en este momento. Intente nuevamente en unos minutos.';
+      const connectionUnavailable =
+        [
+          'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN',
+          'PROTOCOL_CONNECTION_LOST', 'ER_CON_COUNT_ERROR', '53300', '57P01',
+          '08001', '08006', 'ORA-12170', 'ORA-12541', 'ORA-12543',
+          'NJS-500', 'NJS-501', 'NJS-511',
+        ].includes(code) ||
+        [12170, 12541, 12543].includes(Number(databaseError?.errorNum));
+
+      if (
+        connectionUnavailable ||
+        (error instanceof HttpException && error.getStatus() === 503)
+      ) {
+        throw new ServiceUnavailableException(message);
+      }
+      throw new InternalServerErrorException(message);
+    }
+  }
+
   /**
    * AUTOSERVICIO: Buscar coincidencias por documento y similitud de nombre
    */
@@ -1025,15 +1095,20 @@ export class GraduationCertificatesService {
       updated: 0,
       unchanged: 0,
     };
-    const mysqlSync =
-      await this.syncGraduatesFromMysqlByIdNumber(documentNumber);
+    const mysqlSync = await this.executeGraduateLookupStep('mysql_sync', () =>
+      this.syncGraduatesFromMysqlByIdNumber(documentNumber),
+    );
     let oracleSync = disabledSync;
 
     if (!mysqlSync.found) {
-      oracleSync = await this.syncGraduatesFromOracleByIdNumber(documentNumber);
+      oracleSync = await this.executeGraduateLookupStep('oracle_sync', () =>
+        this.syncGraduatesFromOracleByIdNumber(documentNumber),
+      );
     }
 
-    const graduates = await this.findActiveGraduatesByIdNumber(documentNumber);
+    const graduates = await this.executeGraduateLookupStep('local_lookup', () =>
+      this.findActiveGraduatesByIdNumber(documentNumber),
+    );
     const fuente = mysqlSync.found
       ? 'mysql'
       : oracleSync.found

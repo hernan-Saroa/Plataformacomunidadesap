@@ -714,21 +714,41 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
         )}
         {/* Banner de Bandeja Territorial Descentralizada */}
         {!ambitoTerritorial?.esCentral && ambitoTerritorial?.nombreTerritorial && (
-          <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-50/80 to-transparent border border-amber-200/80 shadow-xs gap-3">
+          <div
+            className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 rounded-2xl border shadow-xs gap-3"
+            style={{
+              backgroundColor: '#fffbeb',
+              borderColor: '#fde68a',
+            }}
+          >
             <div className="flex items-center gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/90 text-white flex items-center justify-center shadow-xs shrink-0 ring-4 ring-amber-100">
-                <MapPin className="w-5 h-5 text-amber-50" />
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center shadow-xs shrink-0"
+                style={{
+                  backgroundColor: '#d97706',
+                  color: '#ffffff',
+                  boxShadow: '0 0 0 4px #fef3c7',
+                }}
+              >
+                <MapPin className="w-5 h-5" style={{ color: '#ffffff' }} />
               </div>
               <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <h4 className="text-xs sm:text-sm font-bold text-amber-950 tracking-tight">
+                  <h4 className="text-xs sm:text-sm font-bold tracking-tight" style={{ color: '#78350f' }}>
                     Bandeja Territorial Descentralizada
                   </h4>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200 shadow-2xs">
+                  <span
+                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border shadow-2xs"
+                    style={{
+                      backgroundColor: '#fef3c7',
+                      color: '#92400e',
+                      borderColor: '#fcd34d',
+                    }}
+                  >
                     {ambitoTerritorial.nombreTerritorial}
                   </span>
                 </div>
-                <p className="text-xs text-amber-800/90 mt-0.5 font-medium">
+                <p className="text-xs mt-0.5 font-medium" style={{ color: '#92400e' }}>
                   Gestión y seguimiento de solicitudes circunscritas a las sedes y CETAPs de tu jurisdicción territorial.
                 </p>
               </div>

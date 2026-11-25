@@ -40,7 +40,7 @@ import {
   BookOpen, Eye, Clock, FileCheck, ChevronRight, X
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { WizardCreacion, DashboardPlan } from './PlanAnualWizardDashboard';
+import { WizardCreacion, DashboardPlan, claveActividadAsistente } from './PlanAnualWizardDashboard';
 import { PlanAnualRol4Integrado } from './PlanAnualRol4Integrado';
 import { IntegracionRol4Provider } from './IntegracionRol4Context';
 import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
@@ -130,6 +130,16 @@ function mapResponsablesRolDesdeBackend(rol: any): Auditor[] {
 }
 
 const esUUID = esUuidPersona;
+
+/** Nombre de actividad sin mayúsculas, tildes ni espacios de más, para reconocer la misma actividad. */
+function nombreActividadComparable(nombre: unknown): string {
+  return String(nombre ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
 
 function logPlanAnualDebug(...args: unknown[]): void {
   try {
@@ -1584,6 +1594,19 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   const cambioPlanDesdeHeaderEnCursoRef = useRef<string | null>(null);
   const [vista, setVista] = useState<'inicio' | 'wizard' | 'dashboard' | 'rol4-integrado'>('inicio');
   const [planAEditar, setPlanAEditar] = useState<PlanAnual | undefined>(undefined);
+  /**
+   * Guardados del asistente (EFDS-2450). El plan lo crea el servidor, pero sus actividades las crea
+   * esta pantalla una por una; dos guardados a la vez, o uno que no ve lo que dejó el anterior,
+   * terminaban en actividades repetidas o en un borrador sin actividades.
+   *  - planAEditarRef: el plan abierto en el asistente tal como está ahora, no como estaba cuando se pidió guardar.
+   *  - colaGuardadoPlanRef: los guardados se atienden de uno en uno, en el orden en que se piden.
+   *  - idsActividadesAsistenteRef: identificador real de cada actividad que el asistente aún conoce
+   *    por su identificador provisional (clave: plan, número de rol e identificador provisional).
+   */
+  const planAEditarRef = useRef<PlanAnual | undefined>(undefined);
+  planAEditarRef.current = planAEditar;
+  const colaGuardadoPlanRef = useRef<Promise<unknown>>(Promise.resolve());
+  const idsActividadesAsistenteRef = useRef<Map<string, string>>(new Map());
   /** Fuerza remontaje del wizard solo al iniciar un plan nuevo en blanco. */
   const [wizardSesionKey, setWizardSesionKey] = useState(0);
   const [planesListVersion, setPlanesListVersion] = useState(0);
@@ -2509,6 +2532,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         })),
       };
 
+      planAEditarRef.current = planCompleto;
       setPlanAEditar(planCompleto);
       setWizardSesionKey((k) => k + 1);
       setVista('wizard');
@@ -2527,7 +2551,14 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   // Hook para crear plan en backend
   const { mutate: crearPlanEnBackend, loading: creandoPlan } = useCreatePlanAnual();
 
-  const handleCrearPlan = async (
+  type OpcionesGuardadoPlan = {
+    permanecerEnWizard?: boolean;
+    silencioso?: boolean;
+    /** Avisa al asistente el identificador real de las actividades que guardó con uno provisional. */
+    alResolverIds?: (ids: Record<string, string>) => void;
+  };
+
+  const guardarPlanDelAsistente = async (
     vigencia: number,
     jefeOCI: Auditor,
     rolesConfig: any[],
@@ -2535,8 +2566,11 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     fechaFin: string,
     comiteAprobacion?: Auditor[],
     ordenAprobacion?: string,
-    opciones?: { permanecerEnWizard?: boolean; silencioso?: boolean },
+    opciones?: OpcionesGuardadoPlan,
   ): Promise<boolean> => {
+    // El plan abierto ahora, no el que había cuando se pidió guardar: un guardado que esperó su turno
+    // detrás del que creó el plan debe actualizar ese plan, no crearlo otra vez (EFDS-2450).
+    const planAEditar = planAEditarRef.current;
     try {
       // ═══════════════════════════════════════════════════════════════
       // DEBUG: Resumen completo de lo que se va a enviar al backend
@@ -2628,10 +2662,51 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           const todasActividadesEdicion = rolesConfig.flatMap((rc: any) => {
             const rolBackend = planCreado.roles.find((r: any) => r.rol_numero === rc.numero);
             return [
-              ...(rc.actividadesSeleccionadas || []).filter((a: any) => a?.incluidaEnPlan !== false).map((a: any) => ({ ...a, rolBackendId: rolBackend?.id })),
-              ...(rc.actividadesCustom || []).map((a: any) => ({ ...a, rolBackendId: rolBackend?.id })),
+              ...(rc.actividadesSeleccionadas || []).filter((a: any) => a?.incluidaEnPlan !== false).map((a: any) => ({ ...a, rolBackendId: rolBackend?.id, rolNumero: rc.numero })),
+              ...(rc.actividadesCustom || []).map((a: any) => ({ ...a, rolBackendId: rolBackend?.id, rolNumero: rc.numero })),
             ];
           });
+
+          // Una actividad marcada en el asistente conserva su identificador provisional hasta que el
+          // asistente recibe el real. Si en ese lapso se guarda otra vez no se crea de nuevo: se
+          // reconoce la que ya está en la base, primero por el identificador con que se creó en esta
+          // sesión y, si no, por su nombre dentro del mismo rol (EFDS-2450).
+          const existentesPorRol = new Map<string, any[]>();
+          for (const rolBackend of planCreado.roles || []) {
+            existentesPorRol.set(
+              String(rolBackend.id),
+              (rolBackend.actividades || []).filter((a: any) => a?.activo !== false && esUUID(a?.id)),
+            );
+          }
+          // Las que el asistente ya conoce por su identificador real no pueden reconocerse dos veces
+          const idsYaAsignados = new Set<string>(
+            rolesConfig.flatMap((rc: any) =>
+              [...(rc.actividadesSeleccionadas || []), ...(rc.actividadesCustom || [])]
+                .filter((a: any) => esUUID(a?.id))
+                .map((a: any) => String(a.id)),
+            ),
+          );
+          const idsResueltos: Record<string, string> = {};
+          const anotarIdResuelto = (act: any, idReal: string) => {
+            const clave = claveActividadAsistente(act.rolNumero, act.id);
+            idsResueltos[clave] = idReal;
+            idsActividadesAsistenteRef.current.set(`${planAEditar.id}::${clave}`, idReal);
+          };
+          const reconocerActividadExistente = (act: any): any | undefined => {
+            const delRol = existentesPorRol.get(String(act.rolBackendId)) || [];
+            const idCreado = idsActividadesAsistenteRef.current.get(
+              `${planAEditar.id}::${claveActividadAsistente(act.rolNumero, act.id)}`,
+            );
+            let existente = idCreado ? delRol.find((a: any) => String(a.id) === idCreado) : undefined;
+            if (!existente) {
+              const nombre = nombreActividadComparable(act.nombre);
+              existente = delRol.find(
+                (a: any) => !idsYaAsignados.has(String(a.id)) && nombreActividadComparable(a.nombre) === nombre,
+              );
+            }
+            if (existente) idsYaAsignados.add(String(existente.id));
+            return existente;
+          };
           const actividadesOriginales = (planAEditar?.roles || []).flatMap((r: any) => r.actividades || []);
           const originalPorId = new Map<string, any>(
             actividadesOriginales
@@ -2726,14 +2801,29 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           let actividadesSinCambios = 0;
 
           const updatesPendientes: Array<{ id: string; payload: any }> = [];
-          const creationsPendientes: Array<{ rolBackendId: string; payload: any }> = [];
+          const creationsPendientes: Array<{ rolBackendId: string; payload: any; act: any }> = [];
 
           for (const act of todasActividadesEdicion) {
             const payloadNuevo = construirPayloadActividad(act);
             if (!esUUID(act?.id)) {
+              const yaExiste = act.rolBackendId ? reconocerActividadExistente(act) : undefined;
+              if (yaExiste) {
+                // Ya está guardada: solo se actualiza si el asistente la cambió
+                anotarIdResuelto(act, String(yaExiste.id));
+                if (
+                  JSON.stringify(obtenerFirmaComparacionActividad(yaExiste)) !==
+                  JSON.stringify(obtenerFirmaComparacionActividad(act))
+                ) {
+                  updatesPendientes.push({ id: String(yaExiste.id), payload: payloadNuevo });
+                } else {
+                  actividadesSinCambios++;
+                }
+                continue;
+              }
               if (act.rolBackendId) {
                 creationsPendientes.push({
                   rolBackendId: act.rolBackendId,
+                  act,
                   payload: {
                     nombre: act.nombre,
                     descripcion: act.descripcion || '',
@@ -2794,15 +2884,20 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             const resultados = await Promise.allSettled(
               lote.map((c) => actividadesApi.create(c.rolBackendId, c.payload))
             );
-            resultados.forEach((r) => {
+            resultados.forEach((r, idx) => {
               if (r.status === 'fulfilled' && r.value?.success) {
                 actividadesCreadas++;
+                const idCreada = (r.value.data as any)?.id;
+                if (esUUID(idCreada)) anotarIdResuelto(lote[idx].act, String(idCreada));
               } else {
                 actividadesConError++;
                 console.error('[handleCrearPlan] Error creando actividad en edición:', r);
               }
             });
           }
+
+          // El asistente cambia el identificador provisional por el real y deja de verlas como nuevas
+          if (Object.keys(idsResueltos).length > 0) opciones?.alResolverIds?.(idsResueltos);
 
           if (planCreado?.roles?.length) {
             await sincronizarResponsablesRolesEnBackend(
@@ -2829,6 +2924,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             if (opciones?.permanecerEnWizard) {
               const reloadedResp = await planAnualApi.getById(planAEditar.id);
               if (reloadedResp.success && reloadedResp.data) {
+                planAEditarRef.current = reloadedResp.data;
                 setPlanAEditar(reloadedResp.data);
               }
             }
@@ -3028,6 +3124,14 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
 
             if (resultActividad.success) {
               actividadesCreadas++;
+              // Un guardado que esté esperando turno trae estas actividades con su identificador provisional
+              const idCreada = (resultActividad.data as any)?.id;
+              if (esUUID(idCreada)) {
+                idsActividadesAsistenteRef.current.set(
+                  `${planCreado.id}::${claveActividadAsistente(rolConfig.numero, act.id)}`,
+                  String(idCreada),
+                );
+              }
             } else {
               actividadesFallidas++;
               const nombreCorto = act.nombre.slice(0, 50);
@@ -3126,8 +3230,28 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     } else {
       // crearPlanEnBackend devolvió null — el hook ya mostró toast, pero reforzamos el mensaje
       console.error('[handleCrearPlan] ❌ No se pudo crear el plan. Posible duplicado de vigencia.');
-      // Verificar si ya existe un plan para esa vigencia entre los planes cargados
-      const planExistente = planesAnteriores.find(p => p.vigencia === vigencia);
+      // Verificar si ya existe un plan para esa vigencia: entre los planes cargados y, si no, en la base.
+      // El plan puede haber quedado guardado aunque la respuesta no llegara a esta pantalla; se abre en
+      // el asistente, que le propone sus actividades, en vez de dejarlo como borrador vacío (EFDS-2450).
+      let planExistente = planesAnteriores.find(p => p.vigencia === vigencia);
+      if (!planExistente) {
+        const enBase = await planAnualApi.getByYear(vigencia);
+        const guardado: any = enBase?.success ? enBase.data : null;
+        if (guardado?.id) {
+          planExistente = {
+            id: guardado.id,
+            vigencia,
+            version: 1,
+            estado: mapearEstadoPlan(guardado.estado || 'borrador'),
+            jefeOCI: { ...jefeOCI, id: responsableIdPerson, idPerson: responsableIdPerson, idTercero: responsableIdPerson },
+            fechaInicio,
+            fechaFin,
+            equipoAprobacion: comiteAprobacion || [],
+            ordenAprobacion: ordenAprobacion || 'secuencial',
+            roles: [],
+          } as PlanAnual;
+        }
+      }
       if (planExistente) {
         const esBorrador =
           String(planExistente.estado ?? '').toLowerCase().replace(/_/g, '-') === 'borrador';
@@ -3157,6 +3281,29 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     return false;
   }
 };
+
+  /**
+   * Guarda el plan desde el asistente, de uno en uno (EFDS-2450). El autoguardado y los botones del
+   * asistente pueden pedir guardar casi al mismo tiempo; si dos peticiones creaban el plan a la vez,
+   * la segunda borraba el borrador de la primera. Cada guardado espera a que termine el anterior.
+   */
+  const handleCrearPlan = (
+    ...args: Parameters<typeof guardarPlanDelAsistente>
+  ): Promise<boolean> => {
+    const idAlPedirlo = planAEditarRef.current?.id ?? null;
+    const turno = colaGuardadoPlanRef.current.then(() => {
+      const abierto: any = planAEditarRef.current;
+      // Mientras esperaba, el asistente pudo pasar a otro plan: ese guardado ya no corresponde
+      const vigenciaAbierta = Number(abierto?.vigencia ?? abierto?.año ?? abierto?.ano);
+      const yaNoCorresponde = idAlPedirlo
+        ? abierto?.id !== idAlPedirlo
+        : !!abierto && Number.isFinite(vigenciaAbierta) && vigenciaAbierta !== Number(args[0]);
+      if (yaNoCorresponde) return false;
+      return guardarPlanDelAsistente(...args);
+    });
+    colaGuardadoPlanRef.current = turno.catch(() => undefined);
+    return turno;
+  };
   
   // ═══════════════════════════════════════════════════════════════════════
   // FUNCIÓN PARA CARGAR DATOS MOCK (COMENTADA - AHORA SE USA BACKEND)
@@ -3229,7 +3376,11 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             }}
             onCrear={handleCrearPlan}
             onGuardarBorrador={(v, j, r, fi, ff, c, o, opciones) =>
-              handleCrearPlan(v, j, r, fi, ff, c, o, { permanecerEnWizard: true, silencioso: opciones?.silencioso })
+              handleCrearPlan(v, j, r, fi, ff, c, o, {
+                permanecerEnWizard: true,
+                silencioso: opciones?.silencioso,
+                alResolverIds: opciones?.alResolverIds,
+              })
             }
             onTerminado={async () => {
               setWizardSoloLectura(false);
