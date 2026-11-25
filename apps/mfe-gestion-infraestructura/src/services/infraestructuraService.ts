@@ -585,6 +585,8 @@ export interface CategoriaServicioPayload {
   orden?: number;
   isActivo?: boolean;
   color?: string;
+  parentCodigo?: string | null;
+  idCategoriaPadre?: number | null;
 }
 
 export interface TecnicoMantenimientoPayload {
