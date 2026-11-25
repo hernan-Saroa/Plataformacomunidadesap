@@ -6898,37 +6898,87 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       return '';
     };
 
+    const fnLower = (originalname || '').toLowerCase();
+    let origenDetectado = 'MICROSOFT_PLANNER';
+    if (
+      fnLower.includes('glpi') ||
+      fnLower.includes('ticket') ||
+      fnLower.includes('incidencia') ||
+      fnLower.includes('mesa_ayuda')
+    ) {
+      origenDetectado = 'GLPI';
+    }
+
     // Detectar dinámicamente columnas de encabezado
     const colIndexes: Record<string, number> = {};
     const headerRow = sheet.getRow(1);
     headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-      const header = getCleanCell(cell).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      if (header.includes('nombre de la tarea') || header.includes('tarea') || header.includes('titulo')) {
-        colIndexes['titulo'] = colNumber;
-      } else if (header.includes('semana (normalizada)')) {
-        colIndexes['semanaNormalizada'] = colNumber;
-      } else if (header.includes('deposito') || header.includes('semana')) {
-        if (!colIndexes['deposito']) colIndexes['deposito'] = colNumber;
-      } else if (header.includes('estado') || header.includes('progreso')) {
-        colIndexes['estado'] = colNumber;
-      } else if (header.includes('asignado a') || header.includes('responsable')) {
-        colIndexes['asignado'] = colNumber;
-      } else if (header.includes('creado por') || header.includes('solicitante')) {
-        colIndexes['creadoPor'] = colNumber;
-      } else if (header.includes('completado por')) {
-        colIndexes['completadoPor'] = colNumber;
-      } else if (header.includes('fecha de creacion')) {
-        colIndexes['fechaCreacion'] = colNumber;
-      } else if (header.includes('fecha de vencimiento')) {
-        colIndexes['fechaVencimiento'] = colNumber;
-      } else if (header.includes('fecha de inicio')) {
-        colIndexes['fechaInicio'] = colNumber;
-      } else if (header.includes('fecha de finalizacion') || header.includes('completada en')) {
-        colIndexes['fechaFinalizacion'] = colNumber;
-      } else if (header.includes('cantidad de asignados')) {
-        colIndexes['cantidadAsignados'] = colNumber;
-      } else if (header.includes('id. de la tarea') || header.includes('id tarea')) {
+      const headerRaw = getCleanCell(cell);
+      const headerNorm = headerRaw
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (
+        headerNorm.includes('glpi') ||
+        headerNorm.includes('urgencia') ||
+        headerNorm.includes('impacto') ||
+        headerNorm === 'id de la incidencia' ||
+        headerNorm === 'id incidencia' ||
+        headerNorm.includes('tecnico encargado')
+      ) {
+        origenDetectado = 'GLPI';
+      }
+
+      const isIdCol =
+        headerNorm === 'id' ||
+        headerNorm === 'id.' ||
+        headerNorm === 'id de la tarea' ||
+        headerNorm === 'id tarea' ||
+        headerNorm === 'task id' ||
+        headerNorm === 'taskid' ||
+        headerNorm === 'identificador' ||
+        headerNorm === 'identificador de la tarea' ||
+        headerNorm === 'id caso' ||
+        headerNorm === 'id ticket' ||
+        headerNorm === 'ticket id' ||
+        headerNorm === 'id de la incidencia' ||
+        headerNorm === 'id incidencia' ||
+        headerNorm === 'numero' ||
+        headerNorm === 'no' ||
+        headerNorm.startsWith('id ') ||
+        headerNorm.endsWith(' id') ||
+        (headerNorm.includes('id') && (headerNorm.includes('tarea') || headerNorm.includes('task') || headerNorm.includes('ticket') || headerNorm.includes('incidencia') || headerNorm.includes('caso')));
+
+      if (isIdCol && !colIndexes['idTarea']) {
         colIndexes['idTarea'] = colNumber;
+      } else if (headerNorm.includes('nombre de la tarea') || headerNorm === 'tarea' || headerNorm === 'titulo' || headerNorm === 'asunto' || headerNorm.includes('titulo de la tarea') || headerNorm.includes('descripcion de la tarea')) {
+        if (!colIndexes['titulo']) colIndexes['titulo'] = colNumber;
+      } else if (headerNorm.includes('semana normalizada')) {
+        colIndexes['semanaNormalizada'] = colNumber;
+      } else if (headerNorm.includes('deposito') || headerNorm.includes('semana') || headerNorm.includes('bucket') || headerNorm.includes('grupo')) {
+        if (!colIndexes['deposito']) colIndexes['deposito'] = colNumber;
+      } else if (headerNorm.includes('estado') || headerNorm.includes('progreso') || headerNorm.includes('estatus')) {
+        if (!colIndexes['estado']) colIndexes['estado'] = colNumber;
+      } else if (headerNorm.includes('asignado a') || headerNorm.includes('responsable') || headerNorm.includes('tecnico encargado') || headerNorm.includes('tecnico')) {
+        if (!colIndexes['asignado']) colIndexes['asignado'] = colNumber;
+      } else if (headerNorm.includes('creado por') || headerNorm.includes('solicitante') || headerNorm.includes('autor')) {
+        if (!colIndexes['creadoPor']) colIndexes['creadoPor'] = colNumber;
+      } else if (headerNorm.includes('completado por') || headerNorm.includes('resuelto por') || headerNorm.includes('cerrado por')) {
+        if (!colIndexes['completadoPor']) colIndexes['completadoPor'] = colNumber;
+      } else if (headerNorm.includes('fecha de creacion') || headerNorm.includes('fecha de apertura') || headerNorm.includes('fecha creacion') || headerNorm.includes('fecha apertura')) {
+        colIndexes['fechaCreacion'] = colNumber;
+      } else if (headerNorm.includes('fecha de vencimiento') || headerNorm.includes('fecha limite')) {
+        colIndexes['fechaVencimiento'] = colNumber;
+      } else if (headerNorm.includes('fecha de inicio') || headerNorm.includes('fecha inicio')) {
+        colIndexes['fechaInicio'] = colNumber;
+      } else if (headerNorm.includes('fecha de finalizacion') || headerNorm.includes('fecha de resolucion') || headerNorm.includes('completada en') || headerNorm.includes('fecha cierre') || headerNorm.includes('fecha finalizacion')) {
+        colIndexes['fechaFinalizacion'] = colNumber;
+      } else if (headerNorm.includes('cantidad de asignados')) {
+        colIndexes['cantidadAsignados'] = colNumber;
       }
     });
 
@@ -6965,7 +7015,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
 
       let idTareaExterna = colIndexes['idTarea'] ? getCleanCell(row.getCell(colIndexes['idTarea'])) : '';
       if (!idTareaExterna) {
-        idTareaExterna = `PLANNER-2026-ROW-${String(r).padStart(5, '0')}`;
+        const baseNameClean = (originalname || 'EXCEL')
+          .replace(/\.[^/.]+$/, '')
+          .replace(/[^a-zA-Z0-9]/g, '_')
+          .toUpperCase()
+          .slice(0, 30);
+        idTareaExterna = `${origenDetectado}_${baseNameClean}_ROW_${String(r).padStart(5, '0')}`;
       }
 
       let estadoHomologado = 'COMPLETADO';
@@ -6977,7 +7032,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       }
 
       filasAIngresar.push({
-        origenSistema: 'MICROSOFT_PLANNER',
+        origenSistema: origenDetectado,
         idTareaExterna,
         tituloTarea: titulo,
         depositoSemana: deposito || semanaNorm,
@@ -7053,11 +7108,31 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
 
   async importarHistoricoDesdeServidor(user: AuthUser | null | undefined) {
     const fs = await import('node:fs');
-    const defaultPath = 'c:/Users/Alexander/Desktop/Dev/ESAP/Mantenimientos_Infraestructura_2026.xlsx';
-    if (!fs.existsSync(defaultPath)) {
-      throw new NotFoundException(`No se encontró el archivo de referencia en ${defaultPath}`);
+    const path = await import('node:path');
+    const candidatePaths = [
+      process.env.HISTORICO_PLANTILLA_PATH,
+      path.join(process.cwd(), 'assets', 'Mantenimientos_Infraestructura_2026.xlsx'),
+      path.join(process.cwd(), 'dist', 'assets', 'Mantenimientos_Infraestructura_2026.xlsx'),
+      path.join(process.cwd(), 'templates', 'Mantenimientos_Infraestructura_2026.xlsx'),
+      path.join(__dirname, '..', '..', 'assets', 'Mantenimientos_Infraestructura_2026.xlsx'),
+      path.join(__dirname, 'assets', 'Mantenimientos_Infraestructura_2026.xlsx'),
+      '/app/assets/Mantenimientos_Infraestructura_2026.xlsx',
+      'c:/Users/Alexander/Desktop/Dev/ESAP/Mantenimientos_Infraestructura_2026.xlsx',
+    ].filter(Boolean) as string[];
+
+    let targetPath = '';
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        targetPath = p;
+        break;
+      }
     }
-    const buffer = fs.readFileSync(defaultPath);
+    if (!targetPath) {
+      throw new NotFoundException(
+        'No se encontró el archivo de referencia institucional Mantenimientos_Infraestructura_2026.xlsx en el servidor. Puede cargarlo manualmente con el botón "Seleccionar archivo Excel".',
+      );
+    }
+    const buffer = fs.readFileSync(targetPath);
     return this.importarHistoricoExcel(buffer, 'Mantenimientos_Infraestructura_2026.xlsx', user);
   }
 
@@ -7072,6 +7147,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       solicitante?: string;
       fechaDesde?: string;
       fechaHasta?: string;
+      origen?: string;
     },
     user?: AuthUser | null,
   ) {
@@ -7084,9 +7160,13 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     if (filtros.search && filtros.search.trim().length > 0) {
       const s = `%${filtros.search.trim().toLowerCase()}%`;
       qb.andWhere(
-        '(LOWER(h.tituloTarea) ILIKE :s OR LOWER(h.asignadoATexto) ILIKE :s OR LOWER(h.creadoPorTexto) ILIKE :s OR LOWER(h.completadoPorTexto) ILIKE :s OR LOWER(h.depositoSemana) ILIKE :s)',
+        '(LOWER(h.tituloTarea) ILIKE :s OR LOWER(h.asignadoATexto) ILIKE :s OR LOWER(h.creadoPorTexto) ILIKE :s OR LOWER(h.completadoPorTexto) ILIKE :s OR LOWER(h.depositoSemana) ILIKE :s OR LOWER(h.idTareaExterna) ILIKE :s)',
         { s },
       );
+    }
+
+    if (filtros.origen && filtros.origen !== 'TODOS') {
+      qb.andWhere('h.origenSistema = :orig', { orig: filtros.origen });
     }
 
     if (filtros.semana && filtros.semana !== 'TODAS') {
@@ -7151,6 +7231,14 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       ORDER BY cantidad DESC, solicitante ASC
     `);
 
+    const origenesRaw = await this.dataSource.query(`
+      SELECT DISTINCT origen_sistema as origen, COUNT(*)::int as cantidad
+      FROM "infrastructure-management".mantenimiento_historico_externo
+      WHERE origen_sistema IS NOT NULL
+      GROUP BY origen_sistema
+      ORDER BY origen ASC
+    `);
+
     return {
       data,
       total,
@@ -7160,6 +7248,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       semanasDisponibles: semanasRaw,
       tecnicosDisponibles: tecnicosRaw,
       solicitantesDisponibles: solicitantesRaw,
+      origenesDisponibles: origenesRaw,
     };
   }
 
@@ -7193,7 +7282,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         desde: fechasResult[0]?.fechaMin || null,
         hasta: fechasResult[0]?.fechaMax || null,
       },
-      tasaCumplimiento: total > 0 ? Math.round((completados / total) * 100) : 100,
+      tasaCumplimiento: total > 0 ? Math.round((completados / total) * 100) : 0,
     };
   }
 
@@ -7208,6 +7297,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
 
     ws.columns = [
       { header: 'Fila', key: 'fila', width: 8 },
+      { header: 'Origen', key: 'origen', width: 18 },
       { header: 'Id. Tarea', key: 'idTarea', width: 25 },
       { header: 'Nombre de la tarea', key: 'titulo', width: 45 },
       { header: 'Depósito / Semana', key: 'deposito', width: 28 },
@@ -7231,9 +7321,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     if (filtros?.search && String(filtros.search).trim().length > 0) {
       const s = `%${String(filtros.search).trim().toLowerCase()}%`;
       qb.andWhere(
-        '(LOWER(h.tituloTarea) ILIKE :s OR LOWER(h.asignadoATexto) ILIKE :s OR LOWER(h.creadoPorTexto) ILIKE :s OR LOWER(h.completadoPorTexto) ILIKE :s OR LOWER(h.depositoSemana) ILIKE :s)',
+        '(LOWER(h.tituloTarea) ILIKE :s OR LOWER(h.asignadoATexto) ILIKE :s OR LOWER(h.creadoPorTexto) ILIKE :s OR LOWER(h.completadoPorTexto) ILIKE :s OR LOWER(h.depositoSemana) ILIKE :s OR LOWER(h.idTareaExterna) ILIKE :s)',
         { s },
       );
+    }
+    if (filtros?.origen && filtros.origen !== 'TODOS') {
+      qb.andWhere('h.origenSistema = :orig', { orig: filtros.origen });
     }
     if (filtros?.semana && filtros.semana !== 'TODAS') {
       qb.andWhere('(h.semanaNormalizada = :sem OR h.depositoSemana = :sem)', { sem: filtros.semana });
@@ -7270,6 +7363,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     for (const it of items) {
       ws.addRow({
         fila: it.numeroFilaOrigen || '',
+        origen: it.origenSistema === 'GLPI' ? 'GLPI' : 'Microsoft Planner',
         idTarea: it.idTareaExterna,
         titulo: it.tituloTarea,
         deposito: it.semanaNormalizada || it.depositoSemana,
@@ -7293,6 +7387,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
   }
 
   async vaciarHistorico(user?: AuthUser | null): Promise<{ eliminados: number }> {
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) {
+      throw new ForbiddenException(
+        vrUser.errorMsg || 'Solo un rol administrador o coordinador de mantenimiento puede vaciar el repositorio histórico.',
+      );
+    }
     const count = await this.getHistoricoRepo().count();
     await this.dataSource.query(`TRUNCATE TABLE "infrastructure-management".mantenimiento_historico_externo RESTART IDENTITY CASCADE;`);
     return { eliminados: count };
