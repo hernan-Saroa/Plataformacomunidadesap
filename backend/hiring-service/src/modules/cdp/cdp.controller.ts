@@ -78,6 +78,31 @@ export class CdpController {
     return this.service.cargar(procesoId, dto, { archivo: file, hash }, getHiringAccess(req));
   }
 
+  @Put('cargue')
+  @Puede('editar', '4.2')
+  @UseInterceptors(
+    FileInterceptor(
+      'file',
+      opcionesDeCarga(MIME_DOCUMENTOS, 'Solo se admiten archivos PDF, Word o Excel'),
+    ),
+  )
+  @ApiOperation({
+    summary: 'Actividad 4.2 · Corregir el CDP cargado',
+    description:
+      'Con la 4.2 retirada de aprobación o devuelta: reemplaza los datos y, si llega, el certificado, y la vuelve a enviar.',
+  })
+  async corregir(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @UploadedFile() file: any,
+    @Body() dto: CargarCdpDto,
+    @Req() req: any,
+  ) {
+    const soporte = file
+      ? { archivo: file, hash: await sha256Archivo(join(STORAGE_PATH, file.filename)) }
+      : null;
+    return this.service.corregir(procesoId, dto, soporte, getHiringAccess(req));
+  }
+
   @Post('documento')
   @Puede('editar', '4.2')
   @UseInterceptors(
@@ -96,7 +121,7 @@ export class CdpController {
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
-    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    if (!file) throw new BadRequestException('Adjunta el archivo: no llegó ninguno');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
     return this.service.adjuntarSoporte(procesoId, file, hash, getHiringAccess(req));
   }

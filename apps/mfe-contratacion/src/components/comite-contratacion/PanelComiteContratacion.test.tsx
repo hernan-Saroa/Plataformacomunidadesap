@@ -145,29 +145,26 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
     await userEvent.click(
       await screen.findByRole('button', { name: /Registrar lo que decidió el comité/ }),
     );
+    await userEvent.selectOptions(screen.getByLabelText(/Qué decidió/), 'OBSERVADO');
 
     expect(screen.getByLabelText(/3.1 · Estudio previo/)).toBeInTheDocument();
     expect(screen.getByLabelText(/3.6 · Causal/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/3.5 · Modalidad/)).toBeNull();
   });
 
-  /**
-   * Reabrir sin frenar el proceso: el comité avala, pero quiere que le
-   * validen un punto.
-   */
-  it('aprobar también deja reabrir, y entonces pide qué hay que validar', async () => {
+  /** Si el comité aprueba es que todo está bien: la 3.1 no se vuelve a abrir. */
+  it('aprobar no ofrece reabrir nada', async () => {
     pintar(estado({ puedeRegistrar: true }));
 
     await userEvent.click(
       await screen.findByRole('button', { name: /Registrar lo que decidió el comité/ }),
     );
 
-    expect(screen.getByText(/Reabrir para validación/)).toBeInTheDocument();
-    // Sin marcar nada no hay nada que validar, así que el campo no está.
-    expect(screen.queryByLabelText(/Qué hay que validar/)).toBeNull();
+    expect(screen.queryByLabelText(/3.1 · Estudio previo/)).toBeNull();
+    expect(screen.queryByText(/A qué actividades vuelve el proceso/)).toBeNull();
 
-    await userEvent.click(screen.getByLabelText(/3.5 · Modalidad/));
-    expect(screen.getByLabelText(/Qué hay que validar/)).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText(/Qué decidió/), 'APROBADO_CON_CONDICIONES');
+    expect(screen.queryByLabelText(/3.1 · Estudio previo/)).toBeNull();
   });
 
   it('registra la sesión con los numerales marcados cuando el comité observa', async () => {
@@ -236,7 +233,7 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
     await userEvent.selectOptions(screen.getByLabelText(/Qué decidió/), 'RECHAZADO');
 
     expect(screen.queryByLabelText(/3.1 · Estudio previo/)).toBeNull();
-    expect(screen.queryByText(/Reabrir para validación/)).toBeNull();
+    expect(screen.queryByText(/A qué actividades vuelve el proceso/)).toBeNull();
   });
 
   it('registra el rechazo con su motivo', async () => {
@@ -306,6 +303,9 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
     );
 
     expect(screen.getByLabelText(/A qué queda condicionada/)).toBeInTheDocument();
+    // Dice qué pasa al registrarla y no ofrece reabrir nada (AJU-004).
+    expect(screen.getByText(/fue aprobado con condiciones/)).toBeInTheDocument();
+    expect(screen.queryByText(/A qué actividades vuelve el proceso/)).toBeNull();
   });
 
   it('aprobar sin más no pide texto, y el acta puede llegar después', async () => {
@@ -369,6 +369,7 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
 
     expect(await screen.findByText(/Aprobado con condiciones/)).toBeInTheDocument();
     expect(screen.getByText(/Ajustar el análisis del sector/)).toBeInTheDocument();
+    expect(screen.getByText('Hay condiciones por atender')).toBeInTheDocument();
   });
 
   it('guarda el historial: dos sesiones explican por qué el proceso tardó', async () => {

@@ -44,6 +44,8 @@ export interface ConfiguracionOCI {
   idTercero: string;    // id_person UUID (para el backend)
   rolOCI: string;
   rolOCIG?: string;
+  /** Roles además del principal, p. ej. el Jefe OCI que también audita (EFDS-2452) */
+  rolesAdicionales?: string[];
   especialidades: string[];
   capacidadMaximaAuditorias: number;
   horasMensualesDisponibles: number;
@@ -181,6 +183,9 @@ function convertirConfigBackendALocal(config: ConfigBackend): ConfiguracionOCI {
     idTercero: String(config.idTercero),
     rolOCI,
     rolOCIG: rolOCI,
+    rolesAdicionales: (config.rolesAdicionales ?? [])
+      .map((rol) => String(normalizarRolOcigOperativo(rol)))
+      .filter((rol, i, arr) => rol !== rolOCI && arr.indexOf(rol) === i),
     especialidades: config.especialidades,
     capacidadMaximaAuditorias: config.capacidadMaximaAuditorias,
     horasMensualesDisponibles: config.horasMensualesDisponibles,
@@ -484,6 +489,7 @@ export function useConfiguracionProfesionales() {
       const response = await configuracionesProfesionalesOCIApi.create({
         idTercero: config.idTercero,
         rolOcig: config.rolOCIG ?? config.rolOCI,
+        rolesAdicionales: config.rolesAdicionales ?? [],
         especialidades: config.especialidades,
         capacidadMaximaAuditorias: config.capacidadMaximaAuditorias,
         horasMensualesDisponibles: config.horasMensualesDisponibles,
@@ -519,6 +525,8 @@ export function useConfiguracionProfesionales() {
 
       const response = await configuracionesProfesionalesOCIApi.update(configActual.id, {
         rolOcig: cambios.rolOCIG ?? cambios.rolOCI,
+        // Se envían solo si el formulario los trae; si no, el backend conserva los que tenga (EFDS-2452)
+        rolesAdicionales: cambios.rolesAdicionales,
         especialidades: cambios.especialidades,
         capacidadMaximaAuditorias: cambios.capacidadMaximaAuditorias,
         horasMensualesDisponibles: cambios.horasMensualesDisponibles,

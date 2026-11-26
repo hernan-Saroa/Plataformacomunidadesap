@@ -72,39 +72,83 @@ describe('Nombres de actores documentales RUND', () => {
     expect(service.dataSource.query).toHaveBeenCalledTimes(4);
   });
 
-  it('agrega el nombre a la trazabilidad sin reescribir registros históricos', async () => {
+  const row = (over: Record<string, any>) => ({
+    id: 'log', docente_id: 'docente', bloque: 'GENERAL', accion: 'CARGAR_DOCUMENTO', actor_id: author, canal_origen: null,
+    campo_afectado: null, dato_previo: null, dato_nuevo: null, observacion: null, soporte_id: null, ip: null,
+    metadata: null, created_at_real: new Date('2026-11-19T19:07:48Z'), ...over,
+  });
+  /** dataSource falso: las consultas a RundAprobacionLog devuelven las filas indicadas y el resto resuelve nombres. */
+  function auditService(actions: any[], consultations: any[] = [], docente: any = { id: 'docente' }) {
     const service = Object.create(BancoDocentesService.prototype) as any;
     service.resolveDocenteId = jest.fn().mockResolvedValue('docente');
-    const log = { id: 'log', actorId: author, accion: 'CARGAR_DOCUMENTO' };
-    service.docenteRepo = { findOne: jest.fn().mockResolvedValue({ id: 'docente' }) };
-    service.auditLogRepo = { find: jest.fn().mockResolvedValueOnce([log]).mockResolvedValueOnce([]) };
-    service.dataSource = { query: jest.fn().mockResolvedValue([{ actor_id: author, nombre: 'Gestor Documental' }]) };
-    expect(await service.getAuditoria('docente')).toEqual([{ ...log, cambios: [], actorNombre: 'Gestor Documental' }]);
-    expect(log).not.toHaveProperty('actorNombre');
-    expect(log).not.toHaveProperty('cambios');
+    service.docenteRepo = { findOne: jest.fn().mockResolvedValue(docente) };
+    service.dataSource = {
+      query: jest.fn(async (sql: string) => {
+        if (!String(sql).includes('RundAprobacionLog')) return [{ actor_id: author, nombre: 'Gestor Documental' }];
+        return String(sql).includes('accion = $2') ? consultations : actions;
+      }),
+    };
+    return service;
+  }
+  const auditCalls = (service: any) => service.dataSource.query.mock.calls.filter(([sql]: any[]) => String(sql).includes('RundAprobacionLog'));
+
+  it('agrega el nombre a la trazabilidad sin reescribir registros históricos', async () => {
+    const service = auditService([row({})]);
+    const [entry] = await service.getAuditoria('docente');
+    expect(entry).toMatchObject({ id: 'log', docenteId: 'docente', accion: 'CARGAR_DOCUMENTO', actorId: author,
+      actorNombre: 'Gestor Documental', cambios: [], metadata: {} });
   });
 
   it('un docente inexistente responde 404 en lugar de un historial vacío', async () => {
-    const service = Object.create(BancoDocentesService.prototype) as any;
-    service.resolveDocenteId = jest.fn().mockResolvedValue('no-existe');
-    service.docenteRepo = { findOne: jest.fn().mockResolvedValue(null) };
-    service.auditLogRepo = { find: jest.fn() };
+    const service = auditService([], [], null);
     await expect(service.getAuditoria('no-existe')).rejects.toThrow('no encontrado');
-    expect(service.auditLogRepo.find).not.toHaveBeenCalled();
+    expect(auditCalls(service)).toHaveLength(0);
   });
 
   it('mantiene visibles las ediciones aunque haya muchas consultas sensibles más recientes', async () => {
-    const service = Object.create(BancoDocentesService.prototype) as any;
-    service.resolveDocenteId = jest.fn().mockResolvedValue('docente');
-    service.docenteRepo = { findOne: jest.fn().mockResolvedValue({ id: 'docente' }) };
-    const edit = { id: 'e', actorId: author, accion: 'EDITAR', createdAt: new Date('2026-11-10T10:00:00Z') };
-    const consult = { id: 'c', actorId: author, accion: 'CONSULTAR_DATOS_SENSIBLES', createdAt: new Date('2026-11-10T11:00:00Z') };
-    service.auditLogRepo = { find: jest.fn().mockResolvedValueOnce([edit]).mockResolvedValueOnce([consult]) };
-    service.dataSource = { query: jest.fn().mockResolvedValue([]) };
+    const service = auditService(
+      [row({ id: 'e', accion: 'EDITAR', created_at_real: new Date('2026-11-10T10:00:00Z') })],
+      [row({ id: 'c', accion: 'CONSULTAR_DATOS_SENSIBLES', created_at_real: new Date('2026-11-10T11:00:00Z') })],
+    );
     const rows = await service.getAuditoria('docente');
     expect(rows.map((r: any) => r.id)).toEqual(['c', 'e']);
-    const [[actionsQuery], [consultQuery]] = service.auditLogRepo.find.mock.calls;
-    expect(actionsQuery.take).toBe(50);
-    expect(consultQuery.take).toBe(20);
+    const params = auditCalls(service).map(([, p]: any[]) => p);
+    expect(params).toEqual(expect.arrayContaining([['docente', 'CONSULTAR_DATOS_SENSIBLES', 50], ['docente', 'CONSULTAR_DATOS_SENSIBLES', 20]]));
+  });
+
+  it('lee la hora como instante real en la zona de la base, sin depender de la zona del proceso (hora 5 h antes en QA)', async () => {
+    const service = auditService([row({ accion: 'EDITAR' })]);
+    await service.getAuditoria('docente');
+    expect(auditCalls(service)).toHaveLength(2);
+    for (const [sql] of auditCalls(service)) {
+      expect(sql).toContain(`"createdAt" AT TIME ZONE current_setting('TIMEZONE')`);
+      // Se ordena por la columna original para seguir usando el índice (docente_id, createdAt).
+      expect(sql).toContain('ORDER BY "createdAt" DESC');
+    }
+  });
+
+  it('entrega la fecha con el instante exacto que devolvió la base', async () => {
+    const instant = new Date('2026-11-19T19:07:48.000Z'); // 14:07:48 en Bogotá
+    const service = auditService([row({ created_at_real: instant })]);
+    const [entry] = await service.getAuditoria('docente');
+    expect(entry.createdAt).toBe(instant);
+    expect(new Date(entry.createdAt).toISOString()).toBe('2026-11-19T19:07:48.000Z');
+  });
+
+  it('ordena de más reciente a más antigua mezclando acciones y consultas', async () => {
+    const service = auditService(
+      [row({ id: 'a2', created_at_real: new Date('2026-11-19T19:00:00Z') }), row({ id: 'a1', created_at_real: new Date('2026-11-19T17:00:00Z') })],
+      [row({ id: 'c1', accion: 'CONSULTAR_DATOS_SENSIBLES', created_at_real: new Date('2026-11-19T18:00:00Z') })],
+    );
+    expect((await service.getAuditoria('docente')).map((r: any) => r.id)).toEqual(['a2', 'c1', 'a1']);
+  });
+
+  it('respeta el límite pedido para las acciones y conserva los cambios por campo', async () => {
+    const service = auditService([row({ accion: 'EDITAR', campo_afectado: 'dedicacion', dato_previo: 'TC', dato_nuevo: 'HC',
+      metadata: { cambios: { dedicacion: { anterior: 'TC', nuevo: 'HC' } } } })]);
+    const [entry] = await service.getAuditoria('docente', 10);
+    expect(auditCalls(service).map(([, p]: any[]) => p[2]).sort((a: number, b: number) => a - b)).toEqual([10, 20]);
+    expect(entry.cambios).toEqual([{ campo: 'dedicacion', anterior: 'TC', nuevo: 'HC' }]);
+    expect(entry).toMatchObject({ datoPrevio: 'TC', datoNuevo: 'HC', campoAfectado: 'dedicacion' });
   });
 });

@@ -11,7 +11,7 @@ import { bulkRegistrationTrace, registrationSnapshot, RundRegistrationHistory } 
 import { convocatoriaName, convocatoriaKey, convocatoriaPeriod, CONVOCATORIA_MEMBERS_SQL } from './rund-convocatorias';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Like, Not, Repository } from 'typeorm';
+import { DataSource, Like, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { DocenteEntity } from '../entities/docente.entity';
@@ -21,6 +21,10 @@ import { BancoDocenteInvitacionEntity } from '../entities/banco-docente-invitaci
 import { RundAprobacionLogEntity } from '../entities/rund-aprobacion-log.entity';
 import { auditCambios, singleFieldAuditValues } from './rund-audit-cambios';
 import { clearsObservaciones, countsAsFieldChange } from './rund-campo-vacio';
+import { leerAuditoriaRund } from './rund-auditoria-lectura';
+import { DEDICACION_LABELS, resolveDedicacionDisplay } from './rund-dedicacion';
+
+import { cambiosDeCreacion, columnasCargaModificadas, describirCambio } from './rund-audit-detalle';
 import { sanitizeText } from '../utils/text-sanitizer';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../catalogos/territoriales-cetaps-esap';
 import { findRundSensitiveFields, maskIdentityDocument, protectRundSensitiveData } from './banco-docentes-sensitive-data';
@@ -35,6 +39,8 @@ import {
   diasRestantesPrueba, esVinculacionPrueba, fechaCumplimientoPrueba, hoyColombia, pendienteDecisionComite, soloFecha,
   validarDecisionComite, type DecisionPeriodoPrueba,
 } from './rund-periodo-prueba';
+import { cicloDocenteInfo } from './rund-ciclo-docente';
+import { RundCicloDocente } from './rund-ciclo-docente.workflow';
 import { hasRundData as hasRundDataValue } from './rund-evidence-data';
 import { deducirTitulosAdicionales } from './rund-perfil-titulos';
 import { acceptedPrivacyPolicy, rundPrivacyPolicy } from './rund-privacy-policy';
@@ -226,12 +232,14 @@ function isSupportedDedicacion(value: any): boolean {
 }
 
 export function getDedicacionLabel(code: any, fallback?: any): string | null {
-  const fb = toCleanString(fallback);
-  if (fb) return fb;
+  // Filas editadas antes de esta corrección guardaron el código («HC») o el texto anterior como etiqueta;
+  // se devuelve el texto oficial del código vigente sin reescribir el dato guardado.
+  const resolved = resolveDedicacionDisplay(code, null, fallback);
+  if (resolved) return resolved;
   const n = normalizeDedicacionCode(code);
-  if (n === 'MT') return 'Medio Tiempo';
-  if (n === 'HC') return 'Hora CÃ¡tedra';
-  if (n === 'TC') return 'Tiempo Completo';
+  if (n === 'MT') return DEDICACION_LABELS.MT;
+  if (n === 'HC') return DEDICACION_LABELS.HC;
+  if (n === 'TC') return DEDICACION_LABELS.TC;
   return toCleanString(code);
 }
 
@@ -910,6 +918,7 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
     idRund: docente.idRund ?? null,
     // BR-047 â€” Approval state
     estadoAprobacion: docente.estadoAprobacion ?? 'PENDIENTE_APROBACION',
+    ciclo: cicloDocenteInfo({ estado: docente.estado, estadoAprobacion: docente.estadoAprobacion, decision: docente.decisionComiteIncorporacion }),
     completitud: docente.completitud ?? {},
     // Â§6 â€” Canal de origen
     canal_origen: docente.canalOrigen ?? 'MASIVO',
@@ -999,6 +1008,7 @@ function buildAuthBancoDocenteResponse(row: any) {
     id_rund: row.id_rund || row.idRund || null,
     idRund: row.id_rund || row.idRund || null,
     estadoAprobacion: row.estado_aprobacion || 'PENDIENTE_APROBACION',
+    ciclo: cicloDocenteInfo({ estado: row.estado_efectivo || row.estado || (row.activo ? 'ACTIVO' : 'INACTIVO'), estadoAprobacion: row.estado_aprobacion, decision: row.decision_comite_incorporacion }),
     completitud: row.completitud || {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1007,7 +1017,6 @@ function buildAuthBancoDocenteResponse(row: any) {
 
 // â”€â”€â”€ service â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const RUND_CONSULTA_SENSIBLE = 'CONSULTAR_DATOS_SENSIBLES';
 const RUND_AUDITORIA_CONSULTAS = 20;
 
 @Injectable()
@@ -1045,7 +1054,29 @@ export class BancoDocentesService implements OnModuleInit {
           ADD COLUMN IF NOT EXISTS "claseDocente" TEXT,
           ADD COLUMN IF NOT EXISTS "titulosAdicionales" JSONB,
           ADD COLUMN IF NOT EXISTS "decisionPeriodoPrueba" JSONB,
+          ADD COLUMN IF NOT EXISTS "decisionComiteIncorporacion" JSONB,
           ADD COLUMN IF NOT EXISTS "eliminadoRund" BOOLEAN NOT NULL DEFAULT false
+      `);
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS academic_work_plan."RundRecategorizacion" (
+          id UUID PRIMARY KEY,
+          docente_id TEXT NOT NULL,
+          estado TEXT NOT NULL,
+          justificacion TEXT NOT NULL,
+          propuesta JSONB NOT NULL DEFAULT '{}'::jsonb,
+          soporte_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+          revision JSONB,
+          decision_comite JSONB,
+          aplicado JSONB,
+          creado_por TEXT NOT NULL,
+          "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+          "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+      `);
+      await this.dataSource.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_rund_recategorizacion_abierta
+        ON academic_work_plan."RundRecategorizacion" (docente_id)
+        WHERE estado IN ('EN_REVISION', 'EN_COMITE')
       `);
       await this.dataSource.query(`DROP INDEX IF EXISTS academic_work_plan."Docente_personaId_key"`);
       await this.dataSource.query(`
@@ -1259,6 +1290,7 @@ export class BancoDocentesService implements OnModuleInit {
           d."fechaInicioVinculacion" AS inicio_vinculacion,
           d."fechaFinVinculacion" AS fin_vinculacion,
           d."decisionPeriodoPrueba" AS decision_periodo_prueba,
+          d."decisionComiteIncorporacion" AS decision_comite_incorporacion,
           d."puntajeSalarial" AS puntaje_salarial,
           d."edadReferencia" AS edad_referencia,
           d."rangoEdad" AS rango_edad,
@@ -2085,17 +2117,18 @@ export class BancoDocentesService implements OnModuleInit {
         estado: payload.estado,
         ordenListado: payload.orderIndex ?? existingDocente?.ordenListado ?? null,
         vinculacionDisplay: payload.vinculacionLabel ?? existingDocente?.vinculacionDisplay ?? null,
-        dedicacionDisplay: payload.dedicacionLabel ?? existingDocente?.dedicacionDisplay ?? null,
+        dedicacionDisplay: resolveDedicacionDisplay(payload.dedicacion, payload.dedicacionLabel, existingDocente?.dedicacionDisplay),
         dedicacionHorasSemana: payload.dedicacionHorasSemana ?? existingDocente?.dedicacionHorasSemana ?? null,
         nucleoTematico: payload.nucleoTematico ?? existingDocente?.nucleoTematico ?? null,
         nivelFormacion: payload.nivelFormacion ?? existingDocente?.nivelFormacion ?? null,
         perfilAcademicoPro: payload.perfilAcademicoPro ?? existingDocente?.perfilAcademicoPro ?? null,
         perfilAcademico: payload.perfilAcademico ?? existingDocente?.perfilAcademico ?? null,
-        pregrado: payload.pregrado ?? existingDocente?.pregrado ?? null,
-        especializacion: payload.especializacion ?? existingDocente?.especializacion ?? null,
-        maestria: payload.maestria ?? existingDocente?.maestria ?? null,
-        doctorado: payload.doctorado ?? existingDocente?.doctorado ?? null,
-        posDoctorado: payload.posDoctorado ?? existingDocente?.posDoctorado ?? null,
+        // En la carga masiva, si la columna trae varios títulos del nivel solo el primero es el precargado.
+        pregrado: deduccionTitulos?.principales.pregrado ?? payload.pregrado ?? existingDocente?.pregrado ?? null,
+        especializacion: deduccionTitulos?.principales.especializacion ?? payload.especializacion ?? existingDocente?.especializacion ?? null,
+        maestria: deduccionTitulos?.principales.maestria ?? payload.maestria ?? existingDocente?.maestria ?? null,
+        doctorado: deduccionTitulos?.principales.doctorado ?? payload.doctorado ?? existingDocente?.doctorado ?? null,
+        posDoctorado: deduccionTitulos?.principales.posDoctorado ?? payload.posDoctorado ?? existingDocente?.posDoctorado ?? null,
         titulosAdicionales: resolverTitulosAdicionales(deduccionTitulos ? deduccionTitulos.adicionales : payload.titulosAdicionales, existingDocente?.titulosAdicionales),
         investigacion: payload.investigacion ?? existingDocente?.investigacion ?? null,
         origenVinculacion: payload.origenVinculacion ?? existingDocente?.origenVinculacion ?? null,
@@ -2124,9 +2157,15 @@ export class BancoDocentesService implements OnModuleInit {
       let docente: DocenteEntity;
       let action = existingDocente ? 'update' : 'insert';
       const changedFields: string[] = [];
+      let columnasCarga: string[] = [];
       
       if (!existingDocente) {
         docente = await manager.save(DocenteEntity, manager.create(DocenteEntity, docenteData));
+        // NF002: crear también deja cada dato registrado (anterior vacío → valor nuevo) en el log inmutable.
+        const creacion = cambiosDeCreacion(docenteData as Record<string, unknown>);
+        Object.assign(profileChanges, creacion);
+        changedFields.push(...Object.keys(creacion));
+        if (creacion.datosCargaMasiva) columnasCarga = columnasCargaModificadas(null, docenteData.datosCargaMasiva);
       } else {
         let hasChanges = false;
         const fieldsToCheck: (keyof DocenteEntity)[] = ['tipoVinculacion', 'dedicacion', 'escalafon', 'horasAsignables', 'claseDocente', 'estado', 'ordenListado', 'vinculacionDisplay', 'dedicacionDisplay', 'dedicacionHorasSemana', 'nucleoTematico', 'nivelFormacion', 'perfilAcademicoPro', 'perfilAcademico', 'pregrado', 'especializacion', 'maestria', 'doctorado', 'posDoctorado', 'titulosAdicionales', 'investigacion', 'origenVinculacion', 'actoAdministrativoVinculacion', 'correoInstitucional', 'correoAlternativo', 'sexoBiologico', 'ultimaEvaluacion', 'situacionAdministrativa', 'situacionCategoria', 'fechaInicioVinculacion', 'fechaFinVinculacion', 'puntajeSalarial', 'edadReferencia', 'rangoEdad', 'regimenNormativo', 'periodoCarga', 'observaciones', 'idRund'];
@@ -2139,9 +2178,8 @@ export class BancoDocentesService implements OnModuleInit {
           if (countsAsFieldChange(String(field), newVal, changed, clearObservaciones)) {
             hasChanges = true;
             changedFields.push(String(field));
-            profileChanges[String(field)] = field === 'puntajeSalarial' || field === 'datosCargaMasiva'
-              ? { anterior: '[PROTEGIDO]', nuevo: '[PROTEGIDO]' }
-              : { anterior: oldVal ?? null, nuevo: newVal ?? null };
+            profileChanges[String(field)] = describirCambio(String(field), oldVal, newVal);
+            if (field === 'datosCargaMasiva') columnasCarga = columnasCargaModificadas(oldVal, newVal);
           }
         }
         
@@ -2225,9 +2263,9 @@ export class BancoDocentesService implements OnModuleInit {
           accion: auditAction,
           actorId: options.audit.actorId,
           canalOrigen: options.audit.canalOrigen,
-          campoAfectado: action === 'insert' ? undefined : [...personaChangedFields, ...changedFields].join(','),
+          campoAfectado: [...personaChangedFields, ...changedFields].join(',') || undefined,
           // NF002: con un solo campo modificado, valor anterior y nuevo quedan también en sus columnas.
-          ...(action === 'insert' ? {} : singleFieldAuditValues(profileChanges)),
+          ...singleFieldAuditValues(profileChanges),
           observacion: options.audit.observacion,
           soporteId: options.audit.soporteId,
           ip: options.audit.ip,
@@ -2239,7 +2277,9 @@ export class BancoDocentesService implements OnModuleInit {
             camposModificados: action === 'insert'
               ? ['num_identificacion', ...Object.keys(docenteData)]
               : [...personaChangedFields, ...changedFields],
-            cambios: action === 'insert' ? undefined : profileChanges,
+            cambios: profileChanges,
+
+            ...(columnasCarga.length ? { columnasCargaModificadas: columnasCarga } : {}),
           },
         });
       }
@@ -2286,6 +2326,8 @@ export class BancoDocentesService implements OnModuleInit {
         territorialNombre: payload.territorialNombre || territorial?.nombre || null,
         authUserCreated,
         titulosDeducidos: deduccionTitulos?.deducidos ?? 0,
+        titulosReconocidos: deduccionTitulos?.reconocidos ?? 0,
+        perfilSinTitulos: deduccionTitulos ? deduccionTitulos.reconocidos === 0 && deduccionTitulos.sinClasificar.length === 0 : false,
         titulosSinClasificar: deduccionTitulos?.sinClasificar ?? [],
         welcomeEmail: { sent: false, skipped: !authUserCreated },
         message: action === 'insert' ? 'Docente creado correctamente.' : action === 'unchanged' ? 'Docente ya existe sin cambios.' : 'Docente actualizado correctamente.',
@@ -2534,6 +2576,8 @@ export class BancoDocentesService implements OnModuleInit {
       updated: finalResults.filter((r) => r.action === 'update').length,
       unchanged: finalResults.filter((r) => r.action === 'unchanged').length,
       titulosDeducidos: finalResults.reduce((total, r) => total + (r.titulosDeducidos || 0), 0),
+      titulosReconocidos: finalResults.reduce((total, r) => total + (r.titulosReconocidos || 0), 0),
+      filasSinTitulosEnPerfil: finalResults.filter((r) => r.perfilSinTitulos).length,
       titulosSinClasificar: finalResults.reduce((total, r) => total + (r.titulosSinClasificar?.length || 0), 0),
       errors: finalErrors.length,
       results: finalResults,
@@ -2893,6 +2937,31 @@ export class BancoDocentesService implements OnModuleInit {
       return this.dataSource.transaction(execute);
     }
     return execute({ query: this.dataSource.query.bind(this.dataSource), findOne: (_e: unknown, o: any) => this.docenteRepo.findOne(o), save: (_e: unknown, d: any) => this.docenteRepo.save(d) });
+  }
+
+  /** HU 2349 — Decisión del Comité Docente para la incorporación: Validado – Cumple → Apto para incorporación / Activo. */
+  async registrarDecisionIncorporacion(id: string, body: any, actorId: string, ip?: string) {
+    const docenteId = await this.resolveDocenteId(id, body?.periodoCarga || body?.periodo_carga || undefined);
+    return new RundCicloDocente(this.dataSource).registrarDecisionIncorporacion(docenteId, body, { actorId, ip });
+  }
+
+  async listarRecategorizaciones(id: string, periodoCarga?: string) {
+    return new RundCicloDocente(this.dataSource).listarRecategorizaciones(await this.resolveDocenteId(id, periodoCarga));
+  }
+
+  async iniciarRecategorizacion(id: string, body: any, actorId: string, ip?: string) {
+    const docenteId = await this.resolveDocenteId(id, body?.periodoCarga || body?.periodo_carga || undefined);
+    return new RundCicloDocente(this.dataSource).iniciarRecategorizacion(docenteId, body, { actorId, ip });
+  }
+
+  async revisarRecategorizacion(id: string, recategorizacionId: string, body: any, actorId: string, ip?: string) {
+    const docenteId = await this.resolveDocenteId(id, body?.periodoCarga || body?.periodo_carga || undefined);
+    return new RundCicloDocente(this.dataSource).revisarRecategorizacion(docenteId, recategorizacionId, body, { actorId, ip });
+  }
+
+  async decidirRecategorizacion(id: string, recategorizacionId: string, body: any, actorId: string, ip?: string) {
+    const docenteId = await this.resolveDocenteId(id, body?.periodoCarga || body?.periodo_carga || undefined);
+    return new RundCicloDocente(this.dataSource).decidirRecategorizacion(docenteId, recategorizacionId, body, { actorId, ip });
   }
 
   async guardarIncorporacion(id: string, body: any, actorId: string, ip?: string) {
@@ -3930,56 +3999,59 @@ export class BancoDocentesService implements OnModuleInit {
 
     const { randomUUID } = require('crypto');
     const newId = randomUUID();
-
-    const existing = await this.dataSource.query(
-      `SELECT id FROM academic_work_plan."RundSoporteCampo" WHERE docente_id = $1 AND tipo_soporte = $2 ORDER BY "createdAt" ASC`,
-      [docenteId, data.tipoSoporte]
-    );
-
-    let id = newId;
     const soporteHistorico = ['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(data.tipoSoporte);
-    if (existing.length > 0 && !soporteHistorico) {
-      id = existing[0].id;
-      await this.dataSource.query(
-        `UPDATE academic_work_plan."RundSoporteCampo" 
-         SET documento_carpeta_id = $1, nombre_archivo = COALESCE($2, nombre_archivo), cargado_por = $3, estado = 'Pendiente', observacion = NULL, revisiones_campos = '{}'::jsonb, "updatedAt" = NOW()
-         WHERE id = $4`,
-        [data.documentoCarpetaId || null, data.nombreArchivo || null, data.cargadoPor || 'SYSTEM', id]
+    // Soporte, estado del bloque y auditoría se confirman juntos: sin rastro en el log inmutable no hay cambio (NF002).
+    const id = await this.dataSource.transaction(async (manager) => {
+      const existing = await manager.query(
+        `SELECT id FROM academic_work_plan."RundSoporteCampo" WHERE docente_id = $1 AND tipo_soporte = $2 ORDER BY "createdAt" ASC`,
+        [docenteId, data.tipoSoporte]
       );
+
+      let id = newId;
+      if (existing.length > 0 && !soporteHistorico) {
+        id = existing[0].id;
+        await manager.query(
+          `UPDATE academic_work_plan."RundSoporteCampo" 
+           SET documento_carpeta_id = $1, nombre_archivo = COALESCE($2, nombre_archivo), cargado_por = $3, estado = 'Pendiente', observacion = NULL, revisiones_campos = '{}'::jsonb, "updatedAt" = NOW()
+           WHERE id = $4`,
+          [data.documentoCarpetaId || null, data.nombreArchivo || null, data.cargadoPor || 'SYSTEM', id]
+        );
       
-      // Clean up duplicate rows if they exist
-      if (existing.length > 1) {
-        const duplicateIds = existing.slice(1).map((r: any) => r.id);
-        await this.dataSource.query(
-          `DELETE FROM academic_work_plan."RundSoporteCampo" WHERE id = ANY($1)`,
-          [duplicateIds]
+        // Clean up duplicate rows if they exist
+        if (existing.length > 1) {
+          const duplicateIds = existing.slice(1).map((r: any) => r.id);
+          await manager.query(
+            `DELETE FROM academic_work_plan."RundSoporteCampo" WHERE id = ANY($1)`,
+            [duplicateIds]
+          );
+        }
+      } else {
+        await manager.query(
+          `INSERT INTO academic_work_plan."RundSoporteCampo" 
+           (id, docente_id, bloque, tipo_soporte, documento_carpeta_id, nombre_archivo, estado, cargado_por, "createdAt")
+           VALUES ($1, $2, $3, $4, $5, $6, 'Pendiente', $7, NOW())`,
+          [id, docenteId, bloqueUpper, data.tipoSoporte, data.documentoCarpetaId || null, data.nombreArchivo || null, data.cargadoPor || 'SYSTEM']
         );
       }
-    } else {
-      await this.dataSource.query(
-        `INSERT INTO academic_work_plan."RundSoporteCampo" 
-         (id, docente_id, bloque, tipo_soporte, documento_carpeta_id, nombre_archivo, estado, cargado_por, "createdAt")
-         VALUES ($1, $2, $3, $4, $5, $6, 'Pendiente', $7, NOW())`,
-        [id, docenteId, bloqueUpper, data.tipoSoporte, data.documentoCarpetaId || null, data.nombreArchivo || null, data.cargadoPor || 'SYSTEM']
+
+      // Actualizar estado del bloque de 'Soporte faltante' a 'Pendiente'
+      await manager.query(
+        `UPDATE academic_work_plan."RundCampoEstado" 
+         SET estado = CASE WHEN estado = 'Soporte faltante' THEN 'Pendiente' ELSE estado END, "updatedAt" = NOW()
+         WHERE docente_id = $1 AND bloque = $2`,
+        [docenteId, bloqueUpper],
       );
-    }
 
-    // Actualizar estado del bloque de 'Soporte faltante' a 'Pendiente'
-    await this.dataSource.query(
-      `UPDATE academic_work_plan."RundCampoEstado" 
-       SET estado = CASE WHEN estado = 'Soporte faltante' THEN 'Pendiente' ELSE estado END, "updatedAt" = NOW()
-       WHERE docente_id = $1 AND bloque = $2`,
-      [docenteId, bloqueUpper],
-    );
-
-    await this.logAudit({
-      docenteId,
-      bloque: bloqueUpper,
-      accion: 'VINCULAR_SOPORTE',
-      actorId: data.cargadoPor || 'SISTEMA',
-      canalOrigen: data.canalOrigen || (soporteHistorico ? 'MODAL' : undefined),
-      soporteId: id,
-      metadata: { tipoSoporte: data.tipoSoporte, nombreArchivo: data.nombreArchivo || null },
+      await this.writeAuditWithManager(manager, {
+        docenteId,
+        bloque: bloqueUpper,
+        accion: 'VINCULAR_SOPORTE',
+        actorId: data.cargadoPor || 'SISTEMA',
+        canalOrigen: data.canalOrigen || (soporteHistorico ? 'MODAL' : undefined),
+        soporteId: id,
+        metadata: { tipoSoporte: data.tipoSoporte, nombreArchivo: data.nombreArchivo || null },
+      });
+      return id;
     });
 
     return { success: true, id, bloque: bloqueUpper, tipoSoporte: data.tipoSoporte, documentoCarpetaId: data.documentoCarpetaId };
@@ -4266,8 +4338,8 @@ export class BancoDocentesService implements OnModuleInit {
     // Las consultas de datos sensibles se generan en cada apertura de la ficha y llenarían el tope:
     // se piden aparte (las más recientes) para que ediciones y decisiones sigan visibles en el historial.
     const [actions, consultations] = await Promise.all([
-      this.auditLogRepo.find({ where: { docenteId, accion: Not(RUND_CONSULTA_SENSIBLE) }, order: { createdAt: 'DESC' }, take: limit }),
-      this.auditLogRepo.find({ where: { docenteId, accion: RUND_CONSULTA_SENSIBLE }, order: { createdAt: 'DESC' }, take: RUND_AUDITORIA_CONSULTAS }),
+      leerAuditoriaRund(this.dataSource, docenteId, { consultasSensibles: false, limit }),
+      leerAuditoriaRund(this.dataSource, docenteId, { consultasSensibles: true, limit: RUND_AUDITORIA_CONSULTAS }),
     ]);
     const logs = [...actions, ...consultations].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     const names = await resolveRundActorNames(this.dataSource, logs.map(log => log.actorId));

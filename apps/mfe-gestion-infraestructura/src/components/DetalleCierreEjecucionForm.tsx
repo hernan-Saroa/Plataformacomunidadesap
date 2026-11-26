@@ -188,7 +188,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
 
   const validar = (): string | null => {
     if (faltaVoBo) {
-      return 'Requisito EFDS-2355: Esta solicitud requiere Visto Bueno institucional (VoBo) sobre la valoración técnica. Coordinación debe aprobar la valoración técnica antes de formalizar el cierre.';
+      return 'Esta solicitud requiere Visto Bueno institucional (VoBo) sobre la valoración técnica. Coordinación debe aprobar la valoración técnica antes de formalizar el cierre.';
     }
     if (evidencias.length < MIN_EVIDENCIAS) return `Evidencia fotográfica obligatoria (mínimo ${MIN_EVIDENCIAS} archivo).`;
     if (trabajoRealizado.trim().length < MIN_TRABAJO_LEN) {
@@ -198,10 +198,10 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
       return 'Costo final efectivo debe ser 0 o positivo.';
     }
     if (faltaSoporteContratacion) {
-      return 'Requisito EFDS-2354: Esta solicitud requiere contratación. Es obligatorio adjuntar al menos un archivo clasificado como "Soporte Contratación / OC / Factura" o "Acta Recepción Insumos".';
+      return 'Esta solicitud requiere contratación. Es obligatorio adjuntar al menos un archivo clasificado como "Soporte Contratación / OC / Factura" o "Acta Recepción Insumos".';
     }
     if (faltaRecepcionInsumos) {
-      return 'Requisito EFDS-2354: Esta solicitud requiere contratación. Se debe contar con la recepción técnica conforme de insumos o adjuntar un archivo clasificado como "Acta Recepción Insumos".';
+      return 'Esta solicitud requiere contratación. Se debe contar con la recepción técnica conforme de insumos o adjuntar un archivo clasificado como "Acta Recepción Insumos".';
     }
     return null;
   };
@@ -329,18 +329,18 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
               <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                 <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Modalidad de Atención</p>
                 <p className="text-xs font-semibold text-slate-800">
-                  {solicitud?.clasificacionMantenimiento === 'MAYOR' ? 'Obra Mayor (EFDS-2353)' : 'Mantenimiento Menor'}
+                  {solicitud?.clasificacionMantenimiento === 'MAYOR' ? 'Obra Mayor' : 'Mantenimiento Menor'}
                 </p>
               </div>
             </section>
 
-            {/* Banner Requisito VoBo EFDS-2355 */}
+            {/* Banner Requisito VoBo */}
             {faltaVoBo && (
               <section style={{ padding: '1.25rem' }} className="rounded-2xl border border-amber-300 bg-amber-50/80 space-y-3 text-xs text-amber-900 shadow-sm">
                 <div className="flex items-center justify-between gap-2 font-bold text-amber-800">
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>Requisito Bloqueante: Visto Bueno Pendiente (EFDS-2355)</span>
+                    <span>Requisito Bloqueante: Visto Bueno Pendiente</span>
                   </div>
                   <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-full bg-amber-200/80 text-amber-900 border border-amber-300">
                     VoBo Requerido
@@ -352,13 +352,13 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
               </section>
             )}
 
-            {/* Banner Requisitos Contractuales EFDS-2354 */}
+            {/* Banner Requisitos Contractuales */}
             {solicitud?.requiereContratacion && (
               <section style={{ padding: '1.25rem' }} className="rounded-2xl border border-amber-300 bg-amber-50/80 space-y-3 text-xs text-amber-900 shadow-sm">
                 <div className="flex items-center justify-between gap-2 font-bold text-amber-800">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>Requisitos Bloqueantes de Cierre Contractual (EFDS-2354)</span>
+                    <span>Requisitos Bloqueantes de Cierre Contractual</span>
                   </div>
                   <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-full bg-amber-200/80 text-amber-900 border border-amber-300">
                     Requiere Contratación
@@ -462,7 +462,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
                     />
                   </div>
                   <p className="mt-1 text-[10px] text-slate-500">
-                    Incluye materiales propios y MO si aplica. Reportes BI EFDS-1739 usan este valor vs costoEstimado.
+                    Incluye materiales propios y mano de obra si aplica. Los reportes e indicadores consolidan este valor frente al costo estimado.
                   </p>
                 </div>
 

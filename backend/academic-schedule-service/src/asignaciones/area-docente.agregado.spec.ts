@@ -338,6 +338,7 @@ describe('EFDS-2341 :: candidatos por área y asignación por franja (agregado r
     const r = await servicio().candidatos(ids.grupo, undefined, null);
     expect(r.resumen).toEqual({ total: 4, asignables: 3, bloqueados: 1 });
     expect(r.aviso).toBeNull();
+    expect(r.bloqueoTotal).toBeNull(); // EFDS-2449: hay aptos, no hay alerta
     const d = r.candidatos.find((x) => x.documento === doc.D)!;
     expect(d.motivos).toEqual([expect.objectContaining({ regla: 'RN-07', tipo: 'CRUCE', detalle: { diaSemana: 'LUNES', horaInicio: '08:00', horaFin: '10:00' } })]);
     expect(JSON.stringify(d.motivos)).not.toMatch(/asignatura|programa/i);
@@ -350,8 +351,15 @@ describe('EFDS-2341 :: candidatos por área y asignación por franja (agregado r
     expect(r.candidatos).toHaveLength(4);
     expect(r.resumen).toEqual({ total: 4, asignables: 0, bloqueados: 4 });
     expect(r.mensaje).toBeNull();
-    expect(r.aviso).toContain('Los 4 docente(s) del área');
     expect(r.sugerido).toBeNull();
+    // EFDS-2449: la alerta sale redactada del servidor, con los motivos más frecuentes y su conteo (D además tiene cruce).
+    expect(r.bloqueoTotal).toMatchObject({
+      titulo: expect.stringMatching(/^Ningún docente del área «.+» se puede asignar a este grupo.$/),
+      accion: expect.stringMatching(/^Revise la situación administrativa de los docentes en el RUND.* o habilite docentes del área.$/),
+      resumen: '4 con una situación administrativa que no permite asignar carga, 1 con cruce de horario.',
+    });
+    expect(r.bloqueoTotal!.motivosFrecuentes.map((m) => [m.clave, m.cantidad])).toEqual([['SITUACION', 4], ['CRUCE', 1]]);
+    expect(r.aviso).toBe(`${r.bloqueoTotal!.titulo} ${r.bloqueoTotal!.accion}`);
     for (const x of r.candidatos) expect(x.motivos.map((m) => m.tipo)).toContain('SITUACION');
   });
 

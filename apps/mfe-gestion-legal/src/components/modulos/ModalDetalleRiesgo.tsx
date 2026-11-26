@@ -27,7 +27,7 @@ import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { ControlesSeguimientoTab } from './ControlesSeguimientoTab';
 import { ModalSeguimientoControl } from './ModalSeguimientoControl';
-import { textoSeguimientosExportacion } from './riesgoSeguimientoUtils';
+import { construirVistaFallback, textoSeguimientosExportacion } from './riesgoSeguimientoUtils';
 
 interface ModalDetalleRiesgoProps {
   open: boolean;
@@ -82,6 +82,8 @@ export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onDelete, on
   const [loadingSeguimientos, setLoadingSeguimientos] = useState(false);
   const [errorSeguimientos, setErrorSeguimientos] = useState(false);
   const [seguimientoActivo, setSeguimientoActivo] = useState<{ control: ControlSeguimientoAPI; cuatrimestre?: number } | null>(null);
+
+  const vistaSeguimientos = (seguimientos || (errorSeguimientos && riesgo?.controlesExistentes ? construirVistaFallback(riesgo.controlesExistentes) : null)) as RiesgoSeguimientosAPI | null;
 
   const riesgoId = riesgo?.id;
 
@@ -252,7 +254,7 @@ ${riesgo.controlesExistentes?.map((c, i) => `${i + 1}. ${c.descripcion} (${c.efe
 
 SEGUIMIENTO DE CONTROLES (CUATRIMESTRAL)
 ═══════════════════════════════════════════════════════════════
-${textoSeguimientosExportacion(seguimientos)}
+${textoSeguimientosExportacion(vistaSeguimientos)}
 
 PLAN DE TRATAMIENTO
 ═══════════════════════════════════════════════════════════════
@@ -414,7 +416,7 @@ Metodología DAFP - MECI
 
               {/* TABS CON INFORMACIÓN DETALLADA */}
               <Tabs value={tabActiva} onValueChange={setTabActiva}>
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList className="flex w-full items-center gap-1 h-auto p-1">
                   <TabsTrigger value="general">
                     <FileText className="w-4 h-4 mr-2" />
                     General
@@ -743,14 +745,14 @@ Metodología DAFP - MECI
         </DialogContent>
       </Dialog>
 
-      {seguimientos && (
+      {vistaSeguimientos && (
         <ModalSeguimientoControl
           open={!!seguimientoActivo}
           onClose={() => setSeguimientoActivo(null)}
           riesgoId={riesgo.id}
           control={seguimientoActivo?.control ?? null}
           cuatrimestreInicial={seguimientoActivo?.cuatrimestre}
-          vista={seguimientos}
+          vista={vistaSeguimientos}
           onGuardado={alGuardarSeguimiento}
         />
       )}

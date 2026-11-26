@@ -45,7 +45,7 @@ export class DesignarComiteDto {
    */
   @ApiPropertyOptional({ description: 'Fecha del memorando de designación (YYYY-MM-DD)' })
   @IsOptional()
-  @IsDateString({}, { message: 'La fecha de designación debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de designación debe tener el formato AAAA-MM-DD' })
   fechaDesignacion?: string;
 
   /**
@@ -89,7 +89,7 @@ export class DesignarComiteDto {
 
 export class CargarMemorandoDto {
   @ApiProperty({ description: 'Fecha del memorando de designación (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de designación debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de designación debe tener el formato AAAA-MM-DD' })
   fechaDesignacion: string;
 }
 

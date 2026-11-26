@@ -11,15 +11,31 @@ import {
   MantenimientoHistoricoItem,
   HistoricoEstadisticas,
   ResumenImportacionHistorico,
+  obtenerSesionUMI,
 } from '../services/infraestructuraService';
 
 interface HistoricoMantenimientosExternoProps {
   esRolReportes?: boolean;
+  onTotalChange?: (nuevoTotal: number) => void;
 }
 
 export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExternoProps> = ({
   esRolReportes = true,
+  onTotalChange,
 }) => {
+  const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
+  const esAdmin = useMemo(() => {
+    const roles = new Set((sesionUmi?.roles ?? []).map((r: any) => String(r ?? '').trim().toUpperCase()));
+    return (
+      roles.has('SUPER_ADMIN') ||
+      roles.has('ADMIN') ||
+      roles.has('COORDINADOR_INFRAESTRUCTURA') ||
+      roles.has('ADMINISTRADOR_FUNCIONAL') ||
+      roles.has('ADMINISTRADOR_FUNCIONAL_INFRA') ||
+      roles.has('ADMINISTRADOR_MODULO_INFRA')
+    );
+  }, [sesionUmi]);
+
   // Estados de datos
   const [items, setItems] = useState<MantenimientoHistoricoItem[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -31,6 +47,7 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
 
   // Filtros
   const [busqueda, setBusqueda] = useState<string>('');
+  const [origenSeleccionado, setOrigenSeleccionado] = useState<string>('TODOS');
   const [semanaSeleccionada, setSemanaSeleccionada] = useState<string>('TODAS');
   const [tecnicoSeleccionado, setTecnicoSeleccionado] = useState<string>('TODOS');
   const [solicitanteSeleccionado, setSolicitanteSeleccionado] = useState<string>('TODOS');
@@ -67,6 +84,7 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
           page,
           limit,
           search: busqueda.trim() || undefined,
+          origen: origenSeleccionado !== 'TODOS' ? origenSeleccionado : undefined,
           semana: semanaSeleccionada !== 'TODAS' ? semanaSeleccionada : undefined,
           tecnico: tecnicoSeleccionado !== 'TODOS' ? tecnicoSeleccionado : undefined,
           solicitante: solicitanteSeleccionado !== 'TODOS' ? solicitanteSeleccionado : undefined,
@@ -76,18 +94,20 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
         infraestructuraService.getHistoricoEstadisticas(),
       ]);
       setItems(resList.data || []);
-      setTotal(resList.total || 0);
+      const totalRecuperado = resList.total || 0;
+      setTotal(totalRecuperado);
       setTotalPages(resList.totalPages || 1);
       setSemanasDisponibles(resList.semanasDisponibles || []);
       if (resList.tecnicosDisponibles) setTecnicosDisponibles(resList.tecnicosDisponibles);
       if (resList.solicitantesDisponibles) setSolicitantesDisponibles(resList.solicitantesDisponibles);
       setEstadisticas(resStats);
+      onTotalChange?.(resStats?.totalRegistros ?? totalRecuperado);
     } catch (err: any) {
       setErrorCarga(err?.message || 'Error cargando datos del histórico.');
     } finally {
       setCargando(false);
     }
-  }, [page, limit, busqueda, semanaSeleccionada, tecnicoSeleccionado, solicitanteSeleccionado, fechaDesde, fechaHasta]);
+  }, [page, limit, busqueda, origenSeleccionado, semanaSeleccionada, tecnicoSeleccionado, solicitanteSeleccionado, fechaDesde, fechaHasta, onTotalChange]);
 
   useEffect(() => {
     cargarHistorico();
@@ -178,20 +198,26 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
     }
   };
 
-  // Vaciar histórico con confirmación
+  // Vaciar histórico con confirmación (restringido a administradores)
   const handleVaciarHistorico = async () => {
+    if (!esAdmin) {
+      alert('Solo los usuarios administradores o coordinadores de infraestructura pueden vaciar el repositorio histórico.');
+      return;
+    }
     setVaciando(true);
     try {
       const res = await infraestructuraService.vaciarHistorico();
       setModalVaciarAbierto(false);
       setPage(1);
       setBusqueda('');
+      setOrigenSeleccionado('TODOS');
       setSemanaSeleccionada('TODAS');
       setTecnicoSeleccionado('TODOS');
       setSolicitanteSeleccionado('TODOS');
       setFechaDesde('');
       setFechaHasta('');
       setMensajeExitoVaciar(`Se vaciaron exitosamente ${res.eliminados.toLocaleString('es-CO')} registros históricos.`);
+      onTotalChange?.(0);
       await cargarHistorico();
       setTimeout(() => setMensajeExitoVaciar(null), 6000);
     } catch (err: any) {
@@ -201,12 +227,13 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
     }
   };
 
-  // Descarga de Excel respetando los filtros activos (semana, técnico, solicitante, fecha)
+  // Descarga de Excel respetando los filtros activos (origen, semana, técnico, solicitante, fecha)
   const handleDescargarExcel = async () => {
     setDescargandoExcel(true);
     try {
       const blob = await infraestructuraService.descargarHistoricoExcel({
         search: busqueda.trim() || undefined,
+        origen: origenSeleccionado !== 'TODOS' ? origenSeleccionado : undefined,
         semana: semanaSeleccionada !== 'TODAS' ? semanaSeleccionada : undefined,
         tecnico: tecnicoSeleccionado !== 'TODOS' ? tecnicoSeleccionado : undefined,
         solicitante: solicitanteSeleccionado !== 'TODOS' ? solicitanteSeleccionado : undefined,
@@ -216,7 +243,8 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Historico_Mantenimientos_Planner_2026_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const sufijoOrigen = origenSeleccionado !== 'TODOS' ? origenSeleccionado : 'Consolidado';
+      a.download = `Historico_Mantenimientos_${sufijoOrigen}_${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -300,16 +328,18 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
                   <span>Importar Excel</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setModalVaciarAbierto(true)}
-                  disabled={vaciando}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Vaciar todos los registros históricos para probar la importación nuevamente"
-                >
-                  <Trash2 className="w-4 h-4 text-white" />
-                  <span>Vaciar Registros</span>
-                </button>
+                {esAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setModalVaciarAbierto(true)}
+                    disabled={vaciando}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Vaciar todos los registros históricos (exclusivo para administradores)"
+                  >
+                    <Trash2 className="w-4 h-4 text-white" />
+                    <span>Vaciar Registros</span>
+                  </button>
+                )}
               </>
             )}
 
@@ -373,10 +403,12 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Tareas</p>
             <h4 className="text-2xl font-black text-slate-900 mt-1">
-              {estadisticas ? estadisticas.totalRegistros.toLocaleString('es-CO') : '…'}
+              {estadisticas ? estadisticas.totalRegistros.toLocaleString('es-CO') : '0'}
             </h4>
             <span className="text-[10px] font-semibold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-md mt-1 inline-block">
-              Microsoft Planner 2026
+              {estadisticas && estadisticas.totalRegistros > 0
+                ? (origenSeleccionado !== 'TODOS' ? (origenSeleccionado === 'GLPI' ? 'Origen GLPI' : 'Microsoft Planner') : 'Microsoft Planner y GLPI')
+                : 'Repositorio sin registros'}
             </span>
           </div>
           <div className="w-11 h-11 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600">
@@ -389,7 +421,7 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Semanas Registradas</p>
             <h4 className="text-2xl font-black text-slate-900 mt-1">
-              {estadisticas ? estadisticas.totalSemanas : '…'}
+              {estadisticas ? estadisticas.totalSemanas : '0'}
             </h4>
             <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md mt-1 inline-block">
               Agrupadas por Depósito
@@ -405,7 +437,7 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Técnicos de Campo</p>
             <h4 className="text-2xl font-black text-slate-900 mt-1">
-              {estadisticas ? estadisticas.totalTecnicos : '…'}
+              {estadisticas ? estadisticas.totalTecnicos : '0'}
             </h4>
             <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md mt-1 inline-block">
               Cuadrilla Asignada
@@ -421,10 +453,10 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Tasa Finalización</p>
             <h4 className="text-2xl font-black text-emerald-700 mt-1">
-              {estadisticas ? `${estadisticas.tasaCumplimiento}%` : '…'}
+              {estadisticas ? `${estadisticas.tasaCumplimiento}%` : '0%'}
             </h4>
             <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md mt-1 inline-block">
-              100% Completadas
+              {estadisticas ? `${estadisticas.totalCompletados.toLocaleString('es-CO')} completadas` : '0 completadas'}
             </span>
           </div>
           <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
@@ -437,10 +469,10 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
       {/* BARRA DE HERRAMIENTAS Y FILTROS AVANZADOS */}
       {/* ===================================================================== */}
       <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-3">
-        {/* Fila 1: Buscador y Filtros Principales (Semana, Técnico, Solicitante) */}
+        {/* Fila 1: Buscador y Filtros Principales (Origen, Semana, Técnico, Solicitante) */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
           {/* Buscador */}
-          <div className="relative md:col-span-4">
+          <div className="relative md:col-span-3">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -463,6 +495,22 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
             )}
           </div>
 
+          {/* Filtro por Sistema Origen */}
+          <div className="md:col-span-2">
+            <select
+              value={origenSeleccionado}
+              onChange={(e) => {
+                setOrigenSeleccionado(e.target.value);
+                setPage(1);
+              }}
+              className="w-full py-2 px-3 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100/60 transition-colors focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 outline-none cursor-pointer"
+            >
+              <option value="TODOS">Origen: Todos</option>
+              <option value="MICROSOFT_PLANNER">Microsoft Planner</option>
+              <option value="GLPI">GLPI</option>
+            </select>
+          </div>
+
           {/* Filtro por Semana / Depósito */}
           <div className="md:col-span-3">
             <select
@@ -483,7 +531,7 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
           </div>
 
           {/* Filtro Asignado a (Técnico) */}
-          <div className="md:col-span-3">
+          <div className="md:col-span-2">
             <select
               value={tecnicoSeleccionado}
               onChange={(e) => {
@@ -492,7 +540,7 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
               }}
               className="w-full py-2 px-3 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100/60 transition-colors focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 outline-none cursor-pointer"
             >
-              <option value="TODOS">Todos los Asignados ({tecnicosDisponibles.length})</option>
+              <option value="TODOS">Técnicos ({tecnicosDisponibles.length})</option>
               {tecnicosDisponibles.map((t, idx) => (
                 <option key={idx} value={t.tecnico}>
                   {t.tecnico} ({t.cantidad})
@@ -556,11 +604,12 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
             </div>
 
             {/* Botón limpiar filtros si alguno está activo */}
-            {(busqueda || semanaSeleccionada !== 'TODAS' || tecnicoSeleccionado !== 'TODOS' || solicitanteSeleccionado !== 'TODOS' || fechaDesde || fechaHasta) && (
+            {(busqueda || origenSeleccionado !== 'TODOS' || semanaSeleccionada !== 'TODAS' || tecnicoSeleccionado !== 'TODOS' || solicitanteSeleccionado !== 'TODOS' || fechaDesde || fechaHasta) && (
               <button
                 type="button"
                 onClick={() => {
                   setBusqueda('');
+                  setOrigenSeleccionado('TODOS');
                   setSemanaSeleccionada('TODAS');
                   setTecnicoSeleccionado('TODOS');
                   setSolicitanteSeleccionado('TODOS');
@@ -670,8 +719,17 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
                       <div className="font-semibold text-slate-900 group-hover:text-sky-700 transition-colors line-clamp-2">
                         {item.tituloTarea}
                       </div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        {item.idTareaExterna}
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          item.origenSistema === 'GLPI'
+                            ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                            : 'bg-sky-100 text-sky-800 border border-sky-200'
+                        }`}>
+                          {item.origenSistema === 'GLPI' ? 'GLPI' : 'Planner'}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {item.idTareaExterna}
+                        </span>
                       </div>
                     </td>
 
@@ -769,18 +827,47 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
             {/* Header */}
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Database className="w-5 h-5 text-sky-400" />
+            <div
+              style={{ backgroundColor: '#0f172a', color: '#ffffff' }}
+              className="px-6 py-4 flex items-center justify-between border-b border-slate-800"
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)' }}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center border"
+                >
+                  <Database className="w-5 h-5 text-sky-400" />
+                </div>
                 <div>
-                  <h4 className="font-bold text-sm">Ficha Histórica del Mantenimiento</h4>
-                  <p className="text-[11px] text-slate-400">{itemSeleccionado.idTareaExterna}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-bold text-sm text-white" style={{ color: '#ffffff' }}>
+                      Ficha Histórica del Mantenimiento
+                    </h4>
+                    <span
+                      style={
+                        itemSeleccionado.origenSistema === 'GLPI'
+                          ? { backgroundColor: '#d97706', color: '#ffffff' }
+                          : { backgroundColor: '#0284c7', color: '#ffffff' }
+                      }
+                      className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase shadow-xs"
+                    >
+                      {itemSeleccionado.origenSistema === 'GLPI' ? 'GLPI' : 'Microsoft Planner'}
+                    </span>
+                  </div>
+                  <p
+                    className="text-[12px] font-mono font-semibold mt-0.5"
+                    style={{ color: '#93c5fd' }}
+                  >
+                    {itemSeleccionado.idTareaExterna}
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setItemSeleccionado(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+                style={{ color: '#ffffff' }}
+                className="p-1.5 rounded-xl hover:bg-white/10 text-white transition-colors cursor-pointer"
+                title="Cerrar ficha"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -829,18 +916,37 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 pt-2 border-t border-slate-100">
-                <div>
-                  <label className="font-bold text-slate-500 uppercase text-[10px]">Fecha Creación</label>
-                  <p className="font-medium text-slate-800 mt-0.5">{formatearFecha(itemSeleccionado.fechaCreacion)}</p>
+              {/* Cronología de Hitos Temporales Registrados en Origen */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <label className="font-bold text-slate-500 uppercase text-[10px] flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-sky-600" />
+                  <span>Cronología de Hitos Registrados en Origen</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase block">1. Radicación</span>
+                    <span className="text-xs font-bold text-slate-800 mt-0.5 block">{formatearFecha(itemSeleccionado.fechaCreacion)}</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase block">2. Inicio</span>
+                    <span className="text-xs font-bold text-slate-800 mt-0.5 block">{formatearFecha(itemSeleccionado.fechaInicio)}</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase block">3. Vencimiento</span>
+                    <span className="text-xs font-bold text-slate-800 mt-0.5 block">{formatearFecha(itemSeleccionado.fechaVencimiento)}</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase block">4. Finalización</span>
+                    <span className="text-xs font-bold text-slate-800 mt-0.5 block">{formatearFecha(itemSeleccionado.fechaFinalizacion)}</span>
+                  </div>
                 </div>
-                <div>
-                  <label className="font-bold text-slate-500 uppercase text-[10px]">Fecha Inicio</label>
-                  <p className="font-medium text-slate-800 mt-0.5">{formatearFecha(itemSeleccionado.fechaInicio)}</p>
-                </div>
-                <div>
-                  <label className="font-bold text-slate-500 uppercase text-[10px]">Fecha Finalización</label>
-                  <p className="font-medium text-slate-800 mt-0.5">{formatearFecha(itemSeleccionado.fechaFinalizacion)}</p>
+              </div>
+
+              {/* Aclaración técnica trazabilidad (Hallazgo #4 QA) */}
+              <div className="p-3 rounded-xl bg-sky-50 border border-sky-100 flex items-start gap-2.5 text-sky-950 text-[11px]">
+                <Info className="w-4 h-4 text-sky-600 mt-0.5 flex-shrink-0" />
+                <div className="leading-relaxed">
+                  <strong>Aclaración de trazabilidad histórica:</strong> Las exportaciones estándar provistas por Microsoft Planner y GLPI operan como reporte plano de estado final y fechas de corte. Al no contener bitácora transaccional en el archivo exportado, la plataforma consolida e integra fielmente la totalidad de los 4 hitos temporales y el estado final provisto.
                 </div>
               </div>
 
@@ -850,6 +956,7 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
                   <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
                   Traza de Ingesta y Origen:
                 </div>
+                <div>Sistema de origen: <strong>{itemSeleccionado.origenSistema}</strong></div>
                 <div>Archivo fuente: <code>{itemSeleccionado.nombreArchivoOrigen}</code> (Fila #{itemSeleccionado.numeroFilaOrigen})</div>
                 <div>Fecha de ingesta en plataforma: {new Date(itemSeleccionado.fechaIngesta).toLocaleString('es-CO')}</div>
               </div>
@@ -860,7 +967,8 @@ export const HistoricoMantenimientosExterno: React.FC<HistoricoMantenimientosExt
               <button
                 type="button"
                 onClick={() => setItemSeleccionado(null)}
-                className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors"
+                style={{ backgroundColor: '#0f172a', color: '#ffffff' }}
+                className="px-4 py-2 rounded-xl text-white text-xs font-bold hover:brightness-125 transition-all shadow-sm cursor-pointer"
               >
                 Cerrar
               </button>

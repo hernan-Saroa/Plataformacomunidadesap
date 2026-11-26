@@ -142,3 +142,41 @@ it('HU 1355: sin errores no aparece el botón del reporte', async () => {
   await screen.findByRole('button', { name: /Importar ahora/ });
   expect(screen.queryByRole('button', { name: /Descargar reporte de errores/ })).toBeNull();
 });
+
+const subir = async (data: object) => {
+  vi.mocked(bulkUploadBancoDocentes).mockResolvedValue({ success: true, data: { total: 1, created: 0, updated: 1, unchanged: 0, errors: 0, results: [], errorDetails: [], ...data } } as any);
+  const { container } = render(<BancoDocentesBulkUpload {...props} periodoSeleccionado="2026-2" />);
+  fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [archivo()] } });
+  await screen.findByText('Total Registros');
+};
+
+it('RUND-003: plantilla cuyo perfil ya coincide con las columnas de título muestra el aviso en vez de callar', async () => {
+  await subir({ titulosReconocidos: 3, titulosDeducidos: 0, titulosSinClasificar: 0 });
+  const nota = screen.getByRole('note').textContent;
+  expect(nota).toContain('3 títulos reconocidos');
+  expect(nota).toContain('No hay títulos adicionales nuevos por registrar');
+});
+
+it('RUND-003: perfil con títulos nuevos informa cuántos se registran y lista lo no clasificado con su fila', async () => {
+  await subir({
+    titulosReconocidos: 4, titulosDeducidos: 3, titulosSinClasificar: 1,
+    results: [{ sourceRowNumber: 3, fullName: 'DOCENTE UNO', action: 'update', titulosSinClasificar: ['Posgrado en Cultura de la Paz'] }],
+  });
+  expect(screen.getByRole('note').textContent).toContain('3 se registrarán como información adicional');
+  expect(screen.getByRole('listitem').textContent).toBe('Fila 3 · DOCENTE UNO: Posgrado en Cultura de la Paz');
+});
+
+it('RUND-003: si todas las filas tienen errores avisa que no se analizaron sus títulos', async () => {
+  await subir({ total: 1, updated: 0, errors: 1, errorDetails: [{ fila: 3, columna: 'INICIO_VINCULACION', message: 'Campo obligatorio vacío: INICIO_VINCULACION' }] });
+  expect(screen.getByRole('note').textContent).toContain('1 fila con errores no se analizó');
+});
+
+it('RUND-003: si el perfil no trae títulos reconocibles lo dice', async () => {
+  await subir({ filasSinTitulosEnPerfil: 1 });
+  expect(screen.getByRole('note').textContent).toContain('sin títulos reconocibles');
+});
+
+it('RUND-003: sin nada que informar no aparece el aviso', async () => {
+  await subir({});
+  expect(screen.queryByRole('note')).toBeNull();
+});

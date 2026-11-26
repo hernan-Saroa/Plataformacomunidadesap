@@ -269,6 +269,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
           decisionFinal: ev.decisionFinal,
           vigencia: ev.vigencia,
           fechaCorte: ev.fechaCorte,
+          vigenciaOrigen: ev.vigenciaOrigen ?? null,
           auditableCalculado,
           auditableManual,
         } as any,
@@ -811,6 +812,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
           }}
           procesoInicial={convertirProcesoAFormulario(procesoSeleccionado, evaluacionSeleccionada)}
           mode={evaluacionSeleccionada ? 'edit' : 'create'}
+          vigenciaOrigen={evaluacionSeleccionada?.vigenciaOrigen ?? null}
           procesosCatalog={(() => {
                   const espIds = loadEspIds();
                   const tiposList = loadTipos();

@@ -38,7 +38,7 @@ export class RegistrarManifestacionDto {
   identificacion: string;
 
   @ApiProperty({ description: 'Fecha de presentación (YYYY-MM-DD)', example: '2026-08-12' })
-  @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato YYYY-MM-DD' })
+  @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato AAAA-MM-DD' })
   fechaPresentacion: string;
 }
 

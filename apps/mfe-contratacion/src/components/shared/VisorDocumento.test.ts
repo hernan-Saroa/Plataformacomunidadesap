@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formaDeVer } from './VisorDocumento';
+import { formaDeVer, sePuedeVer } from './VisorDocumento';
 
 const WORD = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -30,5 +30,25 @@ describe('formaDeVer', () => {
 
   it('entiende el tipo aunque traiga parámetros', () => {
     expect(formaDeVer(['application/pdf; charset=binary'], 'x')).toBe('pdf');
+  });
+});
+
+/** Cuándo se ofrece el ojo de «Ver» (AJU-001). */
+describe('sePuedeVer', () => {
+  const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+  it('no lo ofrece para un Excel, por tipo o por extensión', () => {
+    expect(sePuedeVer(XLSX, 'Plantilla Análisis del Sector')).toBe(false);
+    expect(sePuedeVer(null, 'Plantilla Análisis del Sector', 'BS-DE-002.xlsx')).toBe(false);
+  });
+
+  it('sí para PDF, imágenes y Word moderno', () => {
+    expect(sePuedeVer('application/pdf', 'x')).toBe(true);
+    expect(sePuedeVer(null, 'anexo.docx')).toBe(true);
+  });
+
+  it('sin tipo ni extensión lo ofrece: el visor dirá qué es', () => {
+    expect(sePuedeVer(null, 'Memorando de solicitud firmado')).toBe(true);
+    expect(sePuedeVer(undefined, 'Estudio previo v1.2')).toBe(true);
   });
 });

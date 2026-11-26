@@ -715,6 +715,8 @@ export interface ConfiguracionProfesionalOCI {
   idTercero: string;
   /** Rol en Asignar Profesional (EFDS-2197) */ rolOcig: 'Jefe OCI' | 'Auditor' | 'Aprobador Plan Anual';
   /** @deprecated use rolOcig */ rolOCI?: string;
+  /** Roles además del principal (EFDS-2452); vacío si el backend aún no lo envía */
+  rolesAdicionales?: string[];
   especialidades: string[];
   capacidadMaximaAuditorias: number;
   horasMensualesDisponibles: number;
@@ -734,6 +736,7 @@ export interface ConfiguracionProfesionalOCI {
 export interface CreateConfiguracionProfesionalOCIDto {
   idTercero: string;
   rolOcig: string;
+  rolesAdicionales?: string[];
   especialidades: string[];
   capacidadMaximaAuditorias?: number;
   horasMensualesDisponibles?: number;
@@ -743,6 +746,7 @@ export interface CreateConfiguracionProfesionalOCIDto {
 
 export interface UpdateConfiguracionProfesionalOCIDto {
   rolOcig?: string;
+  rolesAdicionales?: string[];
   especialidades?: string[];
   capacidadMaximaAuditorias?: number;
   horasMensualesDisponibles?: number;

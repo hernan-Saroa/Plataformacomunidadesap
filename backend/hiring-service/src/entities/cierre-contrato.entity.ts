@@ -1,18 +1,5 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-/**
- * Los amparos que extienden la responsabilidad más allá de la ejecución.
- *
- * Son los que RF-LIQ-05 llama «estabilidad/calidad»: los demás —cumplimiento,
- * anticipo, salarios, responsabilidad civil— se agotan con el contrato, así que
- * no tiene sentido esperarlos para cerrarlo en firme.
- */
-export const AMPAROS_DE_ESTABILIDAD = [
-  'ESTABILIDAD_OBRA',
-  'CALIDAD_SERVICIO',
-  'CALIDAD_BIENES',
-] as const;
-
 export type EstadoCierreContrato = 'VIGENTE' | 'REVERTIDO';
 
 /** Un amparo tal como estaba el día del cierre. */

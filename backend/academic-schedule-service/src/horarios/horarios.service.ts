@@ -523,6 +523,31 @@ export class HorariosService {
   }
 
   /** Periodo del ciclo de clases del grupo (AC-01). */
+  /**
+   * EFDS-2448 — «Guardar periodo» del grupo, desde la pantalla (PUT /horarios/grupo/:id/periodo).
+   * No guarda NADA si falta alguna fecha del ciclo o si el grupo no tiene al menos una sesión;
+   * responde 400 con el motivo. Los grupos virtuales y a distancia no exigen sesión: su horario
+   * es opcional (lo define el docente en «Mi programación»), pero sí las dos fechas.
+   * La carga desde Excel y «reutilizar periodo» fijan el ciclo ANTES de crear las sesiones del
+   * grupo nuevo, por eso llaman a `definirPeriodo` y no pasan por esta regla.
+   */
+  async guardarPeriodoDelGrupo(idGrupo: string, dto: PeriodoGrupoDto): Promise<GrupoEntity> {
+    const grupo = await this.grupoRepo.findOne({ where: { idGrupo } });
+    if (!grupo) throw new NotFoundException('El grupo no existe.');
+    const fecha = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
+    const faltan: string[] = [];
+    if (!fecha(dto?.fechaInicio)) faltan.push('la fecha de inicio del ciclo');
+    if (!fecha(dto?.fechaFin)) faltan.push('la fecha de fin del ciclo');
+    if (!esSinAula((grupo as any).modalidad) && (await this.franjaRepo.count({ where: { idGrupo } })) === 0) {
+      faltan.push('al menos una sesión en el horario');
+    }
+    if (faltan.length) {
+      const lista = faltan.length === 1 ? faltan[0] : `${faltan.slice(0, -1).join(', ')} y ${faltan[faltan.length - 1]}`;
+      throw new BadRequestException(`No se guardó el periodo del grupo: falta ${lista}.`);
+    }
+    return this.definirPeriodo(idGrupo, dto);
+  }
+
   async definirPeriodo(idGrupo: string, dto: PeriodoGrupoDto): Promise<GrupoEntity> {
     const grupo = await this.grupoRepo.findOne({ where: { idGrupo } });
     if (!grupo) throw new NotFoundException('El grupo no existe.');

@@ -136,3 +136,56 @@ export function textoSeguimientosExportacion(vista: RiesgoSeguimientosAPI | null
     return `${cabecera}\n${lineas.join('\n')}`;
   }).join('\n');
 }
+
+/** Construye una vista cuatrimestral por defecto para los controles del riesgo cuando aún no cargó el backend. */
+export function construirVistaFallback(
+  controlesRiesgo: { id?: string; descripcion: string; efectividad: number }[] | undefined,
+  vigencia?: number,
+  hoy?: string,
+): RiesgoSeguimientosAPI {
+  const anio = vigencia || new Date().getFullYear();
+  const hoyStr = hoy || new Date().toISOString().slice(0, 10);
+  return {
+    vigencia: anio,
+    hoy: hoyStr,
+    config: { maxMb: 10, extensiones: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'gif', 'webp'] },
+    controles: (controlesRiesgo || []).map((control, idx) => {
+      const controlId = control.id ? String(control.id) : `idx-${idx}`;
+      return {
+        controlId,
+        descripcion: control.descripcion,
+        efectividad: control.efectividad,
+        cortes: [
+          {
+            cuatrimestre: 1,
+            label: 'Cuatrimestre 1',
+            inicio: `${anio}-01-01`,
+            fin: `${anio}-04-30`,
+            estado: hoyStr > `${anio}-04-30` ? 'VENCIDO' : 'PENDIENTE',
+            puedeRegistrar: hoyStr >= `${anio}-01-01` && hoyStr <= `${anio}-04-30`,
+            seguimiento: null,
+          },
+          {
+            cuatrimestre: 2,
+            label: 'Cuatrimestre 2',
+            inicio: `${anio}-05-01`,
+            fin: `${anio}-08-31`,
+            estado: hoyStr > `${anio}-08-31` ? 'VENCIDO' : 'PENDIENTE',
+            puedeRegistrar: hoyStr >= `${anio}-05-01` && hoyStr <= `${anio}-08-31`,
+            seguimiento: null,
+          },
+          {
+            cuatrimestre: 3,
+            label: 'Cuatrimestre 3',
+            inicio: `${anio}-09-01`,
+            fin: `${anio}-12-31`,
+            estado: hoyStr > `${anio}-12-31` ? 'VENCIDO' : 'PENDIENTE',
+            puedeRegistrar: hoyStr >= `${anio}-09-01` && hoyStr <= `${anio}-12-31`,
+            seguimiento: null,
+          },
+        ],
+      };
+    }),
+    historial: [],
+  };
+}

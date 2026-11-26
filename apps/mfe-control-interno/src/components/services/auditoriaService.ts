@@ -13,6 +13,7 @@
 
 import { controlInternoService } from '../../services/api/controlInternoService';
 import { toast } from 'sonner';
+import { normalizarNormas, normasATexto, type NormaAplicable } from './normatividad';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS - Estructura del backend (CreateAuditoriaDto)
@@ -108,7 +109,8 @@ export interface AuditoriaFormData {
   // Objetivos y criterios
   objetivos?: string[];
   criteriosAuditoria?: string[];
-  normatividadAplicable?: string[];
+  // Texto legado u objeto con tipo (EFDS-2451)
+  normatividadAplicable?: Array<string | NormaAplicable>;
   metodologia?: string;
   
   // Riesgos
@@ -213,7 +215,8 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     responsableAreaEmail: form.responsableAreaEmail,
     objetivos: form.objetivos,
     criteriosAuditoria: form.criteriosAuditoria,
-    normatividadAplicable: form.normatividadAplicable,
+    // El DTO solo acepta texto y no la guarda: la norma con su tipo va en la metadata (EFDS-2451)
+    normatividadAplicable: normasATexto(form.normatividadAplicable),
     riesgosIdentificados: form.riesgosIdentificados,
     controlesAplicar: form.controlesAplicar,
     equipoAuditores: form.equipoAuditores,
@@ -221,11 +224,14 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     planAnualId: form.vinculadaPlanAnual ? form.planAnualId : undefined,
     planAnualVigencia: form.vinculadaPlanAnual ? form.planAnualAño : undefined,
     rolDecretoAsociado: form.vinculadaPlanAnual ? form.rolDecretoAsociado : undefined,
-    programaAnualMetadata: form.vinculadaPlanAnual ? {
-      vinculado: true,
-      planAnualId: form.planAnualId,
-      año: form.planAnualAño,
-      rol: form.rolDecretoAsociado,
+    programaAnualMetadata: form.vinculadaPlanAnual || form.normatividadAplicable?.length ? {
+      ...(form.vinculadaPlanAnual ? {
+        vinculado: true,
+        planAnualId: form.planAnualId,
+        año: form.planAnualAño,
+        rol: form.rolDecretoAsociado,
+      } : {}),
+      normatividadAplicable: normalizarNormas(form.normatividadAplicable),
     } : undefined,
     estadoKanban: form.estadoKanban || 'Programa Anual', // Por defecto Plan Anual
   };

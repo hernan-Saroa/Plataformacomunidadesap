@@ -3,7 +3,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, Between, In, IsNull, Not } from 'typeorm';
 import { PassThrough, Readable } from 'node:stream';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
-import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, NotaRecepcionInsumosTecnicoDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload, MarcarRequiereContratacionDto } from './dto/create-mantenimiento.dto.js';
+import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, NotaRecepcionInsumosTecnicoDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload, MarcarRequiereContratacionDto, ConfirmarEmergenciaDto, RegistrarVoBoCierreDtDto } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto, CierreTecnicoResponse } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
 import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
@@ -12,6 +12,7 @@ import { CatalogoItem } from './catalogo-item.entity.js';
 import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
 import { SolicitudValoracion } from './solicitud-valoracion.entity.js';
 import { SolicitudValoracionInsumo } from './solicitud-valoracion-insumo.entity.js';
+import { SolicitudEjecucionTerritorial } from './solicitud-ejecucion-territorial.entity.js';
 import { MantenimientoHistorico } from './mantenimiento-historico.entity.js';
 import { StorageService } from './storage.service.js';
 import { NotificationClientService, SendNotificationDto } from '../common/notification-client.service.js';
@@ -110,6 +111,7 @@ export interface ReporteGestionPorCategoriaItem {
   codigoCategoria?: string | null;
   nombreCategoria: string;
   radicados: number;
+  porcentaje: number;
   completados: number;
   enCurso: number;
   vencidos: number;
@@ -140,6 +142,7 @@ export interface ReporteGestionPercepcionServicio {
   porDistribucion: DistribucionCalificacion;
   porCategoria: ConsolidadoCalificacionItem[];
   porTecnico: ConsolidadoCalificacionItem[];
+  porArea: ConsolidadoCalificacionItem[];
 }
 export interface ReporteGestionRollupGeograficoItem {
   idSede: string | null;
@@ -320,6 +323,16 @@ const DEFAULT_VOBO_CONFIG: VoBoConfigData = {
   modalidadVoBo: 'UN_ACTOR',
 };
 
+export interface AmbitoTerritorialUsuario {
+  esCentral: boolean;
+  idDireccionTerritorial: number | null;
+  nombreTerritorial: string | null;
+  codigoTerritorial: string | null;
+  rolPrincipal?: string;
+  esJefaturaTerritorial: boolean;
+  puedeAsignarEnTerritorial: boolean;
+}
+
 @Injectable()
 export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
   private readonly notifLogger = new Logger(`${MantenimientoService.name}.notificaciones`);
@@ -345,18 +358,110 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     private readonly notificaciones?: NotificationClientService,
     @Optional() @InjectRepository(MantenimientoHistorico)
     private readonly historicoRepo?: Repository<MantenimientoHistorico>,
+    @Optional() @InjectRepository(SolicitudEjecucionTerritorial)
+    private readonly ejecucionTerritorialRepo?: Repository<SolicitudEjecucionTerritorial>,
   ) {}
 
   private getHistoricoRepo(): Repository<MantenimientoHistorico> {
     return this.historicoRepo || this.dataSource.getRepository(MantenimientoHistorico);
   }
 
+  private getEjecucionTerritorialRepo(): Repository<SolicitudEjecucionTerritorial> {
+    return this.ejecucionTerritorialRepo || this.dataSource.getRepository(SolicitudEjecucionTerritorial);
+  }
+
   async onModuleInit(): Promise<void> {
     try {
+      await this.asegurarEsquemaValoracionYDescentralizacion();
       await this.asegurarSeedTiemposPorCategoria();
       await this.cargarParametroCache();
     } catch {}
     this.iniciarWorkerCierreAutomatico();
+  }
+
+  private async asegurarEsquemaValoracionYDescentralizacion(): Promise<void> {
+    try {
+      await this.dataSource.query(`
+        DO $$
+        BEGIN
+          -- 1. Permitir nulos al iniciar visita de valoración técnica en campo
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_schema = 'infrastructure-management' 
+              AND table_name = 'solicitud_valoracion' 
+              AND column_name = 'estado_al_finalizar' 
+              AND is_nullable = 'NO'
+          ) THEN
+            ALTER TABLE "infrastructure-management".solicitud_valoracion
+              ALTER COLUMN estado_al_finalizar DROP NOT NULL;
+          END IF;
+
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_schema = 'infrastructure-management' 
+              AND table_name = 'solicitud_valoracion' 
+              AND column_name = 'diagnostico' 
+              AND is_nullable = 'NO'
+          ) THEN
+            ALTER TABLE "infrastructure-management".solicitud_valoracion
+              ALTER COLUMN diagnostico DROP NOT NULL;
+          END IF;
+
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_schema = 'infrastructure-management' 
+              AND table_name = 'solicitud_valoracion' 
+              AND column_name = 'alcance_identificado' 
+              AND is_nullable = 'NO'
+          ) THEN
+            ALTER TABLE "infrastructure-management".solicitud_valoracion
+              ALTER COLUMN alcance_identificado DROP NOT NULL;
+          END IF;
+
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_schema = 'infrastructure-management' 
+              AND table_name = 'solicitud_valoracion' 
+              AND column_name = 'fecha_fin_valoracion' 
+              AND is_nullable = 'NO'
+          ) THEN
+            ALTER TABLE "infrastructure-management".solicitud_valoracion
+              ALTER COLUMN fecha_fin_valoracion DROP NOT NULL;
+          END IF;
+
+          -- 2. Asegurar existencia de tabla satélite de ejecución territorial (RF-INF-013)
+          CREATE TABLE IF NOT EXISTS "infrastructure-management".solicitud_ejecucion_territorial (
+            id_ejecucion_territorial UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            id_solicitud UUID NOT NULL UNIQUE REFERENCES "infrastructure-management".solicitud_mantenimiento(id_solicitud) ON DELETE CASCADE,
+            modalidad_ejecutor_territorial VARCHAR(40) NOT NULL DEFAULT 'CUADRILLA_CENTRAL_COMISION',
+            proveedor_local_nombre VARCHAR(200) NULL,
+            proveedor_local_nit VARCHAR(50) NULL,
+            orden_compra_contrato_local VARCHAR(100) NULL,
+            vobo_cierre_dt_aprobado BOOLEAN NULL,
+            vobo_cierre_dt_usuario_id UUID NULL,
+            vobo_cierre_dt_usuario VARCHAR(150) NULL,
+            vobo_cierre_dt_fecha TIMESTAMPTZ NULL,
+            vobo_cierre_dt_observaciones TEXT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+          );
+          CREATE INDEX IF NOT EXISTS idx_solicitud_ejecucion_territorial_solicitud ON "infrastructure-management".solicitud_ejecucion_territorial(id_solicitud);
+
+          -- 3. Asegurar roles explícitos 5.2 (Radicador, Coordinador DT, Responsable CETAP)
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'role') THEN
+            INSERT INTO auth.role (id, code, name, description, category, icon, color, "type", is_active, requires_2fa, created_by, updated_by, created_at, updated_at)
+            VALUES
+              (gen_random_uuid(), 'RADICADOR_INFRA', 'Radicador', 'Radica solicitudes en nombre de su área a través del formulario de la Super App y consulta su estado (ERS v0.2 Numeral 5.2).', 'funcional', 'file-plus', 'sky', 'funcional', true, false, 'EFDS-seed-5.2', 'EFDS-seed-5.2', now(), now()),
+              (gen_random_uuid(), 'COORDINADOR_ADMINISTRATIVO_DT', 'Coordinador Administrativo DT', 'Enlace territorial / Asignador territorial: recibe, asigna, valida cierre y escala solicitudes de su Dirección Territorial (ERS v0.2 Numeral 5.2).', 'funcional', 'map-pin', 'amber', 'funcional', true, false, 'EFDS-seed-5.2', 'EFDS-seed-5.2', now(), now()),
+              (gen_random_uuid(), 'RESPONSABLE_CETAP', 'Responsable CETAP', 'Radica y hace seguimiento a las solicitudes de infraestructura del CETAP municipal (ERS v0.2 Numeral 5.2).', 'funcional', 'building', 'emerald', 'funcional', true, false, 'EFDS-seed-5.2', 'EFDS-seed-5.2', now(), now())
+            ON CONFLICT (code) DO NOTHING;
+          END IF;
+        END $$;
+      `);
+      this.notifLogger.log('Esquema de valoración y ejecución territorial asegurado automáticamente.');
+    } catch (err: any) {
+      this.notifLogger.warn(`Aseguramiento automático de esquema omitido: ${err?.message || err}`);
+    }
   }
 
   onModuleDestroy(): void {
@@ -374,8 +479,13 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       } catch (err: any) {
         this.notifLogger.warn(`[CierreAutomaticoWorker] Fallo en barrido periódico: ${err?.message ?? err}`);
       }
+      try {
+        await this.evaluarAlertas70ANS();
+      } catch (err: any) {
+        this.notifLogger.warn(`[Alerta70Worker] Fallo en barrido de alertas 70% ANS: ${err?.message ?? err}`);
+      }
     }, INTERVALO_MS);
-    this.notifLogger.log('[CierreAutomaticoWorker] Worker de cierre automático de conformidad inicializado (intervalo: 60s).');
+    this.notifLogger.log('[CierreAutomaticoWorker] Worker de cierre automático de conformidad y evaluación 70% ANS inicializado (intervalo: 60s).');
   }
 
   private normalizarNombreTecnico(value: unknown): string {
@@ -478,7 +588,82 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     return Array.from(aliases);
   }
 
+  // Caches en memoria para resolución dinámica de categorías y SLAs (EFDS-1733)
+  private categoriaCachePorId = new Map<number, CatalogoItem>();
+  private categoriaCachePorCodigo = new Map<string, CatalogoItem>();
+  private paramCacheTiempoPorCodigo = new Map<string, number>();
+
+  private async resolverCategoria(idCategoria: number | null | undefined): Promise<CatalogoItem | null> {
+    if (!Number.isInteger(idCategoria as any) || Number(idCategoria) <= 0) return null;
+    const idCat = Math.trunc(Number(idCategoria));
+    if (this.categoriaCachePorId.has(idCat)) {
+      return this.categoriaCachePorId.get(idCat)!;
+    }
+    try {
+      const cat = await this.catalogoRepo.findOne({
+        where: { catalogo: 'CATEGORIA_SERVICIO', idCatalogo: idCat },
+      });
+      if (cat) {
+        this.categoriaCachePorId.set(idCat, cat);
+        if (cat.codigo) this.categoriaCachePorCodigo.set(cat.codigo.toUpperCase(), cat);
+        return cat;
+      }
+    } catch {}
+    return null;
+  }
+
+  private async esCategoriaElectrica(idCategoria: number | null | undefined): Promise<boolean> {
+    if (!idCategoria) return false;
+    const idCat = Math.trunc(Number(idCategoria));
+    if (idCat === 48) return true; // Retrocompatibilidad con seeds dev históricos
+    const cat = await this.resolverCategoria(idCat);
+    if (!cat) return false;
+    const cod = String(cat.codigo || '').toUpperCase();
+    const nom = String(cat.nombre || '').toLowerCase();
+    return cod === 'CS_002' || nom.includes('eléctric');
+  }
+
   private async asegurarSeedTiemposPorCategoria(): Promise<void> {
+    try {
+      const categoriasReales = await this.catalogoRepo.find({
+        where: { catalogo: 'CATEGORIA_SERVICIO', isActivo: true },
+        order: { orden: 'ASC', idCatalogo: 'ASC' },
+      });
+      if (categoriasReales && categoriasReales.length > 0) {
+        for (const c of categoriasReales) {
+          const cod = this.codigoParamTiempoCat(c.idCatalogo);
+          const exists = await this.catalogoRepo.findOne({
+            where: { catalogo: PARAMETRO_UMI, codigo: cod },
+          });
+          if (exists) continue;
+          try {
+            const seed = this.catalogoRepo.create({
+              catalogo: PARAMETRO_UMI,
+              codigo: cod,
+              nombre: `Tiempo respuesta ${c.nombre} (días naturales 1..3)`,
+              descripcion: `Seed automático dinámico para categoría ${c.codigo} (${c.nombre}).`,
+              orden: 100 + (c.orden || 1),
+              isActivo: true,
+              metadata: {
+                idCategoria: c.idCatalogo,
+                codCategoriaCS: c.codigo,
+                nombreCategoriaCS: c.nombre,
+                min: 1,
+                max: 3,
+                default: 2,
+                actual: 2,
+                unidad: 'DIAS_NATURALES',
+                modificadoPor: 'DYNAMIC_SEED_EFDS_1733',
+                fechaModificacion: new Date().toISOString(),
+              },
+            });
+            await this.catalogoRepo.save(seed as any);
+          } catch {}
+        }
+        return;
+      }
+    } catch {}
+
     const catalogo8: Array<{ id_cat: number; cod_cs: string; nombre: string; orden: number }> = [
       { id_cat: 47, cod_cs: 'CS_001', nombre: 'Cerrajería y Carpintería', orden: 1 },
       { id_cat: 48, cod_cs: 'CS_002', nombre: 'Eléctricas y Electrónicas', orden: 2 },
@@ -517,6 +702,114 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     return fallbackLegacy || userHasPermission(PERMISO_VER_BANDEJA_GENERAL, user);
   }
 
+  async resolverAmbitoTerritorial(user?: AuthUser | null): Promise<AmbitoTerritorialUsuario> {
+    const fallback: AmbitoTerritorialUsuario = {
+      esCentral: true,
+      idDireccionTerritorial: null,
+      nombreTerritorial: null,
+      codigoTerritorial: null,
+      esJefaturaTerritorial: false,
+      puedeAsignarEnTerritorial: false,
+    };
+
+    if (!user || !user.userId) {
+      return fallback;
+    }
+
+    const normRole = (s: any) => {
+      if (s === null || s === undefined) return '';
+      if (typeof s === 'string') return s.trim().toUpperCase();
+      if (typeof s === 'object') {
+        const cands = [s.code, s.codigo, s.role, s.rol, s.name, s.nombre, s.key];
+        for (const c of cands) if (typeof c === 'string') { const n = c.trim().toUpperCase(); if (n) return n; }
+      }
+      return '';
+    };
+
+    const rolesSet = new Set((user.roles || []).map(normRole).filter(Boolean));
+    const esJefatura = rolesSet.has('COORDINADOR_ADMINISTRATIVO_DT');
+
+    const ROLES_CENTRALES = [
+      'SUPER_ADMIN',
+      'ADMIN',
+      'GESTOR_MANTENIMIENTO',
+      'ADMINISTRADOR_FUNCIONAL',
+      'ADMINISTRADOR_FUNCIONAL_INFRA',
+      'COORDINADOR_INFRAESTRUCTURA',
+      'ANALISTA_ASIGNADOR_UMI',
+      'UMI',
+      'INFRAESTRUCTURA',
+      'CONSULTA_CALIDAD_INFRA',
+    ];
+    const tieneRolCentral = ROLES_CENTRALES.some((r) => rolesSet.has(r));
+
+    let dtId: number | null = null;
+    let dtCodigo: string | null = null;
+    let dtNombre: string | null = null;
+
+    try {
+      const qJefatura = `
+        SELECT jt.id_direccion_territorial AS id, dt.codigo, dt.nombre
+          FROM "academic-schedule".jefatura_territorial jt
+          JOIN academic_work_plan.direccion_territorial dt ON dt.id = jt.id_direccion_territorial
+         WHERE jt.id_user = $1::uuid
+         LIMIT 1
+      `;
+      const resJef = await this.dataSource.query(qJefatura, [user.userId]);
+      if (resJef && resJef.length > 0 && resJef[0].id) {
+        dtId = Number(resJef[0].id);
+        dtCodigo = resJef[0].codigo ? String(resJef[0].codigo) : null;
+        dtNombre = resJef[0].nombre ? String(resJef[0].nombre) : null;
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (!dtId) {
+      try {
+        const qPersona = `
+          SELECT p.id_seccional, s.cod_seccional, s.nom_seccional,
+                 dt.id AS dt_id, dt.codigo AS dt_codigo, dt.nombre AS dt_nombre
+            FROM auth."user" u
+            JOIN auth.personas p ON p.id_person = u.id_person
+            LEFT JOIN auth.seccionales s ON s.id_seccional = p.id_seccional
+            LEFT JOIN academic_work_plan.direccion_territorial dt
+              ON (dt.id = p.id_seccional OR UPPER(dt.codigo) = UPPER(s.cod_seccional))
+           WHERE u.id_user = $1::uuid
+           LIMIT 1
+        `;
+        const resPer = await this.dataSource.query(qPersona, [user.userId]);
+        if (resPer && resPer.length > 0) {
+          const r = resPer[0];
+          if (r.dt_id) {
+            dtId = Number(r.dt_id);
+            dtCodigo = r.dt_codigo ? String(r.dt_codigo) : (r.cod_seccional ? String(r.cod_seccional) : null);
+            dtNombre = r.dt_nombre ? String(r.dt_nombre) : (r.nom_seccional ? String(r.nom_seccional) : null);
+          } else if (r.id_seccional) {
+            dtId = Number(r.id_seccional);
+            dtCodigo = r.cod_seccional ? String(r.cod_seccional) : null;
+            dtNombre = r.nom_seccional ? String(r.nom_seccional) : null;
+          }
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    const esSedeCentral = dtId === 1 || dtCodigo === 'SC' || dtCodigo === 'SCENT';
+    const esCentral = (tieneRolCentral && !esJefatura) || esSedeCentral || !dtId;
+
+    return {
+      esCentral,
+      idDireccionTerritorial: dtId,
+      nombreTerritorial: dtNombre,
+      codigoTerritorial: dtCodigo,
+      rolPrincipal: Array.from(rolesSet)[0] || undefined,
+      esJefaturaTerritorial: esJefatura,
+      puedeAsignarEnTerritorial: esJefatura || tieneRolCentral || userHasPermission(PERMISO_ASIGNAR_SOLICITUD, user),
+    };
+  }
+
   private readonly loggerFindAll = new Logger('MantenimientoFindAll');
   async findAll(
     estado?: string,
@@ -524,6 +817,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     incluirTI: boolean = false,
     idCategoria?: number,
     user?: AuthUser | null,
+    filtrosTerritoriales?: { idDireccionTerritorial?: number; idCetap?: number },
   ): Promise<SolicitudMantenimiento[]> {
     this.loggerFindAll.log(`==== INICIO findAll ====`);
     this.loggerFindAll.log(`  incluirTI=${String(incluirTI)}, estado=${String(estado || 'undef')}, idCategoria=${String(idCategoria || 'undef')}`);
@@ -535,7 +829,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       .leftJoinAndSelect('solicitud.sede', 'sede')
       .leftJoinAndSelect('solicitud.espacio', 'espacio')
       .leftJoinAndSelect('espacio.bloque', 'bloque')
-      .leftJoinAndSelect('solicitud.evidencias', 'evidencias');
+      .leftJoinAndSelect('solicitud.evidencias', 'evidencias')
+      .leftJoinAndSelect('solicitud.ejecucionTerritorial', 'ejecucionTerritorial');
 
     if (estado) {
       query.andWhere('solicitud.estado = :estado', { estado });
@@ -559,7 +854,11 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     const userRolesNorm = new Set((user?.roles || []).map(normRole).filter(Boolean));
     this.loggerFindAll.log(`  userRolesNorm=${JSON.stringify([...userRolesNorm])}`);
 
+    const ambito = await this.resolverAmbitoTerritorial(user);
+    this.loggerFindAll.log(`  ambitoTerritorial=${JSON.stringify(ambito)}`);
+
     const esSUPER_ADMIN = userRolesNorm.has('SUPER_ADMIN');
+    const esRolTerritorial = userRolesNorm.has('COORDINADOR_ADMINISTRATIVO_DT');
     const bypassBandejaGeneralPorRol =
       esSUPER_ADMIN ||
       userRolesNorm.has('ADMIN') ||
@@ -569,7 +868,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       userRolesNorm.has('COORDINADOR_INFRAESTRUCTURA') ||
       userRolesNorm.has('UMI') ||
       userRolesNorm.has('INFRAESTRUCTURA') ||
-      userRolesNorm.has('ANALISTA_ASIGNADOR_UMI');
+      userRolesNorm.has('ANALISTA_ASIGNADOR_UMI') ||
+      esRolTerritorial;
     const bypassRemitidasTIPorRol =
       esSUPER_ADMIN ||
       userRolesNorm.has('ADMIN') ||
@@ -607,6 +907,27 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     } else {
       query.andWhere("solicitud.areaResponsableActual IN (:...areasUMI)", { areasUMI: ['UMI', 'PENDIENTE'] });
       this.loggerFindAll.log(`  APLICADO FILTRO: areaResponsableActual IN (UMI, PENDIENTE)`);
+    }
+
+    // Segregacion Territorial (RF-INF-013 / RF-INF-005):
+    if (!ambito.esCentral && ambito.idDireccionTerritorial) {
+      query.andWhere('solicitud.idDireccionTerritorial = :dtUsuario', {
+        dtUsuario: ambito.idDireccionTerritorial,
+      });
+      this.loggerFindAll.log(`  SEGREGACION TERRITORIAL APLICADA: dtUsuario=${ambito.idDireccionTerritorial} (${ambito.nombreTerritorial})`);
+    } else if (ambito.esCentral) {
+      if (filtrosTerritoriales?.idDireccionTerritorial) {
+        query.andWhere('solicitud.idDireccionTerritorial = :dtFiltro', {
+          dtFiltro: Number(filtrosTerritoriales.idDireccionTerritorial),
+        });
+        this.loggerFindAll.log(`  FILTRO CENTRAL DT APLICADO: idDt=${filtrosTerritoriales.idDireccionTerritorial}`);
+      }
+      if (filtrosTerritoriales?.idCetap) {
+        query.andWhere('solicitud.idCetap = :cetapFiltro', {
+          cetapFiltro: Number(filtrosTerritoriales.idCetap),
+        });
+        this.loggerFindAll.log(`  FILTRO CENTRAL CETAP APLICADO: idCetap=${filtrosTerritoriales.idCetap}`);
+      }
     }
 
     if (!puedeVerTodo) {
@@ -806,7 +1127,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
   async findById(id: string): Promise<any> {
     const solicitud = await this.mantenimientoRepo.findOne({
       where: { idSolicitud: id },
-      relations: ['sede', 'espacio', 'espacio.bloque', 'evidencias'],
+      relations: ['sede', 'espacio', 'espacio.bloque', 'evidencias', 'ejecucionTerritorial'],
     });
     if (!solicitud) {
       throw new NotFoundException(`Solicitud de mantenimiento ${id} no encontrada`);
@@ -890,6 +1211,55 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         'Clasificación TECNOLÓGICA NO puede quedar radicada como responsabilidad de UMI. Area debe ser TI.',
       );
     }
+
+    // EFDS-2436 / RF-INF-011: Validación de mantenimiento preventivo y ventana máxima de 15 días a futuro
+    const esPreventivo = String(dto.tipoMantenimiento || '').toUpperCase() === 'PREVENTIVO';
+    let fechaProgramadaResuelta: string | null = null;
+    if (esPreventivo) {
+      if (!dto.fechaProgramada || !String(dto.fechaProgramada).trim()) {
+        throw new BadRequestException(
+          'Para solicitudes de mantenimiento preventivo, la fecha programada de atención es obligatoria (máximo 15 días hacia el futuro).',
+        );
+      }
+      const rawFecha = String(dto.fechaProgramada).trim();
+      const datePart = rawFecha.split('T')[0];
+      const parts = datePart.split('-');
+      if (parts.length !== 3) {
+        throw new BadRequestException('La fecha programada debe tener un formato válido (YYYY-MM-DD).');
+      }
+      const [year, month, day] = parts.map(Number);
+      const fechaProg = new Date(year, month - 1, day, 12, 0, 0);
+      if (isNaN(fechaProg.getTime())) {
+        throw new BadRequestException('La fecha programada proporcionada no es una fecha válida.');
+      }
+
+      const hoyInicio = new Date();
+      hoyInicio.setHours(0, 0, 0, 0);
+
+      const maxFuturo15Dias = new Date(hoyInicio);
+      maxFuturo15Dias.setDate(maxFuturo15Dias.getDate() + 15);
+      maxFuturo15Dias.setHours(23, 59, 59, 999);
+
+      const progDateOnly = new Date(year, month - 1, day, 0, 0, 0);
+
+      if (progDateOnly < hoyInicio) {
+        throw new BadRequestException(
+          'La fecha programada de mantenimiento preventivo no puede ser anterior a la fecha actual.',
+        );
+      }
+      if (progDateOnly > maxFuturo15Dias) {
+        throw new BadRequestException(
+          'La fecha programada de mantenimiento preventivo no puede superar el límite máximo de 15 días calendario a futuro.',
+        );
+      }
+      fechaProgramadaResuelta = datePart;
+
+      // Si no se especificó categoría y es preventivo, asociar por defecto a CS_008 (Revisión y Mantenimiento Preventivo Equipos Críticos)
+      if (!dto.idCategoria) {
+        dto.idCategoria = 54;
+      }
+    }
+
     if (dto.tipoAtencion !== 'TECNOLOGICA' && !Number.isInteger(Number(dto.idCategoria))) {
       throw new BadRequestException(
         'La categoría de servicio es obligatoria para radicar solicitudes de atención física.',
@@ -958,6 +1328,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       salon: dto.salon,
       ubicacionDetalle: dto.ubicacionDetalle,
       tipoMantenimiento: dto.tipoMantenimiento,
+      fechaProgramada: fechaProgramadaResuelta as any,
       tipoAtencion: dto.tipoAtencion,
       areaResponsableActual: areaResp,
       remisiones: remisionesIniciales,
@@ -986,6 +1357,16 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         clasificacionMantenimiento: 'MENOR',
         requiereContratacion: false,
       }),
+      alerta70Emitida: false,
+      fechaAlerta70: null,
+      esEmergenciaCritica: Boolean(
+        dto.esEmergenciaCritica ||
+        String(dto.prioridad || '').toUpperCase() === 'EMERGENCIA',
+      ),
+      emergenciaConfirmada: false,
+      emergenciaConfirmadaPor: null,
+      fechaConfirmacionEmergencia: null,
+      notasConfirmacionEmergencia: null,
     };
 
     const saved = await this.mantenimientoRepo.save(solicitudData as any);
@@ -1050,6 +1431,14 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 <p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none">Clasificar y Asignar Técnico</a></p>
 </div>`,
     });
+
+    if (saved.esEmergenciaCritica) {
+      try {
+        await this.notificarEmergenciaCritica(saved);
+      } catch (errCritica: any) {
+        this.notifLogger.warn(`[EmergenciaCritica] Error enviando notificaciones para #${saved.consecutivo}: ${errCritica?.message || errCritica}`);
+      }
+    }
 
     const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
     return enriquecida || saved;
@@ -1223,6 +1612,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     orden?: number;
     isActivo?: boolean;
     color?: string;
+    parentCodigo?: string;
+    idCategoriaPadre?: number;
   }): Promise<CatalogoItem> {
     const cod = (data.codigo || '').trim();
     const nom = (data.nombre || '').trim();
@@ -1238,6 +1629,25 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    let catPadre: CatalogoItem | null = null;
+    if (data.idCategoriaPadre) {
+      catPadre = await this.catalogoRepo.findOne({
+        where: { idCatalogo: data.idCategoriaPadre, catalogo: 'CATEGORIA_SERVICIO' },
+      });
+    } else if (data.parentCodigo && data.parentCodigo.trim()) {
+      catPadre = await this.catalogoRepo.findOne({
+        where: { codigo: data.parentCodigo.trim(), catalogo: 'CATEGORIA_SERVICIO' },
+      });
+    }
+
+    if (data.idCategoriaPadre || (data.parentCodigo && data.parentCodigo.trim())) {
+      if (!catPadre) {
+        throw new NotFoundException(`La categoría padre especificada no existe.`);
+      }
+    }
+
+    const esSubcategoria = !!catPadre;
+
     const maxOrden = await this.catalogoRepo
       .createQueryBuilder('c')
       .where("c.catalogo = 'CATEGORIA_SERVICIO'")
@@ -1249,6 +1659,17 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         : (Number(maxOrden?.max || 0) + 1);
 
     const desc = data.descripcion?.trim();
+    const metadata: Record<string, any> = {
+      tipo: esSubcategoria ? 'SUBCATEGORIA' : 'CATEGORIA_PRINCIPAL',
+      fase2: true,
+      color: data.color || (esSubcategoria ? (catPadre!.metadata?.color || 'bg-slate-100 text-slate-800 border border-slate-200') : 'bg-slate-100 text-slate-800 border border-slate-200'),
+    };
+    if (esSubcategoria && catPadre) {
+      metadata.parentCodigo = catPadre.codigo;
+      metadata.parentId = catPadre.idCatalogo;
+      metadata.parentNombre = catPadre.nombre;
+    }
+
     const nuevo = this.catalogoRepo.create({
       catalogo: 'CATEGORIA_SERVICIO',
       codigo: cod,
@@ -1256,11 +1677,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       descripcion: desc ? desc : undefined,
       orden,
       isActivo: data.isActivo ?? true,
-      metadata: {
-        tipo: 'CATEGORIA_PRINCIPAL',
-        fase2: true,
-        color: data.color || 'bg-slate-100 text-slate-800 border border-slate-200',
-      },
+      metadata,
     });
     const [guardado] = await this.catalogoRepo.save([nuevo as any]);
     return guardado as CatalogoItem;
@@ -1275,6 +1692,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       codigo?: string;
       isActivo?: boolean;
       color?: string;
+      parentCodigo?: string | null;
+      idCategoriaPadre?: number | null;
     },
   ): Promise<CatalogoItem> {
     const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: 'CATEGORIA_SERVICIO' } });
@@ -1305,10 +1724,38 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 
     if (data.orden !== undefined) it.orden = data.orden;
     if (data.isActivo !== undefined) it.isActivo = !!data.isActivo;
-    if (data.color !== undefined && it.metadata && typeof it.metadata === 'object') {
+
+    if (!it.metadata || typeof it.metadata !== 'object') {
+      it.metadata = {};
+    }
+
+    if (data.color !== undefined) {
       (it.metadata as any).color = data.color;
-    } else if (data.color !== undefined && (!it.metadata || typeof it.metadata !== 'object')) {
-      it.metadata = { color: data.color } as any;
+    }
+
+    if (data.parentCodigo !== undefined || data.idCategoriaPadre !== undefined) {
+      if (data.parentCodigo === null || data.idCategoriaPadre === null || data.parentCodigo === '' || data.idCategoriaPadre === 0) {
+        (it.metadata as any).tipo = 'CATEGORIA_PRINCIPAL';
+        delete (it.metadata as any).parentCodigo;
+        delete (it.metadata as any).parentId;
+        delete (it.metadata as any).parentNombre;
+      } else {
+        let catPadre: CatalogoItem | null = null;
+        if (data.idCategoriaPadre) {
+          catPadre = await this.catalogoRepo.findOne({
+            where: { idCatalogo: data.idCategoriaPadre, catalogo: 'CATEGORIA_SERVICIO' },
+          });
+        } else if (data.parentCodigo) {
+          catPadre = await this.catalogoRepo.findOne({
+            where: { codigo: data.parentCodigo.trim(), catalogo: 'CATEGORIA_SERVICIO' },
+          });
+        }
+        if (!catPadre) throw new NotFoundException('Categoría padre especificada no existe.');
+        (it.metadata as any).tipo = 'SUBCATEGORIA';
+        (it.metadata as any).parentCodigo = catPadre.codigo;
+        (it.metadata as any).parentId = catPadre.idCatalogo;
+        (it.metadata as any).parentNombre = catPadre.nombre;
+      }
     }
 
     return this.catalogoRepo.save(it);
@@ -1324,6 +1771,45 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
   async eliminarCategoriaServicio(idCatalogo: number): Promise<{ idCatalogo: number; eliminado: boolean }> {
     const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: 'CATEGORIA_SERVICIO' } });
     if (!it) throw new NotFoundException(`Categoría #${idCatalogo} no existe.`);
+
+    // 1. Bloqueo de categorías oficiales del sistema (CS_001 a CS_008)
+    const CODIGOS_OFICIALES = new Set(['CS_001', 'CS_002', 'CS_003', 'CS_004', 'CS_005', 'CS_006', 'CS_007', 'CS_008']);
+    const esOficial = CODIGOS_OFICIALES.has(it.codigo) || it.metadata?.esOficial === true || it.metadata?.lineaBase745 === true;
+    if (esOficial) {
+      throw new BadRequestException(
+        `La categoría ${it.codigo} (${it.nombre}) es una de las 8 categorías oficiales del sistema y está protegida contra eliminación.`,
+      );
+    }
+
+    // 2. Bloqueo de integridad referencial si tiene solicitudes de mantenimiento asociadas
+    const totalSolicitudes =
+      typeof this.mantenimientoRepo?.count === 'function'
+        ? await this.mantenimientoRepo.count({
+            where: [{ idCategoria: idCatalogo }, { idSubcategoria: idCatalogo }],
+          })
+        : 0;
+    if (totalSolicitudes > 0) {
+      throw new ConflictException(
+        `No es posible eliminar la categoría "${it.nombre}" porque tiene ${totalSolicitudes} solicitud(es) de mantenimiento asociadas. Desactívela en su lugar.`,
+      );
+    }
+
+    // 3. Bloqueo si es una categoría principal con subcategorías hijas asociadas
+    const subcategorias =
+      typeof this.catalogoRepo?.find === 'function'
+        ? await this.catalogoRepo.find({
+            where: { catalogo: 'CATEGORIA_SERVICIO' },
+          })
+        : [];
+    const hijas = subcategorias.filter(
+      (sub) => sub.metadata?.parentCodigo === it.codigo || sub.metadata?.parentId === it.idCatalogo,
+    );
+    if (hijas.length > 0) {
+      throw new ConflictException(
+        `No es posible eliminar la categoría "${it.nombre}" porque tiene ${hijas.length} subcategoría(s) asociada(s). Elimine o reasigne las subcategorías primero.`,
+      );
+    }
+
     await this.catalogoRepo.delete({ idCatalogo });
     return { idCatalogo, eliminado: true };
   }
@@ -1373,132 +1859,219 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 
   private aplicarCacheConDefaults(row: CatalogoItem | undefined | null, idCategoria: number): number {
     let actual = 2;
+    let codCS: string | undefined;
     if (row && row.metadata && typeof row.metadata === 'object') {
       const metaActual = Number((row.metadata as any).actual);
       actual = this.clampDias(isFinite(metaActual) ? metaActual : 2);
+      codCS = (row.metadata as any).codCategoriaCS;
     }
     this.paramCacheTiempoPorCategoria.set(Math.trunc(Number(idCategoria)), actual);
+    if (codCS) {
+      this.paramCacheTiempoPorCodigo.set(String(codCS).toUpperCase(), actual);
+    }
     return actual;
   }
 
   async listarParametrosTiempoPorCategoria(): Promise<CatalogoItem[]> {
-    const rows = await this.catalogoRepo
-      .createQueryBuilder('c')
-      .where('c.catalogo = :cat', { cat: PARAMETRO_UMI })
-      .andWhere('c.codigo LIKE :pref', { pref: PREFIX_TIEMPO_CAT + '%' })
-      .orderBy('c.orden', 'ASC')
-      .addOrderBy('c.idCatalogo', 'ASC')
-      .getMany();
-
-    if (rows && rows.length > 0) {
-      for (const r of rows) {
-        const idCat = Number(r.metadata && typeof r.metadata === 'object' ? (r.metadata as any).idCategoria : null);
-        if (Number.isInteger(idCat)) this.aplicarCacheConDefaults(r, idCat);
-      }
-      return rows;
-    }
-    // Fallback: si la migración 010_02 NO se ejecutó (no hay data), creamos los 8 on-the-fly
-    const catalogo8: Array<{ id_cat: number; cod_cs: string; nombre: string; orden: number }> = [
-      { id_cat: 47, cod_cs: 'CS_001', nombre: 'Cerrajería y Carpintería', orden: 1 },
-      { id_cat: 48, cod_cs: 'CS_002', nombre: 'Eléctricas y Electrónicas', orden: 2 },
-      { id_cat: 49, cod_cs: 'CS_003', nombre: 'Adecuación de Espacios y Apoyo a Eventos', orden: 3 },
-      { id_cat: 50, cod_cs: 'CS_004', nombre: 'Plomería y Fontanería', orden: 4 },
-      { id_cat: 51, cod_cs: 'CS_005', nombre: 'Mantenimiento Infraestructura Física y Obras Menores', orden: 5 },
-      { id_cat: 52, cod_cs: 'CS_006', nombre: 'Mantenimiento Zonas Exteriores y Jardinería', orden: 6 },
-      { id_cat: 53, cod_cs: 'CS_007', nombre: 'Traslados de Mobiliario y Bienes', orden: 7 },
-      { id_cat: 54, cod_cs: 'CS_008', nombre: 'Revisión y Mantenimiento Preventivo Equipos Críticos', orden: 8 },
-    ];
-    const creados: CatalogoItem[] = [];
-    for (const c of catalogo8) {
-      const seed = this.catalogoRepo.create({
-        catalogo: PARAMETRO_UMI,
-        codigo: this.codigoParamTiempoCat(c.id_cat),
-        nombre: `Tiempo respuesta ${c.nombre} (días naturales 1..3)`,
-        orden: 100 + c.orden,
-        isActivo: true,
-        metadata: this.metadataTiempoDefaults(c.id_cat),
+    // 1. Intentar cargar las categorías de servicio reales del ambiente
+    let categoriasServicio: CatalogoItem[] = [];
+    try {
+      categoriasServicio = await this.catalogoRepo.find({
+        where: { catalogo: 'CATEGORIA_SERVICIO' },
+        order: { orden: 'ASC', idCatalogo: 'ASC' },
       });
-      try {
-        const saved = await this.catalogoRepo.save(seed as any);
-        creados.push(saved as CatalogoItem);
-        this.aplicarCacheConDefaults(saved as any, c.id_cat);
-      } catch {
-        // ignore dup (race)
-        const found = await this.catalogoRepo.findOne({
-          where: { catalogo: PARAMETRO_UMI, codigo: this.codigoParamTiempoCat(c.id_cat) },
-        });
-        if (found) {
-          creados.push(found as CatalogoItem);
-          this.aplicarCacheConDefaults(found as any, c.id_cat);
-        }
-      }
-    }
-    // Fallback doble: si creados.length < 8 (por save fallo / restriccion / race no dup), hacemos REFRESH find de nuevo,
-    // y si sigue <8 generamos 8 IN-MEMORY sin persistir para garantizar al UI 8 categorías renderizadas.
-    // El usuario al Guardar una categoría (PATCH) SÍ persiste correctamente el item individual (obtenerParametroTiempo sí crea OK).
-    if (creados.length < 8) {
-      const refrescados = await this.catalogoRepo
+    } catch {}
+
+    // Si no existen categorías de servicio (ej. unit tests sin mock completo de catálogo)
+    if (!categoriasServicio || categoriasServicio.length === 0) {
+      const rows = await this.catalogoRepo
         .createQueryBuilder('c')
         .where('c.catalogo = :cat', { cat: PARAMETRO_UMI })
         .andWhere('c.codigo LIKE :pref', { pref: PREFIX_TIEMPO_CAT + '%' })
         .orderBy('c.orden', 'ASC')
         .addOrderBy('c.idCatalogo', 'ASC')
         .getMany();
-      if (refrescados && refrescados.length >= 8) return refrescados;
-      const creadosMap = new Map<string, CatalogoItem>();
-      for (const x of [...(refrescados || []), ...creados]) {
-        if (x?.codigo) creadosMap.set(String(x.codigo), x);
+
+      if (rows && rows.length > 0) {
+        for (const r of rows) {
+          const idCat = Number(r.metadata && typeof r.metadata === 'object' ? (r.metadata as any).idCategoria : null);
+          if (Number.isInteger(idCat)) this.aplicarCacheConDefaults(r, idCat);
+        }
+        return rows;
       }
+      // Fallback: 8 por defecto dev
+      const catalogo8: Array<{ id_cat: number; cod_cs: string; nombre: string; orden: number }> = [
+        { id_cat: 47, cod_cs: 'CS_001', nombre: 'Cerrajería y Carpintería', orden: 1 },
+        { id_cat: 48, cod_cs: 'CS_002', nombre: 'Eléctricas y Electrónicas', orden: 2 },
+        { id_cat: 49, cod_cs: 'CS_003', nombre: 'Adecuación de Espacios y Apoyo a Eventos', orden: 3 },
+        { id_cat: 50, cod_cs: 'CS_004', nombre: 'Plomería y Fontanería', orden: 4 },
+        { id_cat: 51, cod_cs: 'CS_005', nombre: 'Mantenimiento Infraestructura Física y Obras Menores', orden: 5 },
+        { id_cat: 52, cod_cs: 'CS_006', nombre: 'Mantenimiento Zonas Exteriores y Jardinería', orden: 6 },
+        { id_cat: 53, cod_cs: 'CS_007', nombre: 'Traslados de Mobiliario y Bienes', orden: 7 },
+        { id_cat: 54, cod_cs: 'CS_008', nombre: 'Revisión y Mantenimiento Preventivo Equipos Críticos', orden: 8 },
+      ];
+      const creados: CatalogoItem[] = [];
       for (const c of catalogo8) {
-        const cod = this.codigoParamTiempoCat(c.id_cat);
-        if (!creadosMap.has(cod)) {
-          const temp = this.catalogoRepo.create({
-            catalogo: PARAMETRO_UMI,
-            codigo: cod,
-            nombre: `Tiempo respuesta ${c.nombre} (días 1..3) · IN-MEMORY FALLBACK ejecutar migración 010_02`,
-            descripcion: 'Generado on-the-fly IN-MEMORY (fallback) por EFDS-1733-bis. Al dar GUARDAR se persiste; se recomienda ejecutar la migración 010_02 para el seed permanente.',
-            orden: 100 + c.orden,
-            isActivo: true,
-            metadata: { ...this.metadataTiempoDefaults(c.id_cat), __flag: 'FALLBACK_MEM_PENDING_MIG_010_02' },
+        const seed = this.catalogoRepo.create({
+          catalogo: PARAMETRO_UMI,
+          codigo: this.codigoParamTiempoCat(c.id_cat),
+          nombre: `Tiempo respuesta ${c.nombre} (días naturales 1..3)`,
+          orden: 100 + c.orden,
+          isActivo: true,
+          metadata: this.metadataTiempoDefaults(c.id_cat),
+        });
+        try {
+          const saved = await this.catalogoRepo.save(seed as any);
+          creados.push(saved as CatalogoItem);
+          this.aplicarCacheConDefaults(saved as any, c.id_cat);
+        } catch {
+          const found = await this.catalogoRepo.findOne({
+            where: { catalogo: PARAMETRO_UMI, codigo: this.codigoParamTiempoCat(c.id_cat) },
           });
-          creadosMap.set(cod, temp as CatalogoItem);
-          creados.push(temp as CatalogoItem);
-          this.aplicarCacheConDefaults(temp as any, c.id_cat);
+          if (found) {
+            creados.push(found as CatalogoItem);
+            this.aplicarCacheConDefaults(found as any, c.id_cat);
+          }
         }
       }
+      return creados;
     }
-    creados.sort((a, b) => {
-      const ia = Number((a.metadata as any)?.idCategoria ?? 99);
-      const ib = Number((b.metadata as any)?.idCategoria ?? 99);
+
+    // 2. Sincronización dinámica con las categorías de servicio reales del ambiente (QA: 32..39, Local: 24..31, etc.)
+    const paramsExistentes = await this.catalogoRepo.find({
+      where: { catalogo: PARAMETRO_UMI },
+    });
+
+    const resultado: CatalogoItem[] = [];
+
+    for (const cat of categoriasServicio) {
+      const idCat = cat.idCatalogo;
+      const codCS = String(cat.codigo || '').toUpperCase();
+      const nomCS = cat.nombre;
+
+      // Buscar si ya existe parámetro para esta categoría (por código CS o por id o código legacy)
+      let param = paramsExistentes.find((p) => {
+        const md = (p.metadata && typeof p.metadata === 'object' ? p.metadata : {}) as any;
+        return (
+          md.codCategoriaCS === codCS ||
+          md.idCategoria === idCat ||
+          p.codigo === this.codigoParamTiempoCat(idCat) ||
+          p.codigo === `TIEMPO_RESP_DIAS_${codCS}` ||
+          (codCS === 'CS_001' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_47') ||
+          (codCS === 'CS_002' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_48') ||
+          (codCS === 'CS_003' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_49') ||
+          (codCS === 'CS_004' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_50') ||
+          (codCS === 'CS_005' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_51') ||
+          (codCS === 'CS_006' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_52') ||
+          (codCS === 'CS_007' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_53') ||
+          (codCS === 'CS_008' && p.codigo === 'TIEMPO_RESP_DIAS_CAT_54')
+        );
+      });
+
+      if (!param) {
+        param = this.catalogoRepo.create({
+          catalogo: PARAMETRO_UMI,
+          codigo: this.codigoParamTiempoCat(idCat),
+          nombre: `Tiempo respuesta ${nomCS} (días naturales 1..3)`,
+          descripcion: `Tiempo de respuesta SLA para la categoría ${codCS} (${nomCS}).`,
+          orden: 100 + (cat.orden || 1),
+          isActivo: true,
+          metadata: {
+            idCategoria: idCat,
+            codCategoriaCS: codCS,
+            nombreCategoriaCS: nomCS,
+            min: 1,
+            max: 3,
+            default: 2,
+            actual: 2,
+            unidad: 'DIAS_NATURALES',
+            modificadoPor: 'DYNAMIC_SYNC_EFDS_1733',
+            fechaModificacion: new Date().toISOString(),
+          },
+        }) as CatalogoItem;
+        try {
+          param = await this.catalogoRepo.save(param as any);
+        } catch {}
+      } else {
+        // Sincronizar metadata con el ID y datos reales de esta BD
+        const md = (param.metadata && typeof param.metadata === 'object' ? param.metadata : {}) as any;
+        let modificado = false;
+        if (md.idCategoria !== idCat) {
+          md.idCategoria = idCat;
+          modificado = true;
+        }
+        if (md.codCategoriaCS !== codCS) {
+          md.codCategoriaCS = codCS;
+          modificado = true;
+        }
+        if (md.nombreCategoriaCS !== nomCS) {
+          md.nombreCategoriaCS = nomCS;
+          modificado = true;
+        }
+        if (modificado) {
+          param.metadata = md;
+          try {
+            await this.catalogoRepo.save(param as any);
+          } catch {}
+        }
+      }
+
+      if (param) {
+        const diasActual = this.aplicarCacheConDefaults(param, idCat);
+        if (codCS) {
+          this.paramCacheTiempoPorCodigo.set(codCS, diasActual);
+        }
+        resultado.push(param);
+      }
+    }
+
+    resultado.sort((a, b) => {
+      const ia = Number((a.metadata as any)?.idCategoria ?? (a.idCatalogo ?? 99));
+      const ib = Number((b.metadata as any)?.idCategoria ?? (b.idCatalogo ?? 99));
       return ia - ib;
     });
-    return creados;
+
+    return resultado;
   }
 
   async obtenerParametroTiempoRespuesta(idCategoria?: number): Promise<CatalogoItem> {
     const idCat = Number(idCategoria);
-    const tieneIdCatValido = Number.isInteger(idCat) && idCat >= 47 && idCat <= 54;
-    if (tieneIdCatValido) {
-      const cod = this.codigoParamTiempoCat(idCat);
-      let row = await this.catalogoRepo.findOne({ where: { catalogo: PARAMETRO_UMI, codigo: cod } });
+    if (Number.isInteger(idCat) && idCat > 0) {
+      const allParams = await this.catalogoRepo.find({
+        where: { catalogo: PARAMETRO_UMI },
+      });
+      let row = allParams.find((p) => {
+        const md = (p.metadata && typeof p.metadata === 'object' ? p.metadata : {}) as any;
+        return (
+          md.idCategoria === idCat ||
+          p.codigo === this.codigoParamTiempoCat(idCat) ||
+          (idCat === 48 && p.codigo === 'TIEMPO_RESP_DIAS_CAT_48')
+        );
+      });
       if (!row) {
+        const cat = await this.resolverCategoria(idCat);
+        const cod = this.codigoParamTiempoCat(idCat);
         const seed = this.catalogoRepo.create({
           catalogo: PARAMETRO_UMI,
           codigo: cod,
-          nombre: `Tiempo respuesta (CATEGORÍA ${idCat})`,
-          descripcion: 'Creado on-demand por PATCH actualizarParametroTiempoRespuesta (EFDS-1733-bis).',
-          orden: 100 + (idCat - 46),
+          nombre: `Tiempo respuesta (${cat?.nombre || 'CATEGORÍA ' + idCat})`,
+          descripcion: 'Creado on-demand por obtenerParametroTiempoRespuesta.',
+          orden: 100 + idCat,
           isActivo: true,
-          metadata: this.metadataTiempoDefaults(idCat),
+          metadata: {
+            ...this.metadataTiempoDefaults(idCat),
+            idCategoria: idCat,
+            codCategoriaCS: cat?.codigo || `CS_${String(idCat).padStart(3, '0')}`,
+            nombreCategoriaCS: cat?.nombre || `Categoría ${idCat}`,
+          },
         });
-        row = await this.catalogoRepo.save(seed);
+        row = (await this.catalogoRepo.save(seed as any)) as unknown as CatalogoItem;
       }
       this.aplicarCacheConDefaults(row as any, idCat);
-      return row;
+      return row as CatalogoItem;
     }
+
     // Fallback si NO se envía idCategoria (legacy): leemos el param global
-    // TIEMPO_RESPUESTA_DIAS si existe, sino retornamos un objeto IN-MEMORY
-    // (NO persistimos desde aquí para no confundir con params por categoría).
     const globalRow = await this.catalogoRepo.findOne({
       where: { catalogo: PARAMETRO_UMI, codigo: COD_TIEMPO_GLOBAL },
     });
@@ -1511,7 +2084,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       isActivo: true,
       metadata: {
         tipo: 'FALLBACK_LEGACY',
-        nota: 'Use listarParametrosTiempoPorCategoria para consultar los 8 parámetros por categoría (RF-INF-004 L104 EFDS-1733-bis).',
+        nota: 'Use listarParametrosTiempoPorCategoria para consultar los parámetros por categoría.',
         min: 1, max: 3, default: 2, actual: this.paramCacheGlobalFallback, unidad: 'DIAS_NATURALES',
       },
     });
@@ -1520,10 +2093,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 
   async actualizarParametroTiempoRespuesta(idCategoria: number | undefined, dias: number): Promise<CatalogoItem> {
     const idCat = Math.trunc(Number(idCategoria));
-    if (!Number.isInteger(idCat) || idCat < 47 || idCat > 54) {
-      throw new BadRequestException(
-        'Parámetro tiempo-respuesta ahora POR CATEGORÍA (EFDS-1733-bis HUECO 1). Indique idCategoria en rango [47..54].',
-      );
+    if (!Number.isInteger(idCat) || idCat <= 0) {
+      throw new BadRequestException('Indique un idCategoria numérico válido.');
     }
     if (!Number.isInteger(dias)) {
       throw new BadRequestException('Los días del tiempo de respuesta deben ser un número entero.');
@@ -1531,35 +2102,69 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     if (dias < 1 || dias > 3) {
       throw new BadRequestException('Tiempo de respuesta: fuera de rango. Rango permitido 1 a 3 días naturales.');
     }
-    const cod = this.codigoParamTiempoCat(idCat);
-    let row = await this.catalogoRepo.findOne({ where: { catalogo: PARAMETRO_UMI, codigo: cod } });
+
+    // Validar que idCategoria pertenezca a una categoría existente o al conjunto oficial de categorías
+    const categoriasServicio = await this.catalogoRepo.find({
+      where: { catalogo: 'CATEGORIA_SERVICIO' },
+    });
+    const idsValidos = new Set<number>([47, 48, 49, 50, 51, 52, 53, 54]);
+    for (const c of categoriasServicio) {
+      if (Number.isInteger(c.idCatalogo)) idsValidos.add(c.idCatalogo);
+    }
+    if (!idsValidos.has(idCat)) {
+      throw new BadRequestException(
+        `Parámetro tiempo-respuesta: idCategoria #${idCat} no corresponde a ninguna categoría de servicio válida (fuera de rango).`,
+      );
+    }
+
+    const allParams = await this.catalogoRepo.find({
+      where: { catalogo: PARAMETRO_UMI },
+    });
+
+    let row = allParams.find((p) => {
+      const md = (p.metadata && typeof p.metadata === 'object' ? p.metadata : {}) as any;
+      return (
+        md.idCategoria === idCat ||
+        p.codigo === this.codigoParamTiempoCat(idCat) ||
+        (idCat === 48 && p.codigo === 'TIEMPO_RESP_DIAS_CAT_48')
+      );
+    });
+
     if (!row) {
+      const cat = await this.resolverCategoria(idCat);
+      const cod = this.codigoParamTiempoCat(idCat);
       const seed = this.catalogoRepo.create({
         catalogo: PARAMETRO_UMI,
         codigo: cod,
-        nombre: `Tiempo respuesta (CATEGORÍA ${idCat})`,
-        descripcion: 'Creado on-demand por PATCH actualizarParametroTiempoRespuesta (EFDS-1733-bis).',
-        orden: 100 + (idCat - 46),
+        nombre: `Tiempo respuesta (${cat?.nombre || 'CATEGORÍA ' + idCat})`,
+        descripcion: 'Creado on-demand por PATCH actualizarParametroTiempoRespuesta (EFDS-1733).',
+        orden: 100 + idCat,
         isActivo: true,
-        metadata: this.metadataTiempoDefaults(idCat),
+        metadata: {
+          ...this.metadataTiempoDefaults(idCat),
+          idCategoria: idCat,
+          codCategoriaCS: cat?.codigo || `CS_${String(idCat).padStart(3, '0')}`,
+          nombreCategoriaCS: cat?.nombre || `Categoría ${idCat}`,
+        },
       });
-      row = await this.catalogoRepo.save(seed);
+      row = (await this.catalogoRepo.save(seed as any)) as unknown as CatalogoItem;
     }
-    row.metadata = {
-      ...((row.metadata && typeof row.metadata === 'object') ? row.metadata : {}),
+
+    const itemRow = row as CatalogoItem;
+    const codCS = (itemRow.metadata as any)?.codCategoriaCS;
+    itemRow.metadata = {
+      ...((itemRow.metadata && typeof itemRow.metadata === 'object') ? itemRow.metadata : {}),
+      idCategoria: idCat,
       actual: Math.trunc(Number(dias)),
       fechaModificacion: new Date().toISOString(),
       modificadoPor: 'PATCH_PANEL_ADMIN_PARAMETROS_UMI',
-      marcaAgua: 'EFDS_1733_BIS__FIX_CAP1_OK__CODIGO_NUEVO_CARGADO__V2_' + Date.now(),
+      marcaAgua: 'EFDS_1733__FIX_DYNAMIC_CAT_' + Date.now(),
     };
-    const saved = await this.catalogoRepo.save(row);
+    const saved = (await this.catalogoRepo.save(itemRow as any)) as unknown as CatalogoItem;
     this.aplicarCacheConDefaults(saved, idCat);
-    console.log('\n==============================================================');
-    console.log('[FIX_CAP1_PATCH_TIEMPO_OK] idCategoria=', idCat, 'dias=', dias);
-    console.log('[FIX_CAP1_PATCH_TIEMPO_OK] row.codigo=', saved.codigo, 'idCatalogo=', saved.idCatalogo);
-    console.log('[FIX_CAP1_PATCH_TIEMPO_OK] metadata.actual=', (saved.metadata as any)?.actual, 'modificadoPor=', (saved.metadata as any)?.modificadoPor);
-    console.log('[FIX_CAP1_PATCH_TIEMPO_OK] SI VES ESTE LOG EN TERMINAL => NEST CARGO EL NUEVO CODIGO (NO idCatalogo 80)');
-    console.log('==============================================================\n');
+    if (codCS) {
+      this.paramCacheTiempoPorCodigo.set(String(codCS).toUpperCase(), Math.trunc(Number(dias)));
+    }
     return saved;
   }
 
@@ -1568,6 +2173,12 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       const idCat = Math.trunc(Number(idCategoria));
       const cached = this.paramCacheTiempoPorCategoria.get(idCat);
       if (Number.isInteger(cached as any)) return this.clampDias(Number(cached));
+
+      const catCached = this.categoriaCachePorId.get(idCat);
+      if (catCached && catCached.codigo) {
+        const cachedByCode = this.paramCacheTiempoPorCodigo.get(String(catCached.codigo).toUpperCase());
+        if (Number.isInteger(cachedByCode as any)) return this.clampDias(Number(cachedByCode));
+      }
     }
     return this.clampDias(this.paramCacheGlobalFallback);
   }
@@ -1817,10 +2428,63 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
   // EFDS-1733: Reglas escalamiento
   // ---------------------------------------------------------------------------
   async listarReglasEscalamiento(): Promise<CatalogoItem[]> {
-    return this.catalogoRepo.find({
+    const reglas = await this.catalogoRepo.find({
       where: { catalogo: REGLA_ESCALAMIENTO },
       order: { orden: 'ASC', idCatalogo: 'ASC' },
     });
+
+    try {
+      const categorias = await this.catalogoRepo.find({
+        where: { catalogo: 'CATEGORIA_SERVICIO' },
+        order: { orden: 'ASC', idCatalogo: 'ASC' },
+      });
+      if (categorias && categorias.length > 0) {
+        const catElec = categorias.find((c) => String(c.codigo).toUpperCase() === 'CS_002');
+        const otrasCats = categorias.filter((c) => String(c.codigo).toUpperCase() !== 'CS_002');
+
+        for (const r of reglas) {
+          const md = (r.metadata && typeof r.metadata === 'object' ? r.metadata : {}) as any;
+          let changed = false;
+
+          if (
+            r.codigo.startsWith('REG_001_CATEGORIA_') ||
+            r.codigo.includes('ELECTRICAS') ||
+            md.regla === 'ESPECIALIZACION'
+          ) {
+            if (catElec) {
+              const nuevoCodigo = `REG_001_CATEGORIA_${catElec.idCatalogo}_ELECTRICAS`;
+              if (r.codigo !== nuevoCodigo) {
+                r.codigo = nuevoCodigo;
+                changed = true;
+              }
+              if (md.idCategoria !== catElec.idCatalogo) {
+                md.idCategoria = catElec.idCatalogo;
+                md.codCategoriaCS = 'CS_002';
+                changed = true;
+              }
+            }
+          } else if (
+            r.codigo === 'REG_002_EQUIDAD_OTRAS_7_CATEGORIAS' ||
+            md.regla === 'EQUIDAD_DISPONIBILIDAD_CARGA_MENOR'
+          ) {
+            const idsEsperados = otrasCats.map((c) => c.idCatalogo);
+            if (JSON.stringify(md.idsCategorias) !== JSON.stringify(idsEsperados)) {
+              md.idsCategorias = idsEsperados;
+              changed = true;
+            }
+          }
+
+          if (changed) {
+            r.metadata = md;
+            try {
+              await this.catalogoRepo.save(r as any);
+            } catch {}
+          }
+        }
+      }
+    } catch {}
+
+    return reglas;
   }
 
   async actualizarReglaEscalamiento(
@@ -1835,9 +2499,27 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         (it.metadata as any).tecnicoCodigo = null;
         (it.metadata as any).tecnicoNombreDisplay = null;
       } else {
-        const tec = await this.catalogoRepo.findOne({
-          where: { catalogo: TECNICO_MANTENIMIENTO, codigo: data.tecnicoCodigo },
-        });
+        const codigoBuscado = String(data.tecnicoCodigo).trim();
+        // 1. Buscar en lista completa de técnicos (catalogo_item + auth virtual P3/P4)
+        const todosTecnicos = await this.listarTecnicos(false);
+        let tec = todosTecnicos.find(
+          (t) => String(t.codigo).trim().toUpperCase() === codigoBuscado.toUpperCase(),
+        );
+        // 2. Fallback en catalogoRepo directo
+        if (!tec) {
+          tec = (await this.catalogoRepo.findOne({
+            where: { catalogo: TECNICO_MANTENIMIENTO, codigo: codigoBuscado },
+          })) as any;
+        }
+        if (!tec) {
+          tec = (await this.catalogoRepo
+            .createQueryBuilder('c')
+            .where('c.catalogo = :cat AND UPPER(TRIM(c.codigo)) = :cod', {
+              cat: TECNICO_MANTENIMIENTO,
+              cod: codigoBuscado.toUpperCase(),
+            })
+            .getOne()) as any;
+        }
         if (!tec) throw new BadRequestException(`Técnico ${data.tecnicoCodigo} no existe.`);
         (it.metadata as any).tecnicoCodigo = tec.codigo;
         (it.metadata as any).tecnicoNombreDisplay = tec.nombre;
@@ -1923,7 +2605,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     const solicitud = await this.findById(idSolicitud);
     if (!solicitud) throw new NotFoundException('Solicitud no encontrada.');
 
-    const vr = this.validarRolesAsignador(user);
+    const vr = await this.validarRolesAsignador(user, solicitud);
     const per = await this.usuarioPuedeOperarComoTecnicoAsignado(solicitud, user);
     if (!vr.permitido && !per.puede) {
       throw new ForbiddenException('No tiene permisos para registrar la revisión técnica de la valoración.');
@@ -2212,7 +2894,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    if (idCategoria === 48) {
+    const esElectrica = await this.esCategoriaElectrica(idCategoria);
+    if (esElectrica) {
       // CS_002 Eléctricas y Electrónicas → regla 001 ESPECIALIZACION OBLIGATORIA
       regla = 'ESPECIALIZACION';
       obligatorio = true;
@@ -2221,9 +2904,12 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       // y tiene un tecnicoCodigo que aún matchea con opciones (para data antigua).
       let sugeridoP3: (CatalogoItem & { cargaVigente: number }) | null = null;
       const p3Activos = opciones.filter((t) => {
-        const roleCod = (t.metadata as any)?.roleCod ?? null;
-        const esLegacyP3 = !!((t.metadata as any)?.especialidades || []).includes('CS_002');
-        return roleCod === 'P3' || esLegacyP3;
+        const roleCod = String((t.metadata as any)?.roleCod ?? (t as any).roleCod ?? '').toUpperCase();
+        const codUpper = String(t.codigo || '').toUpperCase();
+        const espList = (t.metadata as any)?.especialidades || (t as any).especialidades || [];
+        const esP3 = roleCod === 'P3' || codUpper.includes('P3');
+        const esLegacyP3 = espList.includes('CS_002') || codUpper.startsWith('TEC-ELEC') || codUpper.startsWith('TEC-ELC');
+        return esP3 || esLegacyP3;
       });
       if (p3Activos.length > 0) {
         const sorted = [...p3Activos].sort((a, b) => {
@@ -2251,7 +2937,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       } else {
         sugerido = sugeridoP3;
       }
-      return { regla, idCategoria, sugerido, obligatorio, opciones, advertencia };
+      return { regla, idCategoria, sugerido, obligatorio, opciones: p3Activos.length > 0 ? p3Activos : opciones, advertencia };
     }
 
     // AC-02 Resto 7 categorías o idCategoria sin configurar: EQUIDAD
@@ -2274,20 +2960,64 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
   // Guard clause D6: solo SUPER_ADMIN o GESTOR_MANTENIMIENTO pueden ejecutar.
   // Histórico: pushAsignacion añade entry al JSONB asignaciones[] sin overw.
   // ---------------------------------------------------------------------------
-  private validarRolesAsignador(user: AuthUser | null | undefined): { permitido: boolean; errorMsg?: string } {
+  private async validarRolesAsignador(
+    user: AuthUser | null | undefined,
+    solicitud?: SolicitudMantenimiento | null,
+  ): Promise<{ permitido: boolean; errorMsg?: string; ambito: AmbitoTerritorialUsuario }> {
+    const ambito = await this.resolverAmbitoTerritorial(user);
     if (!user || !Array.isArray(user.roles) || user.roles.length === 0) {
-      return { permitido: false, errorMsg: 'Usuario autenticado requerido para aprobar/rechazar/redistribuir solicitudes UMI.' };
+      return {
+        permitido: false,
+        errorMsg: 'Usuario autenticado requerido para aprobar/rechazar/redistribuir solicitudes UMI.',
+        ambito,
+      };
     }
-    try {
-      requirePermission(PERMISO_ASIGNAR_SOLICITUD, user);
-      return { permitido: true };
-    } catch (err: any) {
-      const msg =
-        (err?.message && typeof err.message === 'string')
-          ? err.message
-          : 'Permiso insuficiente. Requiere permiso infraestructura.solicitud.assign para aprobar, rechazar o redistribuir solicitudes UMI.';
-      return { permitido: false, errorMsg: msg };
+
+    const normRole = (s: any) => {
+      if (s === null || s === undefined) return '';
+      if (typeof s === 'string') return s.trim().toUpperCase();
+      if (typeof s === 'object') {
+        const cands = [s.code, s.codigo, s.role, s.rol, s.name, s.nombre, s.key];
+        for (const c of cands) if (typeof c === 'string') { const n = c.trim().toUpperCase(); if (n) return n; }
+      }
+      return '';
+    };
+    const userRolesNorm = new Set((user.roles || []).map(normRole).filter(Boolean));
+
+    const tienePermisoCentral =
+      userHasPermission(PERMISO_ASIGNAR_SOLICITUD, user) ||
+      userRolesNorm.has('SUPER_ADMIN') ||
+      userRolesNorm.has('GESTOR_MANTENIMIENTO') ||
+      userRolesNorm.has('ADMINISTRADOR_FUNCIONAL') ||
+      userRolesNorm.has('ADMINISTRADOR_FUNCIONAL_INFRA') ||
+      userRolesNorm.has('ANALISTA_ASIGNADOR_UMI');
+
+    if (tienePermisoCentral) {
+      return { permitido: true, ambito };
     }
+
+    // Delegacion territorial (RF-INF-013):
+    // Coordinador Administrativo DT o Jefatura Territorial puede gestionar solicitudes de su propia territorial
+    if (ambito.esJefaturaTerritorial && ambito.idDireccionTerritorial) {
+      if (solicitud && solicitud.idDireccionTerritorial) {
+        if (Number(solicitud.idDireccionTerritorial) === Number(ambito.idDireccionTerritorial)) {
+          return { permitido: true, ambito };
+        } else {
+          return {
+            permitido: false,
+            errorMsg: `No tiene autorización para gestionar solicitudes de otra Dirección Territorial (solicitud DT: ${solicitud.idDireccionTerritorial}, usuario DT: ${ambito.idDireccionTerritorial}).`,
+            ambito,
+          };
+        }
+      }
+      return { permitido: true, ambito };
+    }
+
+    return {
+      permitido: false,
+      errorMsg: 'Permiso insuficiente. Requiere rol de gestión central UMI o Jefatura Territorial autorizada para su sede regional.',
+      ambito,
+    };
   }
 
   private pushAsignacion(
@@ -2341,7 +3071,9 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       motivo: args.motivo ?? null,
       observaciones: args.observaciones ?? null,
       usuario_id: args.user.userId ?? null,
+      usuario_nombre: args.user.name ?? null,
       usuario_email: args.user.email ?? null,
+      usuario_cargo: args.user.cargo ?? null,
       usuario_roles: Array.isArray(args.user.roles) ? args.user.roles.join(',') : null,
     };
     if (args.clasificacionMantenimiento !== undefined) {
@@ -2524,14 +3256,22 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       observaciones?: string | null;
       clasificacionMantenimiento?: 'MENOR' | 'MAYOR';
       requiereContratacion?: boolean;
+      modalidadEjecutorTerritorial?: 'CUADRILLA_CENTRAL_COMISION' | 'PROVEEDOR_LOCAL_CONTRATADO' | 'PERSONAL_PLANTA_TERRITORIAL';
+      proveedorLocalNombre?: string | null;
+      proveedorLocalNit?: string | null;
+      ordenCompraContratoLocal?: string | null;
+      fechaProgramada?: string | null;
     },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento & { __meta?: { warning?: string } }> {
-    const vr = this.validarRolesAsignador(user);
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) throw new ForbiddenException(vrUser.errorMsg);
+    const solicitud = await this.findById(idSolicitud);
+    const vr = await this.validarRolesAsignador(user, solicitud);
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
 
-    const solicitud = await this.findById(idSolicitud);
     const esTI = (solicitud.areaResponsableActual || '').toUpperCase() === 'TI';
+    const esProveedorLocal = args.modalidadEjecutorTerritorial === 'PROVEEDOR_LOCAL_CONTRATADO';
     const idTecnicoIdent = String(
       (args.idTecnicoAsignado && String(args.idTecnicoAsignado).trim()) || (args.tecnicoCodigo || '').trim() || '',
     ).trim();
@@ -2559,7 +3299,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    if (!esTI && !idTecnicoIdent) {
+    if (!esTI && !esProveedorLocal && !idTecnicoIdent) {
       throw new BadRequestException('Identificador técnico obligatorio para asignar. Enviar idTecnicoAsignado (UUID auth P3/P4) o tecnicoCodigo legacy.');
     }
 
@@ -2591,6 +3331,25 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         requiereContratacion: solicitud.requiereContratacion,
         user: user as AuthUser,
       });
+    } else if (esProveedorLocal) {
+      solicitud.estado = 'ASIGNADA';
+      solicitud.responsableAsignado = args.proveedorLocalNombre
+        ? `Proveedor Local · ${args.proveedorLocalNombre}`
+        : 'Proveedor Local Contratado';
+      solicitud.idTecnicoAsignado = undefined;
+      solicitud.motivoRechazo = undefined;
+
+      this.pushAsignacion(solicitud, {
+        accion: 'APROBADA_Y_ASIGNADA',
+        tecnicoCodigo: null,
+        tecnicoNombreDisplay: args.proveedorLocalNombre || 'Proveedor Local',
+        idTecnicoAsignado: null,
+        motivo: `Asignación a proveedor local contratado (RF-INF-013): ${args.proveedorLocalNombre || 'S/N'}${args.ordenCompraContratoLocal ? ` - Contrato/OC: ${args.ordenCompraContratoLocal}` : ''}`,
+        observaciones: args.observaciones ?? null,
+        clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+        requiereContratacion: solicitud.requiereContratacion,
+        user: user as AuthUser,
+      });
     } else {
       tec = await this.resolverTecnicoActivo(idTecnicoIdent);
       solicitud.estado = 'ASIGNADA';
@@ -2598,8 +3357,16 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       if (tec.idTecnicoAsignado) solicitud.idTecnicoAsignado = tec.idTecnicoAsignado;
       solicitud.motivoRechazo = undefined;
 
-      if (Number(solicitud.idCategoria) === 48) {
-        const esP3 = String(tec.roleCod || '').toUpperCase() === 'P3';
+      if (await this.esCategoriaElectrica(solicitud.idCategoria)) {
+        const roleCod = String(tec.roleCod || '').toUpperCase();
+        const codUpper = String(tec.codigo || '').toUpperCase();
+        const espList = Array.isArray((tec as any).metadata?.especialidades) ? (tec as any).metadata.especialidades : [];
+        const esP3 =
+          roleCod === 'P3' ||
+          codUpper.includes('P3') ||
+          espList.includes('CS_002') ||
+          codUpper.startsWith('TEC-ELEC') ||
+          codUpper.startsWith('TEC-ELC');
         if (!esP3) {
           const regla001 = await this.catalogoRepo.findOne({
             where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
@@ -2626,6 +3393,54 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
         requiereContratacion: solicitud.requiereContratacion,
         user: user as AuthUser,
       });
+    }
+
+    if (args.fechaProgramada && String(args.fechaProgramada).trim()) {
+      const rawFecha = String(args.fechaProgramada).trim();
+      const datePart = rawFecha.split('T')[0];
+      const parts = datePart.split('-');
+      if (parts.length === 3) {
+        const [year, month, day] = parts.map(Number);
+        const hoyInicio = new Date();
+        hoyInicio.setHours(0, 0, 0, 0);
+        const max15Dias = new Date(hoyInicio);
+        max15Dias.setDate(max15Dias.getDate() + 15);
+        max15Dias.setHours(23, 59, 59, 999);
+        const progDate = new Date(year, month - 1, day, 0, 0, 0);
+        if (progDate < hoyInicio) {
+          throw new BadRequestException('La fecha programada no puede ser anterior a la fecha actual.');
+        }
+        if (progDate > max15Dias) {
+          throw new BadRequestException('La fecha programada no puede superar el límite máximo de 15 días calendario a futuro.');
+        }
+        solicitud.fechaProgramada = datePart;
+      }
+    }
+
+    // Persistir modalidad de ejecución territorial si aplica (RF-INF-013)
+    if (solicitud.idDireccionTerritorial || args.modalidadEjecutorTerritorial) {
+      try {
+        const ejecRepo = this.getEjecucionTerritorialRepo();
+        let ejec = await ejecRepo.findOne({ where: { idSolicitud: solicitud.idSolicitud } });
+        if (!ejec) {
+          ejec = ejecRepo.create({
+            idSolicitud: solicitud.idSolicitud,
+            modalidadEjecutorTerritorial: args.modalidadEjecutorTerritorial || 'CUADRILLA_CENTRAL_COMISION',
+            proveedorLocalNombre: args.proveedorLocalNombre || null,
+            proveedorLocalNit: args.proveedorLocalNit || null,
+            ordenCompraContratoLocal: args.ordenCompraContratoLocal || null,
+          });
+        } else {
+          if (args.modalidadEjecutorTerritorial) ejec.modalidadEjecutorTerritorial = args.modalidadEjecutorTerritorial;
+          if (args.proveedorLocalNombre !== undefined) ejec.proveedorLocalNombre = args.proveedorLocalNombre;
+          if (args.proveedorLocalNit !== undefined) ejec.proveedorLocalNit = args.proveedorLocalNit;
+          if (args.ordenCompraContratoLocal !== undefined) ejec.ordenCompraContratoLocal = args.ordenCompraContratoLocal;
+        }
+        await ejecRepo.save(ejec);
+        solicitud.ejecucionTerritorial = ejec;
+      } catch (errEjec: any) {
+        this.loggerFindAll.warn(`No se pudo persistir ejecucion territorial: ${errEjec?.message || errEjec}`);
+      }
     }
 
     const saved = await this.mantenimientoRepo.save(solicitud);
@@ -2678,13 +3493,14 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     body: { aprobado?: boolean; voboAprobado?: boolean; observaciones?: string | null; voboObservaciones?: string | null },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
-    const vr = this.validarRolesAsignador(user);
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) throw new ForbiddenException(vrUser.errorMsg);
+    const solicitud = await this.findById(idSolicitud);
+    const vr = await this.validarRolesAsignador(user, solicitud);
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
 
     const aprobadoFinal = body.aprobado !== undefined ? Boolean(body.aprobado) : (body.voboAprobado !== undefined ? Boolean(body.voboAprobado) : true);
     const observacionesFinal = body.observaciones ?? body.voboObservaciones ?? null;
-
-    const solicitud = await this.findById(idSolicitud);
     solicitud.requiereVoBo = true;
     solicitud.voboAprobado = aprobadoFinal;
     solicitud.voboObservaciones = observacionesFinal;
@@ -2723,14 +3539,58 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     return saved;
   }
 
+  async registrarVoBoCierreDt(
+    idSolicitud: string,
+    dto: RegistrarVoBoCierreDtDto,
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    const solicitud = await this.findById(idSolicitud);
+    if (!solicitud) throw new NotFoundException('Solicitud no encontrada.');
+
+    const ambito = await this.resolverAmbitoTerritorial(user);
+    if (!ambito.esCentral) {
+      if (!ambito.idDireccionTerritorial || Number(ambito.idDireccionTerritorial) !== Number(solicitud.idDireccionTerritorial)) {
+        throw new ForbiddenException('Solo la Dirección Territorial correspondiente puede registrar el VoBo de cierre.');
+      }
+    }
+
+    const ejecRepo = this.getEjecucionTerritorialRepo();
+    let ejec = await ejecRepo.findOne({ where: { idSolicitud: solicitud.idSolicitud } });
+    if (!ejec) {
+      ejec = ejecRepo.create({
+        idSolicitud: solicitud.idSolicitud,
+        modalidadEjecutorTerritorial: 'CUADRILLA_CENTRAL_COMISION',
+      });
+    }
+
+    const aprobadoVal = dto.aprobado !== undefined ? Boolean(dto.aprobado) : Boolean(dto.voboCierreDtAprobado);
+    const observacionesVal = (dto.observaciones || dto.voboCierreDtObservaciones || '').trim() || null;
+
+    ejec.voboCierreDtAprobado = aprobadoVal;
+    ejec.voboCierreDtUsuarioId = user?.userId || null;
+    ejec.voboCierreDtUsuario = (user?.name || user?.email || 'Usuario DT').trim();
+    ejec.voboCierreDtFecha = new Date();
+    ejec.voboCierreDtObservaciones = observacionesVal;
+
+    await ejecRepo.save(ejec);
+    solicitud.ejecucionTerritorial = ejec;
+
+    this.pushAsignacion(solicitud, {
+      accion: aprobadoVal ? 'VOBO_VALORACION_APROBADO' : 'VOBO_VALORACION_OBSERVADO',
+      motivo: `VoBo de Cierre Técnico DT (${dto.aprobado ? 'CONFORME' : 'CON OBSERVACIONES'}): ${dto.observaciones || 'Sin observaciones'}`,
+      tecnicoNombreDisplay: ejec.voboCierreDtUsuario,
+      user: user as AuthUser,
+    });
+
+    await this.mantenimientoRepo.save(solicitud);
+    return solicitud;
+  }
+
   async rechazar(
     idSolicitud: string,
     args: { motivo: string; observaciones?: string | null },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
-    const vr = this.validarRolesAsignador(user);
-    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
-
     const motivo = (args.motivo || '').trim();
     if (motivo.length === 0) {
       throw new BadRequestException('Motivo de rechazo es obligatorio y no puede estar vacío.');
@@ -2739,7 +3599,11 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
       throw new BadRequestException('Motivo de rechazo requiere al menos 10 caracteres.');
     }
 
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) throw new ForbiddenException(vrUser.errorMsg);
     const solicitud = await this.findById(idSolicitud);
+    const vr = await this.validarRolesAsignador(user, solicitud);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
     const esTI = (solicitud.areaResponsableActual || '').toUpperCase() === 'TI';
 
     // EFDS-1734: Rechazo solo tiene sentido pre-aprobación.
@@ -2787,10 +3651,11 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     args: { tecnicoCodigo?: string; idTecnicoAsignado?: string; motivoRedistribucion?: string | null; observaciones?: string | null },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
-    const vr = this.validarRolesAsignador(user);
-    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
-
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) throw new ForbiddenException(vrUser.errorMsg);
     const solicitud = await this.findById(idSolicitud);
+    const vr = await this.validarRolesAsignador(user, solicitud);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
 
     // EFDS-1734: Redistribuir se permite solo cuando la solicitud no está cerrada/rechazada/remitida.
     const ESTADOS_NO_PERMITIDOS = [
@@ -2910,6 +3775,19 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
       return { puede: true, tecnicoCodigo: t.codigo, tecnicoNombre: t.nombre };
     }
 
+    // RF-INF-013: Coordinador Administrativo DT puede operar y supervisar solicitudes de su propia Dirección Territorial
+    if (roles.includes('COORDINADOR_ADMINISTRATIVO_DT')) {
+      const ambito = await this.resolverAmbitoTerritorial(user);
+      if (
+        ambito.idDireccionTerritorial &&
+        solicitud.idDireccionTerritorial &&
+        Number(ambito.idDireccionTerritorial) === Number(solicitud.idDireccionTerritorial)
+      ) {
+        const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
+        return { puede: true, tecnicoCodigo: t.codigo, tecnicoNombre: t.nombre || 'Proveedor Local / DT' };
+      }
+    }
+
     const idTecnicoAsignado = String(solicitud.idTecnicoAsignado || '').trim();
     if (idTecnicoAsignado && this.UUID_RE.test(idTecnicoAsignado)) {
       if (String(user.userId || '').toLowerCase() === idTecnicoAsignado.toLowerCase()) {
@@ -2943,8 +3821,10 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     per: { puede: boolean; tecnicoCodigo?: string | null; tecnicoNombre?: string | null },
     user: AuthUser | null | undefined,
   ): Promise<void> {
-    if (Number(solicitud.idCategoria) !== 48) return;
+    if (!(await this.esCategoriaElectrica(solicitud.idCategoria))) return;
     if (this.usuarioEsSuperAdminOAsignador(user)) return;
+    const roles = (user?.roles || []).map((r) => String(r).toUpperCase());
+    if (roles.includes('COORDINADOR_ADMINISTRATIVO_DT')) return;
 
     const idTecnicoAsignado = String(solicitud.idTecnicoAsignado || '').trim();
     if (idTecnicoAsignado && this.UUID_RE.test(idTecnicoAsignado)) {
@@ -2957,7 +3837,10 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
 
     const tecnicoAsignadoCodigo = per.tecnicoCodigo;
     if (!tecnicoAsignadoCodigo) return;
-    const ID_CS_002 = 48;
+    const catElec = await this.catalogoRepo.findOne({
+      where: { catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_002' },
+    });
+    const ID_CS_002 = catElec?.idCatalogo ?? 48;
     const tecnico = await this.catalogoRepo.findOne({
       where: { catalogo: TECNICO_MANTENIMIENTO, codigo: tecnicoAsignadoCodigo, isActivo: true },
     });
@@ -2973,11 +3856,13 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
       const categoriasExcluidasIds = Array.isArray(md.categoriasExcluidasIds)
         ? (md.categoriasExcluidasIds as any[]).map((x) => Number(x))
         : [];
-      if (categoriasExcluidasIds.includes(ID_CS_002)) {
+      if (categoriasExcluidasIds.includes(ID_CS_002) || categoriasExcluidasIds.includes(48)) {
         tecnicoEsElectricoValido = false;
       } else if (
         categoriasPermitidasIds.includes(ID_CS_002) ||
+        categoriasPermitidasIds.includes(48) ||
         especialidadesIds.includes(ID_CS_002) ||
+        especialidadesIds.includes(48) ||
         tecnico.codigo.toUpperCase().startsWith('TEC-ELEC') ||
         tecnico.codigo.toUpperCase().startsWith('TEC-ELC')
       ) {
@@ -2986,16 +3871,33 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     }
     if (tecnicoEsElectricoValido) return;
 
-    const regla001 = await this.catalogoRepo.findOne({
-      where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
-    });
+    let regla001: any = null;
+    if (typeof this.catalogoRepo?.find === 'function') {
+      const reglas = await this.catalogoRepo.find({ where: { catalogo: REGLA_ESCALAMIENTO } });
+      regla001 = (reglas || []).find(
+        (r) =>
+          r.codigo.startsWith('REG_001') ||
+          r.codigo.includes('ELECTRICAS') ||
+          (r.metadata as any)?.regla === 'ESPECIALIZACION',
+      );
+    }
+    if (!regla001 && typeof this.catalogoRepo?.findOne === 'function') {
+      regla001 = await this.catalogoRepo.findOne({
+        where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
+      });
+      if (!regla001) {
+        regla001 = await this.catalogoRepo.findOne({
+          where: { catalogo: REGLA_ESCALAMIENTO },
+        });
+      }
+    }
     const esp =
       regla001?.metadata && typeof regla001.metadata === 'object'
         ? String((regla001.metadata as any).tecnicoCodigo || '').trim()
         : '';
     if (esp && tecnicoAsignadoCodigo === esp) return;
     throw new ForbiddenException(
-      'La categoría CS_002 Eléctricas requiere el técnico especializado configurado en la regla 001.',
+      'La categoría CS_002 Eléctricas requiere obligatoriamente un técnico especializado (Perfil P3).',
     );
   }
 
@@ -3069,7 +3971,7 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     let valoracion = await this.valoracionRepo.findOne({
       where: {
         idSolicitudMantenimiento: solicitud.idSolicitud,
-        estadoAlFinalizar: undefined as any,
+        fechaFinValoracion: IsNull(),
       },
       order: { createdAt: 'DESC' },
     });
@@ -3079,15 +3981,15 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
         idTecnicoValorador: user?.userId ?? undefined,
         tecnicoCodigo: per.tecnicoCodigo ?? undefined,
         tecnicoNombre: per.tecnicoNombre || (user?.username || 'Usuario sin nombre'),
-        diagnostico: 'Visita técnica en curso…',
-        alcanceIdentificado: 'Pendiente diligenciar durante la visita.',
+        diagnostico: undefined,
+        alcanceIdentificado: undefined,
         tiempoEstimadoHoras: 1,
         nivelRiesgo: 'BAJO',
         requiereApagadoElectrico: false,
         evidencias: [],
-        estadoAlFinalizar: 'EN_PROGRESO',
+        estadoAlFinalizar: undefined,
         fechaInicioValoracion: solicitud.fechaInicioValoracion ?? ahora,
-        fechaFinValoracion: ahora,
+        fechaFinValoracion: undefined,
       });
       valoracion = await this.valoracionRepo.save(valoracion as any);
     }
@@ -3146,8 +4048,8 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
     if (!['BAJO', 'MEDIO', 'ALTO'].includes(dto.nivelRiesgo || '')) {
       throw new BadRequestException("Nivel de riesgo inválido. Use 'BAJO', 'MEDIO' o 'ALTO'.");
     }
-    const esElectrico = Number(solicitud.idCategoria) === 48;
-    if (esElectrico && dto.requiereApagadoElectrico === null || dto.requiereApagadoElectrico === undefined) {
+    const esElectrico = await this.esCategoriaElectrica(solicitud.idCategoria);
+    if (esElectrico && (dto.requiereApagadoElectrico === null || dto.requiereApagadoElectrico === undefined)) {
       throw new BadRequestException(
         'Para CS_002 Eléctricas debe marcar si requiere apagado/aislamiento eléctrico.',
       );
@@ -3493,9 +4395,11 @@ ${insumosDesc ? `<p><strong>Materiales relacionados:</strong> ${insumosDesc}</p>
     dto: ConfirmarRecepcionInsumosDto,
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
-    const vr = this.validarRolesAsignador(user);
-    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) throw new ForbiddenException(vrUser.errorMsg);
     const solicitud = await this.findById(idSolicitud);
+    const vr = await this.validarRolesAsignador(user, solicitud);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
     if (solicitud.estado !== 'EN_ESPERA_DE_INSUMOS') {
       throw new ConflictException(
         `Solo se puede confirmar recepción de insumos en estado EN_ESPERA_DE_INSUMOS. Estado actual: ${solicitud.estado}`,
@@ -4307,9 +5211,11 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     solicitud.observacionesConformidad = obs;
     solicitud.conteoReaperturasConformidad = Number(solicitud.conteoReaperturasConformidad || 0) + 1;
 
+    // Preservar la fecha límite institucional original antes de asignar el nuevo SLA operativo de 24h
+    solicitud.fechaLimiteOriginalAntesExtension =
+      solicitud.fechaLimiteOriginalAntesExtension ?? solicitud.fechaLimiteAtencion;
     // RELOJ NUEVO SLA 24H (project memory EFDS-1737)
     solicitud.fechaLimiteAtencion = new Date(ahora.getTime() + REAPERTURA_NUEVO_SLA_HORAS * 3600 * 1000);
-    solicitud.fechaLimiteOriginalAntesExtension = undefined;
     // NUNCA nulear cols de cierre técnico: fecha_cierre_tecnico, evidencias, trabajo_realizado etc.
     // La reapertura no invalida el trabajo ejecutado.
 
@@ -4374,7 +5280,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     forceBatch = false,
   ): Promise<{ actualizadas: number; ids: string[]; consecutivos: string[]; configUsada: ConformidadConfigData }> {
     if (user) {
-      const vr = this.validarRolesAsignador(user);
+      const vr = await this.validarRolesAsignador(user);
       if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
     }
     const config = await this.getConformidadConfig();
@@ -4591,11 +5497,14 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         break;
       }
       case 'area': {
-        qb.addSelect('CAST(s.id_area_solicitante AS TEXT)', 'idGrupo').addSelect(
-          `COALESCE(NULLIF(TRIM(s.nombre_area_solicitante), ''), s.id_area_solicitante, :fallbackSinArea)`,
+        qb.addSelect(
+          `COALESCE(NULLIF(TRIM(s.nombre_area_solicitante), ''), CAST(s.id_area_solicitante AS TEXT), :fallbackSinArea)`,
+          'idGrupo',
+        ).addSelect(
+          `COALESCE(NULLIF(TRIM(s.nombre_area_solicitante), ''), CAST(s.id_area_solicitante AS TEXT), :fallbackSinArea)`,
           'nombreGrupo',
         ).setParameter('fallbackSinArea', '(sin área solicitante)');
-        qb.groupBy('s.id_area_solicitante').addGroupBy('s.nombre_area_solicitante');
+        qb.groupBy('s.nombre_area_solicitante').addGroupBy('s.id_area_solicitante');
         break;
       }
       case 'global': {
@@ -4786,11 +5695,14 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       .getRawMany();
     const porCategoria: ReporteGestionPorCategoriaItem[] = (catRaw || []).map((r: any) => {
       const id = r.idCategoria && r.idCategoria !== '' ? Number(r.idCategoria) : null;
+      const rads = Number(r.radicados || 0);
+      const pct = totalActual > 0 ? Number(((rads / totalActual) * 100).toFixed(2)) : 0;
       return {
         idCategoria: Number.isInteger(id) ? id! : null,
         codigoCategoria: r.codigoCategoria || null,
         nombreCategoria: String(r.nombreCategoria || ''),
-        radicados: Number(r.radicados || 0),
+        radicados: rads,
+        porcentaje: pct,
         completados: Number(r.completados || 0),
         enCurso: Number(r.encurso || 0),
         vencidos: Number(r.vencidos || 0),
@@ -4839,40 +5751,92 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     slaQb.leftJoin(CatalogoItem, 'ci', 'ci.idCatalogo = s.idCategoria AND ci.catalogo = :catCatalogo', { catCatalogo: 'CATEGORIA_SERVICIO' });
     aplicarFiltrosComunes(slaQb, 's.fechaRadicacion', fDesde, fHasta);
     slaQb.andWhere('s.fechaCierreTecnico IS NOT NULL AND s.fechaRadicacion IS NOT NULL');
+    slaQb.andWhere('s.estado IN (:...estCompSla)', { estCompSla: ESTADOS_COMPLETADOS });
     const slaRaw = await slaQb
       .addSelect('CAST(s.idCategoria AS TEXT)', 'idCategoria')
       .addSelect('COALESCE(ci.nombre, :fallbackSinCat)', 'nombreCategoria')
-      .addSelect('COUNT(*)::bigint', 'totalCierres')
-      .addSelect('ROUND(COALESCE(AVG(EXTRACT(EPOCH FROM (s.fechaCierreTecnico - s.fechaRadicacion)) / 86400.0), 0), 2)', 'promDias')
-      .addSelect("COALESCE(SUM(CASE WHEN s.fechaLimiteAtencion IS NOT NULL AND s.fechaCierreTecnico <= s.fechaLimiteAtencion THEN 1 ELSE 0 END), 0)::bigint", 'cumplen')
-      .addSelect("COALESCE(SUM(CASE WHEN s.fechaLimiteAtencion IS NOT NULL AND s.fechaCierreTecnico > s.fechaLimiteAtencion THEN 1 ELSE 0 END), 0)::bigint", 'exceden')
+      .addSelect('s.fechaRadicacion', 'fechaRadicacion')
+      .addSelect('s.fechaCierreTecnico', 'fechaCierreTecnico')
+      .addSelect('s.fechaLimiteAtencion', 'fechaLimiteAtencion')
+      .addSelect('s.fechaLimiteOriginalAntesExtension', 'fechaLimiteOriginal')
+      .addSelect('s.diasExtendidosPorInsumos', 'diasExtendidosPorInsumos')
+      .addSelect('s.conteoReaperturasConformidad', 'conteoReaperturasConformidad')
+      .addSelect('s.resultadoConformidad', 'resultadoConformidad')
       .setParameter('fallbackSinCat', '(sin categoría)')
-      .groupBy('s.idCategoria').addGroupBy('ci.nombre')
-      .orderBy('"totalCierres"', 'DESC')
       .getRawMany();
-    const tiemposAtencionVsMeta: ReporteGestionTiemposAtencionItem[] = await Promise.all((slaRaw || []).map(async (r: any) => {
-      const idStr = r.idCategoria && String(r.idCategoria).trim() !== '' ? String(r.idCategoria).trim() : null;
-      const idNum = (idStr && Number.isInteger(Number(idStr))) ? Number(idStr) : null;
-      let metaDias = 2;
-      if (Number.isInteger(idNum)) {
-        try {
-          const p = await this.obtenerParametroTiempoRespuesta(idNum!);
-          if (p && Number.isInteger(Number((p as any)?.dias ?? NaN))) metaDias = Number((p as any).dias);
-        } catch { /* ignore */ }
+
+    const gruposPorCat = new Map<string, { idCategoria: number | null; nombreCategoria: string; items: any[] }>();
+    for (const r of slaRaw || []) {
+      const key = String(r.idCategoria ?? r.nombreCategoria);
+      if (!gruposPorCat.has(key)) {
+        const idStr = r.idCategoria && String(r.idCategoria).trim() !== '' ? String(r.idCategoria).trim() : null;
+        const idNum = (idStr && Number.isInteger(Number(idStr))) ? Number(idStr) : null;
+        gruposPorCat.set(key, {
+          idCategoria: idNum,
+          nombreCategoria: String(r.nombreCategoria || ''),
+          items: [],
+        });
       }
-      const total = Number(r.totalCierres || 0);
-      const cumplen = Number(r.cumplen || 0);
-      const exceden = Number(r.exceden || 0);
-      return {
-        idCategoria: idNum,
-        nombreCategoria: String(r.nombreCategoria || ''),
-        metaSlaDias: metaDias,
-        casosCumplenSLA: cumplen,
-        casosExcedenSLA: exceden,
-        porcentajeCumplimiento: total === 0 ? 0 : (cumplen / total) * 100,
-        promedioRealDias: Number(r.promDias || 0),
-      };
-    }));
+      gruposPorCat.get(key)!.items.push(r);
+    }
+
+    const tiemposAtencionVsMeta: ReporteGestionTiemposAtencionItem[] = await Promise.all(
+      Array.from(gruposPorCat.values()).map(async (grupo) => {
+        let metaDias = 2;
+        if (grupo.idCategoria != null) {
+          try {
+            const p = await this.obtenerParametroTiempoRespuesta(grupo.idCategoria);
+            if (p && Number.isInteger(Number((p as any)?.dias ?? NaN))) metaDias = Number((p as any).dias);
+          } catch { /* ignore */ }
+        }
+
+        let cumplen = 0;
+        let exceden = 0;
+        let sumaDias = 0;
+
+        for (const item of grupo.items) {
+          const radMs = new Date(item.fechaRadicacion).getTime();
+          const finMs = new Date(item.fechaCierreTecnico).getTime();
+          const duracionDias = Math.max(0, (finMs - radMs) / (86400 * 1000));
+          sumaDias += duracionDias;
+
+          const diasInsumos = Math.max(0, Number(item.diasExtendidosPorInsumos || 0));
+          const diasPermitidos = metaDias + diasInsumos;
+
+          // Si duró más que la meta permitida institucional o fue reabierta excediendo la meta, excede SLA
+          let cumplioSla = duracionDias <= diasPermitidos;
+
+          // Verificación de fecha límite original antes de prórroga o reapertura
+          if (cumplioSla && item.fechaLimiteOriginal) {
+            const limOriginalMs = new Date(item.fechaLimiteOriginal).getTime() + (diasInsumos * 86400 * 1000);
+            if (finMs > limOriginalMs) {
+              cumplioSla = false;
+            }
+          }
+
+          if (cumplioSla) {
+            cumplen++;
+          } else {
+            exceden++;
+          }
+        }
+
+        const total = grupo.items.length;
+        const promDias = total > 0 ? Number((sumaDias / total).toFixed(2)) : 0;
+        const pctCumpl = total > 0 ? Number(((cumplen / total) * 100).toFixed(1)) : 0;
+
+        return {
+          idCategoria: grupo.idCategoria,
+          nombreCategoria: grupo.nombreCategoria,
+          metaSlaDias: metaDias,
+          casosCumplenSLA: cumplen,
+          casosExcedenSLA: exceden,
+          porcentajeCumplimiento: pctCumpl,
+          promedioRealDias: promDias,
+        };
+      }),
+    );
+    tiemposAtencionVsMeta.sort((a, b) => (b.casosCumplenSLA + b.casosExcedenSLA) - (a.casosCumplenSLA + a.casosExcedenSLA));
 
     // ---- E. percepcionServicio (reutiliza endpoint consolidados 1738) ----
     const filtrosComunesPercepcion: FiltrosConsolidadoCalificacion = {
@@ -4882,10 +5846,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     let global: ConsolidadoCalificacionItem[] = [];
     let porCategoriaCons: ConsolidadoCalificacionItem[] = [];
     let porTecnicoCons: ConsolidadoCalificacionItem[] = [];
+    let porAreaCons: ConsolidadoCalificacionItem[] = [];
     try {
       global = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'global' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
       porCategoriaCons = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'categoria' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
       porTecnicoCons = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'tecnico' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
+      porAreaCons = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'area' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
     } catch (err) {
       console.error('[reporte-gestion] Error al cargar percepcionServicio:', err?.message || err);
     }
@@ -4898,6 +5864,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       porDistribucion: dist,
       porCategoria: porCategoriaCons || [],
       porTecnico: porTecnicoCons || [],
+      porArea: porAreaCons || [],
     };
 
     // ---- F. rollupGeografico por sede + piso ----
@@ -5054,6 +6021,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       { header: 'Código', key: 'codigoCategoria', width: 12 },
       { header: 'Nombre', key: 'nombreCategoria', width: 48 },
       { header: 'Radicados', key: 'radicados', width: 12 },
+      { header: '% del Total', key: 'porcentaje', width: 14 },
       { header: 'Completados', key: 'completados', width: 12 },
       { header: 'En curso', key: 'enCurso', width: 12 },
       { header: 'Vencidos SLA', key: 'vencidos', width: 14 },
@@ -5067,6 +6035,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         codigoCategoria: c.codigoCategoria,
         nombreCategoria: c.nombreCategoria,
         radicados: c.radicados,
+        porcentaje: (c.porcentaje != null ? c.porcentaje.toFixed(2) + '%' : '0.00%'),
         completados: c.completados,
         enCurso: c.enCurso,
         vencidos: c.vencidos,
@@ -5151,6 +6120,10 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     wsPer.addRow({ seccion: '---', grupo: 'Por Técnico', cant: '', prom: '', notas: 'Detalle consolidado por técnico' });
     for (const t of reporte.percepcionServicio.porTecnico) {
       wsPer.addRow({ seccion: 'Por técnico', grupo: t.nombreGrupo, cant: t.numeroCalificaciones, prom: t.promedio, notas: `Código ${String(t.idGrupo)}` });
+    }
+    wsPer.addRow({ seccion: '---', grupo: 'Por Área Solicitante', cant: '', prom: '', notas: 'Detalle consolidado por área solicitante' });
+    for (const a of reporte.percepcionServicio.porArea || []) {
+      wsPer.addRow({ seccion: 'Por área solicitante', grupo: a.nombreGrupo, cant: a.numeroCalificaciones, prom: a.promedio, notas: `Área: ${String(a.idGrupo || a.nombreGrupo)}` });
     }
 
     // ================== HOJA 6: Detalle_Casos_Atendidos ==================
@@ -5297,6 +6270,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       53: { codigo: 'CS_007', nombre: 'Traslados de Mobiliario y Bienes' },
       54: { codigo: 'CS_008', nombre: 'Revisión y Mantenimiento Preventivo Equipos Críticos' },
     };
+    try {
+      const catsDb = await this.catalogoRepo.find({ where: { catalogo: 'CATEGORIA_SERVICIO' } });
+      for (const c of catsDb) {
+        catMap[c.idCatalogo] = { codigo: c.codigo, nombre: c.nombre };
+      }
+    } catch {}
 
     // =========================================================================
     // HOJA 1: Datos consolidados (Estructura Planner + Campos Enriquecidos ESAP)
@@ -5577,10 +6556,11 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     const filaHeaderTabla = (arr: string[]) => arr.map((t) => ({ text: t, style: 'tableHeader' }));
 
     const catTable: any[][] = [
-      filaHeaderTabla(['Categoría', 'Rad', 'Comp', 'Cur', 'Venc', 'Prom ★']),
+      filaHeaderTabla(['Categoría', 'Rad', '% Total', 'Comp', 'Cur', 'Venc', 'Prom ★']),
       ...reporte.porCategoria.map((c) => [
         String(c.nombreCategoria || ''),
         String(c.radicados),
+        (c.porcentaje != null ? c.porcentaje.toFixed(1) + '%' : '0.0%'),
         String(c.completados),
         String(c.enCurso),
         String(c.vencidos),
@@ -5681,7 +6661,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
 
         // ===== SECCIÓN 3: Distribución Categoría =====
         { text: '2. Distribución por Categoría de Servicio', style: 'h2', margin: [0, 0, 0, 15] },
-        { table: { headerRows: 1, body: catTable, widths: ['*', 'auto', 'auto', 'auto', 'auto', 'auto'] }, layout: 'lightHorizontalLines' },
+        { table: { headerRows: 1, body: catTable, widths: ['*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'] }, layout: 'lightHorizontalLines' },
         { text: ' ', pageBreak: 'after' },
 
         // ===== SECCIÓN 4: Rendimiento Técnicos =====
@@ -6015,37 +6995,87 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       return '';
     };
 
+    const fnLower = (originalname || '').toLowerCase();
+    let origenDetectado = 'MICROSOFT_PLANNER';
+    if (
+      fnLower.includes('glpi') ||
+      fnLower.includes('ticket') ||
+      fnLower.includes('incidencia') ||
+      fnLower.includes('mesa_ayuda')
+    ) {
+      origenDetectado = 'GLPI';
+    }
+
     // Detectar dinámicamente columnas de encabezado
     const colIndexes: Record<string, number> = {};
     const headerRow = sheet.getRow(1);
     headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-      const header = getCleanCell(cell).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      if (header.includes('nombre de la tarea') || header.includes('tarea') || header.includes('titulo')) {
-        colIndexes['titulo'] = colNumber;
-      } else if (header.includes('semana (normalizada)')) {
-        colIndexes['semanaNormalizada'] = colNumber;
-      } else if (header.includes('deposito') || header.includes('semana')) {
-        if (!colIndexes['deposito']) colIndexes['deposito'] = colNumber;
-      } else if (header.includes('estado') || header.includes('progreso')) {
-        colIndexes['estado'] = colNumber;
-      } else if (header.includes('asignado a') || header.includes('responsable')) {
-        colIndexes['asignado'] = colNumber;
-      } else if (header.includes('creado por') || header.includes('solicitante')) {
-        colIndexes['creadoPor'] = colNumber;
-      } else if (header.includes('completado por')) {
-        colIndexes['completadoPor'] = colNumber;
-      } else if (header.includes('fecha de creacion')) {
-        colIndexes['fechaCreacion'] = colNumber;
-      } else if (header.includes('fecha de vencimiento')) {
-        colIndexes['fechaVencimiento'] = colNumber;
-      } else if (header.includes('fecha de inicio')) {
-        colIndexes['fechaInicio'] = colNumber;
-      } else if (header.includes('fecha de finalizacion') || header.includes('completada en')) {
-        colIndexes['fechaFinalizacion'] = colNumber;
-      } else if (header.includes('cantidad de asignados')) {
-        colIndexes['cantidadAsignados'] = colNumber;
-      } else if (header.includes('id. de la tarea') || header.includes('id tarea')) {
+      const headerRaw = getCleanCell(cell);
+      const headerNorm = headerRaw
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (
+        headerNorm.includes('glpi') ||
+        headerNorm.includes('urgencia') ||
+        headerNorm.includes('impacto') ||
+        headerNorm === 'id de la incidencia' ||
+        headerNorm === 'id incidencia' ||
+        headerNorm.includes('tecnico encargado')
+      ) {
+        origenDetectado = 'GLPI';
+      }
+
+      const isIdCol =
+        headerNorm === 'id' ||
+        headerNorm === 'id.' ||
+        headerNorm === 'id de la tarea' ||
+        headerNorm === 'id tarea' ||
+        headerNorm === 'task id' ||
+        headerNorm === 'taskid' ||
+        headerNorm === 'identificador' ||
+        headerNorm === 'identificador de la tarea' ||
+        headerNorm === 'id caso' ||
+        headerNorm === 'id ticket' ||
+        headerNorm === 'ticket id' ||
+        headerNorm === 'id de la incidencia' ||
+        headerNorm === 'id incidencia' ||
+        headerNorm === 'numero' ||
+        headerNorm === 'no' ||
+        headerNorm.startsWith('id ') ||
+        headerNorm.endsWith(' id') ||
+        (headerNorm.includes('id') && (headerNorm.includes('tarea') || headerNorm.includes('task') || headerNorm.includes('ticket') || headerNorm.includes('incidencia') || headerNorm.includes('caso')));
+
+      if (isIdCol && !colIndexes['idTarea']) {
         colIndexes['idTarea'] = colNumber;
+      } else if (headerNorm.includes('nombre de la tarea') || headerNorm === 'tarea' || headerNorm === 'titulo' || headerNorm === 'asunto' || headerNorm.includes('titulo de la tarea') || headerNorm.includes('descripcion de la tarea')) {
+        if (!colIndexes['titulo']) colIndexes['titulo'] = colNumber;
+      } else if (headerNorm.includes('semana normalizada')) {
+        colIndexes['semanaNormalizada'] = colNumber;
+      } else if (headerNorm.includes('deposito') || headerNorm.includes('semana') || headerNorm.includes('bucket') || headerNorm.includes('grupo')) {
+        if (!colIndexes['deposito']) colIndexes['deposito'] = colNumber;
+      } else if (headerNorm.includes('estado') || headerNorm.includes('progreso') || headerNorm.includes('estatus')) {
+        if (!colIndexes['estado']) colIndexes['estado'] = colNumber;
+      } else if (headerNorm.includes('asignado a') || headerNorm.includes('responsable') || headerNorm.includes('tecnico encargado') || headerNorm.includes('tecnico')) {
+        if (!colIndexes['asignado']) colIndexes['asignado'] = colNumber;
+      } else if (headerNorm.includes('creado por') || headerNorm.includes('solicitante') || headerNorm.includes('autor')) {
+        if (!colIndexes['creadoPor']) colIndexes['creadoPor'] = colNumber;
+      } else if (headerNorm.includes('completado por') || headerNorm.includes('resuelto por') || headerNorm.includes('cerrado por')) {
+        if (!colIndexes['completadoPor']) colIndexes['completadoPor'] = colNumber;
+      } else if (headerNorm.includes('fecha de creacion') || headerNorm.includes('fecha de apertura') || headerNorm.includes('fecha creacion') || headerNorm.includes('fecha apertura')) {
+        colIndexes['fechaCreacion'] = colNumber;
+      } else if (headerNorm.includes('fecha de vencimiento') || headerNorm.includes('fecha limite')) {
+        colIndexes['fechaVencimiento'] = colNumber;
+      } else if (headerNorm.includes('fecha de inicio') || headerNorm.includes('fecha inicio')) {
+        colIndexes['fechaInicio'] = colNumber;
+      } else if (headerNorm.includes('fecha de finalizacion') || headerNorm.includes('fecha de resolucion') || headerNorm.includes('completada en') || headerNorm.includes('fecha cierre') || headerNorm.includes('fecha finalizacion')) {
+        colIndexes['fechaFinalizacion'] = colNumber;
+      } else if (headerNorm.includes('cantidad de asignados')) {
+        colIndexes['cantidadAsignados'] = colNumber;
       }
     });
 
@@ -6082,7 +7112,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
 
       let idTareaExterna = colIndexes['idTarea'] ? getCleanCell(row.getCell(colIndexes['idTarea'])) : '';
       if (!idTareaExterna) {
-        idTareaExterna = `PLANNER-2026-ROW-${String(r).padStart(5, '0')}`;
+        const baseNameClean = (originalname || 'EXCEL')
+          .replace(/\.[^/.]+$/, '')
+          .replace(/[^a-zA-Z0-9]/g, '_')
+          .toUpperCase()
+          .slice(0, 30);
+        idTareaExterna = `${origenDetectado}_${baseNameClean}_ROW_${String(r).padStart(5, '0')}`;
       }
 
       let estadoHomologado = 'COMPLETADO';
@@ -6094,7 +7129,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       }
 
       filasAIngresar.push({
-        origenSistema: 'MICROSOFT_PLANNER',
+        origenSistema: origenDetectado,
         idTareaExterna,
         tituloTarea: titulo,
         depositoSemana: deposito || semanaNorm,
@@ -6170,11 +7205,31 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
 
   async importarHistoricoDesdeServidor(user: AuthUser | null | undefined) {
     const fs = await import('node:fs');
-    const defaultPath = 'c:/Users/Alexander/Desktop/Dev/ESAP/Mantenimientos_Infraestructura_2026.xlsx';
-    if (!fs.existsSync(defaultPath)) {
-      throw new NotFoundException(`No se encontró el archivo de referencia en ${defaultPath}`);
+    const path = await import('node:path');
+    const candidatePaths = [
+      process.env.HISTORICO_PLANTILLA_PATH,
+      path.join(process.cwd(), 'assets', 'Mantenimientos_Infraestructura_2026.xlsx'),
+      path.join(process.cwd(), 'dist', 'assets', 'Mantenimientos_Infraestructura_2026.xlsx'),
+      path.join(process.cwd(), 'templates', 'Mantenimientos_Infraestructura_2026.xlsx'),
+      path.join(__dirname, '..', '..', 'assets', 'Mantenimientos_Infraestructura_2026.xlsx'),
+      path.join(__dirname, 'assets', 'Mantenimientos_Infraestructura_2026.xlsx'),
+      '/app/assets/Mantenimientos_Infraestructura_2026.xlsx',
+      'c:/Users/Alexander/Desktop/Dev/ESAP/Mantenimientos_Infraestructura_2026.xlsx',
+    ].filter(Boolean) as string[];
+
+    let targetPath = '';
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        targetPath = p;
+        break;
+      }
     }
-    const buffer = fs.readFileSync(defaultPath);
+    if (!targetPath) {
+      throw new NotFoundException(
+        'No se encontró el archivo de referencia institucional Mantenimientos_Infraestructura_2026.xlsx en el servidor. Puede cargarlo manualmente con el botón "Seleccionar archivo Excel".',
+      );
+    }
+    const buffer = fs.readFileSync(targetPath);
     return this.importarHistoricoExcel(buffer, 'Mantenimientos_Infraestructura_2026.xlsx', user);
   }
 
@@ -6189,6 +7244,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       solicitante?: string;
       fechaDesde?: string;
       fechaHasta?: string;
+      origen?: string;
     },
     user?: AuthUser | null,
   ) {
@@ -6201,9 +7257,13 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     if (filtros.search && filtros.search.trim().length > 0) {
       const s = `%${filtros.search.trim().toLowerCase()}%`;
       qb.andWhere(
-        '(LOWER(h.tituloTarea) ILIKE :s OR LOWER(h.asignadoATexto) ILIKE :s OR LOWER(h.creadoPorTexto) ILIKE :s OR LOWER(h.completadoPorTexto) ILIKE :s OR LOWER(h.depositoSemana) ILIKE :s)',
+        '(LOWER(h.tituloTarea) ILIKE :s OR LOWER(h.asignadoATexto) ILIKE :s OR LOWER(h.creadoPorTexto) ILIKE :s OR LOWER(h.completadoPorTexto) ILIKE :s OR LOWER(h.depositoSemana) ILIKE :s OR LOWER(h.idTareaExterna) ILIKE :s)',
         { s },
       );
+    }
+
+    if (filtros.origen && filtros.origen !== 'TODOS') {
+      qb.andWhere('h.origenSistema = :orig', { orig: filtros.origen });
     }
 
     if (filtros.semana && filtros.semana !== 'TODAS') {
@@ -6268,6 +7328,14 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       ORDER BY cantidad DESC, solicitante ASC
     `);
 
+    const origenesRaw = await this.dataSource.query(`
+      SELECT DISTINCT origen_sistema as origen, COUNT(*)::int as cantidad
+      FROM "infrastructure-management".mantenimiento_historico_externo
+      WHERE origen_sistema IS NOT NULL
+      GROUP BY origen_sistema
+      ORDER BY origen ASC
+    `);
+
     return {
       data,
       total,
@@ -6277,6 +7345,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
       semanasDisponibles: semanasRaw,
       tecnicosDisponibles: tecnicosRaw,
       solicitantesDisponibles: solicitantesRaw,
+      origenesDisponibles: origenesRaw,
     };
   }
 
@@ -6310,7 +7379,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
         desde: fechasResult[0]?.fechaMin || null,
         hasta: fechasResult[0]?.fechaMax || null,
       },
-      tasaCumplimiento: total > 0 ? Math.round((completados / total) * 100) : 100,
+      tasaCumplimiento: total > 0 ? Math.round((completados / total) * 100) : 0,
     };
   }
 
@@ -6325,6 +7394,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
 
     ws.columns = [
       { header: 'Fila', key: 'fila', width: 8 },
+      { header: 'Origen', key: 'origen', width: 18 },
       { header: 'Id. Tarea', key: 'idTarea', width: 25 },
       { header: 'Nombre de la tarea', key: 'titulo', width: 45 },
       { header: 'Depósito / Semana', key: 'deposito', width: 28 },
@@ -6348,9 +7418,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     if (filtros?.search && String(filtros.search).trim().length > 0) {
       const s = `%${String(filtros.search).trim().toLowerCase()}%`;
       qb.andWhere(
-        '(LOWER(h.tituloTarea) ILIKE :s OR LOWER(h.asignadoATexto) ILIKE :s OR LOWER(h.creadoPorTexto) ILIKE :s OR LOWER(h.completadoPorTexto) ILIKE :s OR LOWER(h.depositoSemana) ILIKE :s)',
+        '(LOWER(h.tituloTarea) ILIKE :s OR LOWER(h.asignadoATexto) ILIKE :s OR LOWER(h.creadoPorTexto) ILIKE :s OR LOWER(h.completadoPorTexto) ILIKE :s OR LOWER(h.depositoSemana) ILIKE :s OR LOWER(h.idTareaExterna) ILIKE :s)',
         { s },
       );
+    }
+    if (filtros?.origen && filtros.origen !== 'TODOS') {
+      qb.andWhere('h.origenSistema = :orig', { orig: filtros.origen });
     }
     if (filtros?.semana && filtros.semana !== 'TODAS') {
       qb.andWhere('(h.semanaNormalizada = :sem OR h.depositoSemana = :sem)', { sem: filtros.semana });
@@ -6387,6 +7460,7 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     for (const it of items) {
       ws.addRow({
         fila: it.numeroFilaOrigen || '',
+        origen: it.origenSistema === 'GLPI' ? 'GLPI' : 'Microsoft Planner',
         idTarea: it.idTareaExterna,
         titulo: it.tituloTarea,
         deposito: it.semanaNormalizada || it.depositoSemana,
@@ -6410,6 +7484,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
   }
 
   async vaciarHistorico(user?: AuthUser | null): Promise<{ eliminados: number }> {
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) {
+      throw new ForbiddenException(
+        vrUser.errorMsg || 'Solo un rol administrador o coordinador de mantenimiento puede vaciar el repositorio histórico.',
+      );
+    }
     const count = await this.getHistoricoRepo().count();
     await this.dataSource.query(`TRUNCATE TABLE "infrastructure-management".mantenimiento_historico_externo RESTART IDENTITY CASCADE;`);
     return { eliminados: count };
@@ -6428,10 +7508,12 @@ ${args.observaciones ? `<p style="margin:0 0 8px"><strong>Observaciones:</strong
     },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
-    const vr = this.validarRolesAsignador(user);
+    const vrUser = await this.validarRolesAsignador(user);
+    if (!vrUser.permitido) throw new ForbiddenException(vrUser.errorMsg);
+    const solicitud = await this.findById(idSolicitud);
+    const vr = await this.validarRolesAsignador(user, solicitud);
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
 
-    const solicitud = await this.findById(idSolicitud);
     const proceso = String(body.procesoContractual || '').trim() || 'Gestión / Avance Contractual';
 
     const radicado = body.radicadoOrfeo ? String(body.radicadoOrfeo).trim() : null;
@@ -6547,5 +7629,232 @@ ${insumos ? `<p><strong>Insumos / Servicios requeridos:</strong> ${insumos}</p>`
 
     const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
     return enriquecida || saved;
+  }
+
+  // =========================================================================
+  // RF-INF-014: Alarmas y Notificaciones Multicanal (Umbral 70% ANS y Emergencias)
+  // =========================================================================
+
+  async evaluarAlertas70ANS(): Promise<{ evaluadas: number; alertasEmitidas: number; ids: string[] }> {
+    const ahora = new Date();
+    const estadosCerrados = [
+      'COMPLETADA',
+      'RESUELTO',
+      'CERRADA',
+      'CERRADA_SIN_RESPUESTA',
+      'CERRADA_POR_USUARIO',
+      'CERRADA_SIN_ATENCION',
+      'ANULADA',
+      'CANCELADA',
+    ];
+
+    const solicitudes = await this.mantenimientoRepo.createQueryBuilder('solicitud')
+      .leftJoinAndSelect('solicitud.sede', 'sede')
+      .where('solicitud.estado NOT IN (:...estadosCerrados)', { estadosCerrados })
+      .andWhere('solicitud.alerta70Emitida = false')
+      .andWhere('solicitud.fechaLimiteAtencion IS NOT NULL')
+      .andWhere('solicitud.fechaLimiteAtencion > :ahora', { ahora })
+      .getMany();
+
+    const idsEmitidos: string[] = [];
+    let alertasEmitidas = 0;
+
+    for (const sol of solicitudes) {
+      const fechaInicio = sol.fechaRadicacion;
+      const fechaLimite = sol.fechaLimiteAtencion;
+      if (!fechaInicio || !fechaLimite) continue;
+
+      const inicioMs = new Date(fechaInicio).getTime();
+      const limiteMs = new Date(fechaLimite).getTime();
+      const ahoraMs = ahora.getTime();
+
+      const totalSlaMs = limiteMs - inicioMs;
+      if (totalSlaMs <= 0) continue;
+
+      const transcurridoMs = ahoraMs - inicioMs;
+      const porcentaje = Math.round((transcurridoMs / totalSlaMs) * 100);
+
+      // Si ha consumido >= 70% del tiempo total del SLA y aún no ha vencido (< 100%)
+      if (porcentaje >= 70 && ahoraMs < limiteMs) {
+        sol.alerta70Emitida = true;
+        sol.fechaAlerta70 = ahora;
+
+        this.pushAsignacion(sol, {
+          accion: 'ALERTA_PREVENTIVA_70_ANS' as any,
+          motivo: `Se alcanzó el ${porcentaje}% del tiempo límite de atención SLA establecido.`,
+          observaciones: `Alerta automática preventiva de vencimiento próximo de SLA (RF-INF-014). Porcentaje consumido: ${porcentaje}%. Fecha límite: ${new Date(fechaLimite).toISOString()}`,
+          clasificacionMantenimiento: sol.clasificacionMantenimiento,
+          requiereContratacion: sol.requiereContratacion,
+          user: { userId: '00000000-0000-0000-0000-000000000000', email: 'sistema@esap.edu.co', roles: ['SISTEMA'] } as any,
+        });
+
+        await this.mantenimientoRepo.save(sol);
+        idsEmitidos.push(sol.idSolicitud);
+        alertasEmitidas++;
+
+        try {
+          await this.notificarAlerta70ANS(sol, porcentaje);
+        } catch (notifErr: any) {
+          this.notifLogger.warn(`[Alerta70] Error al emitir notificación para #${sol.consecutivo}: ${notifErr?.message || notifErr}`);
+        }
+      }
+    }
+
+    return { evaluadas: solicitudes.length, alertasEmitidas, ids: idsEmitidos };
+  }
+
+  private async notificarAlerta70ANS(solicitud: SolicitudMantenimiento, porcentaje: number): Promise<void> {
+    const url = this.solicitudAccionUrl(solicitud);
+    const rad = solicitud.consecutivo || solicitud.idSolicitud.slice(0, 8);
+
+    await this.notificarEncargadosUMI(solicitud, {
+      tipo: 'UMI_ALERTA_70_ANS',
+      titulo: `Alerta Preventiva 70% ANS - Solicitud #${rad}`,
+      mensaje: `La solicitud #${rad} ha consumido el ${porcentaje}% de su ventana de atención ANS (${solicitud.prioridad}). Requiere seguimiento para evitar vencimiento.`,
+      icono: 'Clock',
+      color: '#d97706',
+      prioridad: 'Alta',
+      textoAccion: 'Revisar Solicitud',
+      emailSubject: `[ALERTA 70% ANS] Solicitud #${rad} próxima a vencer SLA (${porcentaje}%)`,
+      emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<h3 style="color:#b45309;margin:0 0 8px">Alerta Preventiva de Tiempo de Atención (70% ANS)</h3>
+<p>La solicitud de mantenimiento <strong>#${rad}</strong> ha consumido el <strong>${porcentaje}%</strong> del tiempo acordado en su ANS.</p>
+<p><strong>Sede / Ubicación:</strong> ${solicitud.sede?.nombre || solicitud.ubicacionAdicionalTexto || 'N/A'} - ${solicitud.ubicacionDetalle || ''}</p>
+<p><strong>Prioridad:</strong> ${solicitud.prioridad} | <strong>Estado:</strong> ${solicitud.estado}</p>
+<p><strong>Técnico Asignado:</strong> ${solicitud.responsableAsignado || 'No asignado'}</p>
+<p><strong>Descripción:</strong> ${solicitud.descripcion}</p>
+<p><a href="${url}" style="display:inline-block;padding:8px 16px;background:#d97706;color:#fff;border-radius:6px;text-decoration:none">Ver Solicitud en Plataforma</a></p>
+</div>`,
+    });
+
+    if (solicitud.idTecnicoAsignado) {
+      await this.notificarTecnicoAsignado(solicitud, {
+        tipo: 'UMI_ALERTA_70_ANS_TECNICO',
+        titulo: `Atención: Solicitud #${rad} al 70% de ANS`,
+        mensaje: `Has consumido el ${porcentaje}% del tiempo límite para atender la solicitud #${rad}. Por favor agiliza la intervención o el cierre técnico.`,
+        icono: 'Clock',
+        color: '#d97706',
+        prioridad: 'Alta',
+        textoAccion: 'Gestionar Solicitud',
+        emailSubject: `[UMI] Solicitud #${rad} ha consumido el ${porcentaje}% del ANS`,
+        emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<h3 style="color:#b45309;margin:0 0 8px">Alerta Preventiva de ANS (70%)</h3>
+<p>Estimado técnico, la solicitud <strong>#${rad}</strong> asignada a usted ha alcanzado el <strong>${porcentaje}%</strong> de su tiempo límite de atención.</p>
+<p><strong>Ubicación:</strong> ${solicitud.ubicacionDetalle || solicitud.sede?.nombre || ''}</p>
+<p><strong>Descripción:</strong> ${solicitud.descripcion}</p>
+<p><a href="${url}" style="display:inline-block;padding:8px 16px;background:#d97706;color:#fff;border-radius:6px;text-decoration:none">Continuar Atención</a></p>
+</div>`,
+      });
+    }
+  }
+
+  private async notificarEmergenciaCritica(solicitud: SolicitudMantenimiento): Promise<void> {
+    const url = this.solicitudAccionUrl(solicitud);
+    const rad = solicitud.consecutivo || solicitud.idSolicitud.slice(0, 8);
+
+    await this.notificarEncargadosUMI(solicitud, {
+      tipo: 'UMI_EMERGENCIA_CRITICA',
+      titulo: `EMERGENCIA CRÍTICA REPORTADA - #${rad}`,
+      mensaje: `Se ha registrado una solicitud con prioridad URGENTE / EMERGENCIA CRÍTICA en ${solicitud.sede?.nombre || 'la institución'}. Requiere confirmación inmediata del Coordinador GIM.`,
+      icono: 'AlertTriangle',
+      color: '#dc2626',
+      prioridad: 'Crítica',
+      textoAccion: 'Confirmar y Atender Emergencia',
+      emailSubject: `[EMERGENCIA CRÍTICA UMI] Solicitud #${rad} requiere atención inmediata`,
+      emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<div style="background:#fee2e2;border-left:4px solid #dc2626;padding:12px;margin-bottom:12px">
+  <h3 style="color:#991b1b;margin:0 0 4px">EMERGENCIA CRÍTICA DECLARADA (RF-INF-014)</h3>
+  <p style="color:#7f1d1d;margin:0">Se ha radicado un caso catalogado como de máxima prioridad operativa o estructural.</p>
+</div>
+<p><strong>Consecutivo:</strong> #${rad}</p>
+<p><strong>Sede / Espacio:</strong> ${solicitud.sede?.nombre || ''} - ${solicitud.ubicacionDetalle || ''}</p>
+<p><strong>Descripción de la novedad:</strong> ${solicitud.descripcion}</p>
+<p><strong>Solicitante:</strong> ${solicitud.solicitanteNombre || 'N/A'} (${solicitud.solicitanteEmail || ''})</p>
+<p><a href="${url}" style="display:inline-block;padding:10px 20px;background:#dc2626;color:#fff;border-radius:6px;text-decoration:none;font-weight:bold">Confirmar Emergencia en Plataforma</a></p>
+</div>`,
+    });
+  }
+
+  async confirmarEmergenciaCritica(
+    idSolicitud: string,
+    dto: ConfirmarEmergenciaDto,
+    user?: AuthUser | null,
+  ): Promise<SolicitudMantenimiento> {
+    const solicitud = await this.findById(idSolicitud);
+    if (!solicitud.esEmergenciaCritica) {
+      throw new BadRequestException('Esta solicitud no está clasificada como emergencia crítica.');
+    }
+    if (solicitud.emergenciaConfirmada) {
+      throw new BadRequestException('La emergencia crítica ya ha sido confirmada previamente.');
+    }
+
+    const ahora = new Date();
+    const nombreUsuario = user?.name || user?.username || user?.email || 'Coordinador GIM';
+
+    solicitud.emergenciaConfirmada = true;
+    solicitud.emergenciaConfirmadaPor = nombreUsuario;
+    solicitud.fechaConfirmacionEmergencia = ahora;
+    solicitud.notasConfirmacionEmergencia = dto?.notas || null;
+
+    this.pushAsignacion(solicitud, {
+      accion: 'CONFIRMACION_EMERGENCIA_CRITICA' as any,
+      motivo: `Emergencia crítica confirmada formalmente por ${nombreUsuario}.`,
+      observaciones: dto?.notas ? `Notas de confirmación: ${dto.notas}` : 'Confirmación formal de atención prioritaria inmediata (RF-INF-014).',
+      clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
+      requiereContratacion: solicitud.requiereContratacion,
+      user: (user || { userId: '00000000-0000-0000-0000-000000000000', email: 'coordinador@esap.edu.co', roles: ['COORDINADOR_INFRAESTRUCTURA'] }) as any,
+    });
+
+    const saved = await this.mantenimientoRepo.save(solicitud);
+
+    try {
+      const url = this.solicitudAccionUrl(saved);
+      const rad = saved.consecutivo || saved.idSolicitud.slice(0, 8);
+      await this.notificarAlSolicitante(saved, {
+        tipo: 'EMERGENCIA_CONFIRMADA_SOLICITANTE',
+        titulo: `Emergencia #${rad} confirmada por Coordinación`,
+        mensaje: `La Coordinación de Infraestructura ha confirmado y priorizado tu solicitud de emergencia #${rad}.`,
+        icono: 'CheckCircle',
+        color: '#dc2626',
+        prioridad: 'Crítica',
+        textoAccion: 'Ver Solicitud',
+        emailSubject: `[UMI] Emergencia #${rad} confirmada - Protocolo activado`,
+        emailHtml: `<div style="font-family:Segoe UI,sans-serif;max-width:700px">
+<h3 style="color:#dc2626;margin:0 0 8px">Emergencia Confirmada por Coordinación GIM</h3>
+<p>Tu reporte de emergencia <strong>#${rad}</strong> ha sido confirmado formalmente por <strong>${nombreUsuario}</strong>.</p>
+<p>Se ha desplegado el protocolo de atención inmediata para la novedad reportada.</p>
+${dto.notas ? `<p><strong>Instrucciones / Observaciones:</strong> ${dto.notas}</p>` : ''}
+<p><a href="${url}" style="display:inline-block;padding:8px 16px;background:#dc2626;color:#fff;border-radius:6px;text-decoration:none">Ver Estado del Caso</a></p>
+</div>`,
+      });
+    } catch (e: any) {
+      this.notifLogger.warn(`Error enviando notificación de confirmación de emergencia: ${e?.message || e}`);
+    }
+
+    const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
+    return enriquecida || saved;
+  }
+
+  async obtenerEmergenciasPendientes(): Promise<SolicitudMantenimiento[]> {
+    const estadosCerrados = [
+      'COMPLETADA',
+      'RESUELTO',
+      'CERRADA',
+      'CERRADA_SIN_RESPUESTA',
+      'CERRADA_POR_USUARIO',
+      'CERRADA_SIN_ATENCION',
+      'ANULADA',
+      'CANCELADA',
+    ];
+
+    const solicitudes = await this.mantenimientoRepo.createQueryBuilder('solicitud')
+      .leftJoinAndSelect('solicitud.sede', 'sede')
+      .where('solicitud.esEmergenciaCritica = true')
+      .andWhere('solicitud.emergenciaConfirmada = false')
+      .andWhere('solicitud.estado NOT IN (:...estadosCerrados)', { estadosCerrados })
+      .orderBy('solicitud.fechaRadicacion', 'DESC')
+      .getMany();
+
+    return this.enriquecerSolicitudesConTerritoriales(solicitudes);
   }
 }

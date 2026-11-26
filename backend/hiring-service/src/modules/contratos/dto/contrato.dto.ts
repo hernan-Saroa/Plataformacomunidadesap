@@ -75,7 +75,7 @@ export class GenerarContratoDto {
 
   @ApiPropertyOptional({ description: 'Fecha cierta en que vence el plazo (YYYY-MM-DD)' })
   @IsOptional()
-  @IsDateString({}, { message: 'La fecha del plazo debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha del plazo debe tener el formato AAAA-MM-DD' })
   plazoFechaFin?: string;
 
   @ApiProperty({ description: 'Documento de identidad o NIT del contratista' })
@@ -161,7 +161,7 @@ export class FirmarContratoDto {
 
   /** La del acto, no la del registro: es cuando la parte firmó. */
   @ApiProperty({ description: 'Fecha de la firma (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de la firma debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de la firma debe tener el formato AAAA-MM-DD' })
   fechaFirma: string;
 
   /**

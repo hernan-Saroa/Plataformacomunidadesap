@@ -396,6 +396,8 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     tipo: mapearTipo(auditoriaBackend.tipo),
     prioridad: (auditoriaBackend.prioridadKanban as Prioridad) || mapearPrioridad(auditoriaBackend.prioridad, auditoriaBackend.nivelRiesgo),
     areaObjetivo: auditoriaBackend.areaObjetivo || auditoriaBackend.procesoAuditado || '',
+    // El alcance detallado es un campo propio: sin él, Editar mostraba la descripción en su lugar (EFDS-2453)
+    alcance: auditoriaBackend.alcance || '',
     permiteCambiarObjetivos: auditoriaBackend.permiteCambiarObjetivos ?? true,
     equipoAuditores: auditoriaBackend.equipoAuditores || [],
     // equipoAuditores: normalizarEquipoAuditores(auditoriaBackend.equipoAuditores, auditoresDisponibles),

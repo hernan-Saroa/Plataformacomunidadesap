@@ -21,7 +21,7 @@ import {
 } from '../shared/PiezasPanel';
 import { momento } from '../shared/fechas';
 import { useFirma } from '../shared/useFirma';
-import { DocumentoVisible, VisorDocumento } from '../shared/VisorDocumento';
+import { DocumentoVisible, VisorDocumento, sePuedeVer } from '../shared/VisorDocumento';
 import { ActaDeLaSesion } from './ActaDeLaSesion';
 
 interface Props {
@@ -532,6 +532,7 @@ function FilaDocumento({
 
         {vigente?.descargaUrl && (
           <>
+            {sePuedeVer(vigente.mimeType, vigente.nombre) && (
             <button
               type="button"
               onClick={() =>
@@ -546,6 +547,7 @@ function FilaDocumento({
             >
               <Eye className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
+            )}
             <a
               href={contratacionService.urlDescarga(vigente.descargaUrl)}
               target="_blank"

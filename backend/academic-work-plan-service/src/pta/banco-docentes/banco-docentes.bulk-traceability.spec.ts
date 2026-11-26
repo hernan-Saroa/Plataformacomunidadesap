@@ -62,11 +62,14 @@ describe('BancoDocentesService - carga masiva trazable REQ-RUND-F001', () => {
   it('RUND-003: resume cuántos títulos se dedujeron de PERFIL_ACADEMICO y cuántos quedaron sin clasificar', async () => {
     const { service } = buildService();
     jest.spyOn(service, 'upsertDocente')
-      .mockResolvedValueOnce({ action: 'update', docenteId: 'a', titulosDeducidos: 2, titulosSinClasificar: ['Posgrado en Cultura de la Paz'] } as any)
-      .mockResolvedValueOnce({ action: 'update', docenteId: 'b', titulosDeducidos: 1, titulosSinClasificar: [] } as any);
-    const result = await service.bulkUpsert([{ DOCUMENTO_IDENTIDAD: '1020304050' }, { DOCUMENTO_IDENTIDAD: '1020304051' }], { periodoCarga: '2026-2', dryRun: true });
+      .mockResolvedValueOnce({ action: 'update', docenteId: 'a', titulosReconocidos: 5, titulosDeducidos: 2, titulosSinClasificar: ['Posgrado en Cultura de la Paz'] } as any)
+      .mockResolvedValueOnce({ action: 'update', docenteId: 'b', titulosReconocidos: 2, titulosDeducidos: 1, titulosSinClasificar: [] } as any)
+      .mockResolvedValueOnce({ action: 'update', docenteId: 'c', titulosReconocidos: 0, titulosDeducidos: 0, titulosSinClasificar: [], perfilSinTitulos: true } as any);
+    const result = await service.bulkUpsert([{ DOCUMENTO_IDENTIDAD: '1020304050' }, { DOCUMENTO_IDENTIDAD: '1020304051' }, { DOCUMENTO_IDENTIDAD: '1020304052' }], { periodoCarga: '2026-2', dryRun: true });
+    expect(result.titulosReconocidos).toBe(7);
     expect(result.titulosDeducidos).toBe(3);
     expect(result.titulosSinClasificar).toBe(1);
+    expect(result.filasSinTitulosEnPerfil).toBe(1);
   });
 
   it('bloquea cédulas repetidas dentro del mismo archivo', async () => {

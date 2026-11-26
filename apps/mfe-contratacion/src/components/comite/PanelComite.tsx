@@ -11,6 +11,7 @@ import {
   RolEvaluador,
 } from '../../types';
 import { Aviso, Ayuda, Boton, campo, Marco, Pendiente, Titulo } from '../shared/PiezasPanel';
+import { SiPuedeEditar } from '../shared/SoloLectura';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
 import { SelectorPersona } from '../estudio-previo/SelectorPersona';
 import { useFirma } from '../shared/useFirma';
@@ -313,6 +314,7 @@ export function PanelComite({ procesoId, onCambio }: Props) {
             ))}
           </div>
 
+          <SiPuedeEditar>
           <button
             type="button"
             disabled={guardando}
@@ -322,6 +324,7 @@ export function PanelComite({ procesoId, onCambio }: Props) {
             <Undo2 className="w-3.5 h-3.5" />
             Revocar la designación
           </button>
+          </SiPuedeEditar>
         </>
       ) : null}
 

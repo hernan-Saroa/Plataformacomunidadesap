@@ -64,6 +64,14 @@ export class CreateMantenimientoDto {
   @MaxLength(50)
   tipoMantenimiento: string;
 
+  @ApiPropertyOptional({
+    example: '2026-11-28',
+    description: 'RF-INF-011 (EFDS-2436): Fecha programada para mantenimiento preventivo. Obligatoria cuando tipoMantenimiento es PREVENTIVO (máximo 15 días calendario hacia el futuro).',
+  })
+  @IsOptional()
+  @IsString()
+  fechaProgramada?: string;
+
   @ApiProperty({
     example: 'FISICA',
     description: 'Clasificación OBLIGATORIA EFDS-1731. FISICA = UMI (plomería, cerrajería). TECNOLOGICA = TI (HDMI, cómputo, impresora).',
@@ -108,6 +116,11 @@ export class CreateMantenimientoDto {
   @IsString()
   @IsOptional()
   prioridad?: string;
+
+  @ApiPropertyOptional({ example: false, description: 'RF-INF-014: Indica si la solicitud se cataloga como emergencia crítica con riesgo estructural o humano' })
+  @IsBoolean()
+  @IsOptional()
+  esEmergenciaCritica?: boolean;
 
   // ===== EFDS-1735..1739 Fase 3: Bien Asignado a Funcionario =====
   @ApiPropertyOptional({ example: false, description: 'Indica si el mantenimiento afecta un bien asignado a un funcionario específico.' })
@@ -447,9 +460,13 @@ export class TecnicoUmiFromAuthDto {
 }
 
 export class AsignarTecnicoPayload {
-  @ApiProperty({ example: 'a1b2c3d4-1234-5678-9abc-def012345678' })
+  @ApiPropertyOptional({
+    example: 'a1b2c3d4-1234-5678-9abc-def012345678',
+    description: 'UUID del técnico asignado (auth.user). Opcional si modalidadEjecutorTerritorial es PROVEEDOR_LOCAL_CONTRATADO.',
+  })
+  @IsOptional()
   @IsUUID('4')
-  idTecnicoAsignado: string;
+  idTecnicoAsignado?: string;
 
   @ApiPropertyOptional({ example: 'Ing. Porky', deprecated: true, description: 'Deprecated: display legacy se calcula desde JOIN persona. Ignorado si envian idTecnicoAsignado valido.' })
   @IsOptional()
@@ -467,6 +484,57 @@ export class AsignarTecnicoPayload {
   @ApiPropertyOptional({ example: false, description: 'Indica si requiere proceso de contratación o compras centralizadas.' })
   @IsOptional()
   requiereContratacion?: boolean;
+
+  @ApiPropertyOptional({
+    enum: ['CUADRILLA_CENTRAL_COMISION', 'PROVEEDOR_LOCAL_CONTRATADO', 'PERSONAL_PLANTA_TERRITORIAL'],
+    example: 'CUADRILLA_CENTRAL_COMISION',
+    description: 'Modalidad de ejecución para solicitudes en Direcciones Territoriales / CETAP (RF-INF-013).',
+  })
+  @IsOptional()
+  @IsIn(['CUADRILLA_CENTRAL_COMISION', 'PROVEEDOR_LOCAL_CONTRATADO', 'PERSONAL_PLANTA_TERRITORIAL'])
+  modalidadEjecutorTerritorial?: 'CUADRILLA_CENTRAL_COMISION' | 'PROVEEDOR_LOCAL_CONTRATADO' | 'PERSONAL_PLANTA_TERRITORIAL';
+
+  @ApiPropertyOptional({ example: 'Servicios Integrales de Urabá S.A.S.', description: 'Razón social del contratista local' })
+  @IsOptional()
+  @IsString()
+  proveedorLocalNombre?: string;
+
+  @ApiPropertyOptional({ example: '901.234.567-8', description: 'NIT del proveedor o contratista local' })
+  @IsOptional()
+  @IsString()
+  proveedorLocalNit?: string;
+
+  @ApiPropertyOptional({ example: 'OC-2026-0891 / Contrato DT-ANT-042', description: 'Número de contrato u orden de compra local' })
+  @IsOptional()
+  @IsString()
+  ordenCompraContratoLocal?: string;
+
+  @ApiPropertyOptional({ example: '2026-11-28', description: 'RF-INF-011: Fecha programada de ejecución (máximo 15 días a futuro)' })
+  @IsOptional()
+  @IsString()
+  fechaProgramada?: string;
+}
+
+export class RegistrarVoBoCierreDtDto {
+  @ApiPropertyOptional({ example: true, description: 'VoBo de cierre técnico aprobado (true) u observado (false) por la Dirección Territorial.' })
+  @IsOptional()
+  @IsBoolean()
+  aprobado?: boolean;
+
+  @ApiPropertyOptional({ example: true, description: 'VoBo de cierre técnico aprobado (true) u observado (false) (alias).' })
+  @IsOptional()
+  @IsBoolean()
+  voboCierreDtAprobado?: boolean;
+
+  @ApiPropertyOptional({ example: 'Trabajos ejecutados y recibidos a satisfacción en sede CETAP.', description: 'Observaciones del VoBo de cierre territorial.' })
+  @IsOptional()
+  @IsString()
+  observaciones?: string;
+
+  @ApiPropertyOptional({ example: 'Trabajos ejecutados y recibidos a satisfacción en sede CETAP.', description: 'Observaciones del VoBo de cierre territorial (alias).' })
+  @IsOptional()
+  @IsString()
+  voboCierreDtObservaciones?: string;
 }
 
 export class RegistrarRevisionVoBoDto {
@@ -544,4 +612,14 @@ export class MarcarRequiereContratacionDto {
   @IsOptional()
   @IsString()
   insumosRequeridos?: string;
+}
+
+export class ConfirmarEmergenciaDto {
+  @ApiPropertyOptional({
+    example: 'Se activó cuadrilla inmediata de mitigación y se aisló el área.',
+    description: 'Notas u observaciones del acuse de recibo de la emergencia por parte del Coordinador GIM.',
+  })
+  @IsOptional()
+  @IsString()
+  notas?: string;
 }

@@ -93,7 +93,7 @@ export class PuedeGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest();
     const { user } = request;
-    if (!user) throw new ForbiddenException('Usuario no autenticado');
+    if (!user) throw new ForbiddenException('Tu sesión no está activa: vuelve a iniciar sesión');
 
     const destino = this.resolverDestino(exigencia.destino, request);
     const roles = normalizeRoles(user.roles ?? user.role);
@@ -163,7 +163,7 @@ export class PuedeGuard implements CanActivate {
     // Un numeral que no se entiende se niega aquí y no se deja llegar a
     // `cubre`: así el mensaje dice qué estaba mal en vez de un 403 genérico.
     if (typeof valor !== 'string' || !esDestinoValido(valor)) {
-      throw new ForbiddenException(`El punto «${valor ?? ''}» no es un destino válido`);
+      throw new ForbiddenException(`«${valor ?? ''}» no es una actividad, etapa ni trámite del módulo: revisa el enlace`);
     }
     return valor;
   }

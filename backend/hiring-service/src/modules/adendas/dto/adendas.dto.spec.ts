@@ -27,6 +27,6 @@ describe('EmitirAdendaDto · fechas del cronograma', () => {
     );
     expect(errores).toHaveLength(1);
     expect(JSON.stringify(errores[0])).toMatch(/etapa o de una actividad/);
-    expect(JSON.stringify(errores[0])).toMatch(/YYYY-MM-DD/);
+    expect(JSON.stringify(errores[0])).toMatch(/AAAA-MM-DD/);
   });
 });

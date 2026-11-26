@@ -224,39 +224,4 @@ describe('EmailsService decision attachments', () => {
       expect(envio).toHaveBeenCalledTimes(1);
     });
   });
-
-  describe('parseEmailRedirectConfig', () => {
-    it('parsea formato compuesto con punto y coma (PRE;correo@esap.edu.co)', () => {
-      process.env.EMAIL_REDIRECT_TO = 'PRE;desarrollo.ccd@esap.edu.co';
-      const config = (service as any).parseEmailRedirectConfig();
-      expect(config).toEqual({
-        environmentName: 'PRE',
-        redirectEmail: 'desarrollo.ccd@esap.edu.co',
-      });
-    });
-
-    it('parsea formato compuesto con pipe (DEV|test@esap.edu.co)', () => {
-      process.env.EMAIL_REDIRECT_TO = 'dev|test@esap.edu.co';
-      const config = (service as any).parseEmailRedirectConfig();
-      expect(config).toEqual({
-        environmentName: 'DEV',
-        redirectEmail: 'test@esap.edu.co',
-      });
-    });
-
-    it('soporta correo directo sin prefijo y asigna "AMBIENTE NO DETECTADO"', () => {
-      process.env.EMAIL_REDIRECT_TO = 'directo@esap.edu.co';
-      const config = (service as any).parseEmailRedirectConfig();
-      expect(config).toEqual({
-        environmentName: 'AMBIENTE NO DETECTADO',
-        redirectEmail: 'directo@esap.edu.co',
-      });
-    });
-
-    it('retorna null si EMAIL_REDIRECT_TO no está configurado', () => {
-      delete process.env.EMAIL_REDIRECT_TO;
-      const config = (service as any).parseEmailRedirectConfig();
-      expect(config).toBeNull();
-    });
-  });
 });

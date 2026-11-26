@@ -1,4 +1,9 @@
 services:
+  mailpit:
+    image: axllent/mailpit:v1.22.3
+    networks:
+      - superapp-net
+
   db:
     image: alpine:3.20
     container_name: superapp-db-local-placeholder
@@ -89,6 +94,10 @@ services:
       file: ./docker-compose.dev.yml
       service: internal-disciplinary-control-service
     environment:
+      LEGAL_MANAGEMENT_SERVICE_URL: http://legal-management-service:3008
+      NOTIFICATIONS_SERVICE_URL: http://notifications-service:3009
+      JURIDICA_EMAIL: judicial@local.invalid
+      MAIL_ENVIRONMENT: local
       DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
       DB_PORT: ${LOCAL_DB_PORT:-5432}
       DB_USER: ${LOCAL_DB_USER:-postgres}
@@ -131,6 +140,11 @@ services:
       file: ./docker-compose.dev.yml
       service: legal-management-service
     environment:
+      LEGAL_EMAIL_ACCOUNT: ""
+      LEGAL_EMAIL_ACCOUNT_CORREOS: ${LOCAL_LEGAL_EMAIL_ACCOUNT_CORREOS:-}
+      LEGAL_EMAIL_ACCOUNT_JUDICIAL: ${LOCAL_LEGAL_EMAIL_ACCOUNT_JUDICIAL:-}
+      JURIDICA_EMAIL: judicial@local.invalid
+      MAIL_ENVIRONMENT: local
       DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
       DB_PORT: ${LOCAL_DB_PORT:-5432}
       DB_USER: ${LOCAL_DB_USER:-postgres}
@@ -145,6 +159,15 @@ services:
       file: ./docker-compose.dev.yml
       service: notifications-service
     environment:
+      SMTP_FROM: notificaciones@local.invalid
+      SMTP_PASS: ""
+      SMTP_USER: ""
+      SMTP_PORT: "1025"
+      SMTP_HOST: mailpit
+      EMAIL_PROVIDER: smtp
+      MAIL_TEST_INBOX: avisos@local.invalid
+      JURIDICA_EMAIL: judicial@local.invalid
+      MAIL_ENVIRONMENT: local
       DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
       DB_PORT: ${LOCAL_DB_PORT:-5432}
       DB_USER: ${LOCAL_DB_USER:-postgres}

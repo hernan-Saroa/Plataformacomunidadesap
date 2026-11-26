@@ -13,7 +13,7 @@
  * puede otorgarlo (con vigencia y motivo), y cada consulta queda auditada
  * en el backend (RundMacroDocenteConsultaLog).
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   BookOpen, Filter, RefreshCw, FileSpreadsheet, FileText,
@@ -138,6 +138,85 @@ async function fetchHistorial(filters: FiltrosMacroDocente, page: number, limit:
     total: raw?.total ?? 0,
     pages: raw?.pages ?? 1,
   };
+}
+
+interface OpcionesMacroDocente {
+  periodos: string[];
+  territoriales: string[];
+  cetaps: string[];
+  programas: string[];
+  nucleosTematicos: string[];
+}
+
+const OPCIONES_VACIAS: OpcionesMacroDocente = {
+  periodos: [], territoriales: [], cetaps: [], programas: [], nucleosTematicos: [],
+};
+
+/** Catálogo de filtros: períodos con historial y, acotado a docente/período, los demás valores. */
+async function fetchOpciones(docenteId?: string, periodo?: string): Promise<OpcionesMacroDocente> {
+  const params: Record<string, string> = {};
+  if (docenteId) params.docenteId = docenteId;
+  if (periodo) params.periodo = periodo;
+  const raw = await apiClient.get<any>(`${MD_BASE}/opciones`, params);
+  const lista = (valor: unknown): string[] => (Array.isArray(valor) ? valor.map(String) : []);
+  return {
+    periodos: lista(raw?.periodos),
+    territoriales: lista(raw?.territoriales),
+    cetaps: lista(raw?.cetaps),
+    programas: lista(raw?.programas),
+    nucleosTematicos: lista(raw?.nucleosTematicos),
+  };
+}
+
+const EXPORT_PAGE_SIZE = 200;
+
+/** Todas las filas del filtro aplicado (el backend pagina a 200 como máximo) para exportar. */
+async function fetchTodoElHistorial(filters: FiltrosMacroDocente) {
+  const items: HistorialRow[] = [];
+  let pagina = 1;
+  let paginas = 1;
+  do {
+    const data = await fetchHistorial(filters, pagina, EXPORT_PAGE_SIZE);
+    items.push(...data.items);
+    paginas = data.pages;
+    pagina += 1;
+  } while (pagina <= paginas);
+  return items;
+}
+
+/** Lista desplegable con los valores del catálogo; si el catálogo no cargó, cae a texto libre. */
+function FiltroCatalogo({
+  id, label, value, opciones, onChange, placeholder,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  opciones: string[];
+  onChange: (valor: string) => void;
+  placeholder?: string;
+}) {
+  const claseBase = 'w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#003DA5]';
+  const conValorActual = value && !opciones.includes(value) ? [value, ...opciones] : opciones;
+  return (
+    <div>
+      <label htmlFor={id} className="text-xs font-medium text-gray-600 mb-1 block">{label}</label>
+      {opciones.length > 0 ? (
+        <select id={id} value={value} onChange={(e) => onChange(e.target.value)} className={`${claseBase} bg-white`}>
+          <option value="">Todos</option>
+          {conValorActual.map((op) => <option key={op} value={op}>{op}</option>)}
+        </select>
+      ) : (
+        <input
+          id={id}
+          type="text"
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={claseBase}
+        />
+      )}
+    </div>
+  );
 }
 
 /**
@@ -542,7 +621,43 @@ export function MacroDocenteReportView({ onClose }: { onClose?: () => void }) {
   const [detalle, setDetalle] = useState<{ items: HistorialRow[]; total: number; pages: number }>({ items: [], total: 0, pages: 1 });
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [exportando, setExportando] = useState(false);
+  const [opciones, setOpciones] = useState<OpcionesMacroDocente>(OPCIONES_VACIAS);
+  const periodoPreseleccionado = useRef(false);
   const limit = 25;
+
+  // Catálogo de filtros. Al abrir trae los períodos con historial y deja seleccionado el más reciente
+  // (solo en el desplegable: la consulta, que queda auditada, la dispara el usuario). Al cambiar docente
+  // o período se acotan territorial/CETAP/programa/núcleo a lo que realmente existe para ese alcance.
+  useEffect(() => {
+    let vigente = true;
+    (async () => {
+      try {
+        const data = await fetchOpciones(filtros.docenteId, filtros.periodo);
+        if (!vigente) return;
+        setOpciones(data);
+        if (!periodoPreseleccionado.current) {
+          periodoPreseleccionado.current = true;
+          if (data.periodos.length > 0) {
+            setFiltros((f) => (f.periodo ? f : { ...f, periodo: data.periodos[0] }));
+          }
+        }
+        const sigueDisponible = (valor: string, lista: string[]) => !valor || lista.length === 0 || lista.includes(valor);
+        setFiltros((f) => ({
+          ...f,
+          territorial: sigueDisponible(f.territorial, data.territoriales) ? f.territorial : '',
+          cetap: sigueDisponible(f.cetap, data.cetaps) ? f.cetap : '',
+          programa: sigueDisponible(f.programa, data.programas) ? f.programa : '',
+          nucleoTematico: sigueDisponible(f.nucleoTematico, data.nucleosTematicos) ? f.nucleoTematico : '',
+        }));
+      } catch (error: any) {
+        if (!vigente) return;
+        periodoPreseleccionado.current = true;
+        toast.error('No se pudo cargar el catálogo de filtros del Macro Docente', { description: error?.message });
+      }
+    })();
+    return () => { vigente = false; };
+  }, [filtros.docenteId, filtros.periodo]);
 
   const puedeConsultar = Boolean(filtros.docenteId || filtros.periodo);
 
@@ -587,27 +702,38 @@ export function MacroDocenteReportView({ onClose }: { onClose?: () => void }) {
 
   const esConsultaPuntual = Boolean(appliedFiltros?.docenteId && appliedFiltros?.periodo);
 
-  const exportar = (formato: 'csv' | 'excel' | 'pdf') => {
-    if (!detalle.items.length) {
+  /** Exporta TODO el resultado del filtro aplicado, no solo la página visible. */
+  const exportar = async (formato: 'csv' | 'excel' | 'pdf') => {
+    if (!detalle.items.length || !appliedFiltros) {
       toast.info('No hay datos para exportar con el filtro actual');
       return;
     }
-    const nombre = esConsultaPuntual ? 'macro-docente-consulta-puntual' : 'macro-docente-historial';
-    if (formato === 'csv') {
-      exportToCSV(detalle.items, nombre);
-      toast.success('Historial exportado (página actual)');
-      return;
+    setExportando(true);
+    try {
+      const rows = esConsultaPuntual || detalle.pages <= 1
+        ? detalle.items
+        : await fetchTodoElHistorial(appliedFiltros);
+      const nombre = esConsultaPuntual ? 'macro-docente-consulta-puntual' : 'macro-docente-historial';
+      if (formato === 'csv') {
+        exportToCSV(rows, nombre);
+        toast.success(`Historial exportado (${rows.length} registro(s))`);
+        return;
+      }
+      const meta = {
+        titulo: esConsultaPuntual ? 'Macro Docente — Consulta puntual' : 'Macro Docente — Historial de asignaturas',
+        subtitulo: esConsultaPuntual ? undefined : `${rows.length} registro(s) del filtro aplicado`,
+        filtros: filtrosConEtiquetas(appliedFiltros),
+        totalRegistros: rows.length,
+      };
+      const prefix = esConsultaPuntual ? 'RUND_Macro_Docente_Consulta_Puntual' : 'RUND_Macro_Docente_Historial';
+      if (formato === 'excel') exportRundReportToExcel(rows, HISTORIAL_COLUMNAS, meta, prefix);
+      else exportRundReportToPDF(rows, HISTORIAL_COLUMNAS, meta, prefix);
+      toast.success(`Historial exportado (${rows.length} registro(s))`);
+    } catch (error: any) {
+      toast.error('No se pudo exportar el historial', { description: error?.message });
+    } finally {
+      setExportando(false);
     }
-    const meta = {
-      titulo: esConsultaPuntual ? 'Macro Docente — Consulta puntual' : 'Macro Docente — Historial de asignaturas',
-      subtitulo: esConsultaPuntual ? undefined : `Página ${page} de ${detalle.pages} · ${detalle.total} registro(s) en total`,
-      filtros: appliedFiltros ? filtrosConEtiquetas(appliedFiltros) : {},
-      totalRegistros: detalle.items.length,
-    };
-    const prefix = esConsultaPuntual ? 'RUND_Macro_Docente_Consulta_Puntual' : 'RUND_Macro_Docente_Historial';
-    if (formato === 'excel') exportRundReportToExcel(detalle.items, HISTORIAL_COLUMNAS, meta, prefix);
-    else exportRundReportToPDF(detalle.items, HISTORIAL_COLUMNAS, meta, prefix);
-    toast.success('Historial exportado (página actual)');
   };
 
   const filtrosActivos = useMemo(
@@ -653,57 +779,42 @@ export function MacroDocenteReportView({ onClose }: { onClose?: () => void }) {
               docenteLabel: opt?.nombre_completo || '',
             }))}
           />
-          <div>
-            <label htmlFor="md-periodo" className="text-xs font-medium text-gray-600 mb-1 block">Período académico</label>
-            <input
-              id="md-periodo"
-              type="text"
-              placeholder="ej. 2025-2"
-              value={filtros.periodo}
-              onChange={(e) => setFiltros((f) => ({ ...f, periodo: e.target.value }))}
-              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#003DA5]"
-            />
-          </div>
-          <div>
-            <label htmlFor="md-territorial" className="text-xs font-medium text-gray-600 mb-1 block">Territorial</label>
-            <input
-              id="md-territorial"
-              type="text"
-              value={filtros.territorial}
-              onChange={(e) => setFiltros((f) => ({ ...f, territorial: e.target.value }))}
-              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#003DA5]"
-            />
-          </div>
-          <div>
-            <label htmlFor="md-cetap" className="text-xs font-medium text-gray-600 mb-1 block">CETAP</label>
-            <input
-              id="md-cetap"
-              type="text"
-              value={filtros.cetap}
-              onChange={(e) => setFiltros((f) => ({ ...f, cetap: e.target.value }))}
-              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#003DA5]"
-            />
-          </div>
-          <div>
-            <label htmlFor="md-programa" className="text-xs font-medium text-gray-600 mb-1 block">Programa</label>
-            <input
-              id="md-programa"
-              type="text"
-              value={filtros.programa}
-              onChange={(e) => setFiltros((f) => ({ ...f, programa: e.target.value }))}
-              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#003DA5]"
-            />
-          </div>
-          <div>
-            <label htmlFor="md-nucleo" className="text-xs font-medium text-gray-600 mb-1 block">Núcleo temático</label>
-            <input
-              id="md-nucleo"
-              type="text"
-              value={filtros.nucleoTematico}
-              onChange={(e) => setFiltros((f) => ({ ...f, nucleoTematico: e.target.value }))}
-              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#003DA5]"
-            />
-          </div>
+          <FiltroCatalogo
+            id="md-periodo"
+            label="Período académico"
+            value={filtros.periodo}
+            opciones={opciones.periodos}
+            onChange={(periodo) => setFiltros((f) => ({ ...f, periodo }))}
+            placeholder="ej. 2025-2"
+          />
+          <FiltroCatalogo
+            id="md-territorial"
+            label="Territorial"
+            value={filtros.territorial}
+            opciones={opciones.territoriales}
+            onChange={(territorial) => setFiltros((f) => ({ ...f, territorial }))}
+          />
+          <FiltroCatalogo
+            id="md-cetap"
+            label="CETAP"
+            value={filtros.cetap}
+            opciones={opciones.cetaps}
+            onChange={(cetap) => setFiltros((f) => ({ ...f, cetap }))}
+          />
+          <FiltroCatalogo
+            id="md-programa"
+            label="Programa"
+            value={filtros.programa}
+            opciones={opciones.programas}
+            onChange={(programa) => setFiltros((f) => ({ ...f, programa }))}
+          />
+          <FiltroCatalogo
+            id="md-nucleo"
+            label="Núcleo temático"
+            value={filtros.nucleoTematico}
+            opciones={opciones.nucleosTematicos}
+            onChange={(nucleoTematico) => setFiltros((f) => ({ ...f, nucleoTematico }))}
+          />
         </div>
 
         <div className="flex flex-wrap gap-2 mt-4">
@@ -734,19 +845,22 @@ export function MacroDocenteReportView({ onClose }: { onClose?: () => void }) {
               <div className="flex gap-2">
                 <button
                   onClick={() => exportar('excel')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-200 text-xs hover:bg-gray-50"
+                  disabled={exportando}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-200 text-xs hover:bg-gray-50 disabled:opacity-60"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-green-600" /> Excel
                 </button>
                 <button
                   onClick={() => exportar('pdf')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-200 text-xs hover:bg-gray-50"
+                  disabled={exportando}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-200 text-xs hover:bg-gray-50 disabled:opacity-60"
                 >
                   <FileText className="w-3.5 h-3.5 text-red-600" /> PDF
                 </button>
                 <button
                   onClick={() => exportar('csv')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-200 text-xs hover:bg-gray-50"
+                  disabled={exportando}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-200 text-xs hover:bg-gray-50 disabled:opacity-60"
                 >
                   <FileText className="w-3.5 h-3.5 text-blue-600" /> CSV
                 </button>

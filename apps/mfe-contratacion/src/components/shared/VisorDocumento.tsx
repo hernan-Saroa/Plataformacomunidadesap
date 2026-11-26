@@ -70,6 +70,31 @@ export function formaDeVer(mimes: (string | null | undefined)[], nombre: string)
 }
 
 /**
+ * Si vale la pena ofrecer el ojo de «Ver» para un archivo.
+ *
+ * Un Excel (.xlsx) abría el visor solo para decir que no se podía mostrar
+ * (AJU-001 de QA, 14/11): el icono se quita donde se sabe que el visor no lo
+ * pinta, y queda la descarga. Se decide por el tipo y, si no viene, por el
+ * primer nombre que tenga extensión —el de la fila suele ser el título del
+ * requisito, sin ella—. Sin ninguna de las dos pistas se ofrece igual: el visor
+ * sabrá qué es al bajarlo y lo dice.
+ */
+export function sePuedeVer(
+  mimeType: string | null | undefined,
+  ...nombres: (string | null | undefined)[]
+): boolean {
+  if (mimeType && mimeType !== 'application/octet-stream') {
+    return formaDeVer([mimeType], '') !== 'ninguna';
+  }
+  for (const nombre of nombres) {
+    const ext = nombre ? extension(nombre) : '';
+    // «v1.2» no es una extensión: solo cuenta una de letras de 3 o 4.
+    if (/^\.[a-z]{3,4}$/.test(ext)) return (POR_EXTENSION[ext] ?? 'ninguna') !== 'ninguna';
+  }
+  return true;
+}
+
+/**
  * El documento del expediente, abierto sin salir de la actividad (EFDS-1183).
  *
  * Hasta ahora un adjunto solo se podía bajar al disco: el abogado que revisa un

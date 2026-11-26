@@ -21,7 +21,10 @@ class OfflineCacheManager {
 
   constructor() {
     if (typeof window !== 'undefined') {
-      this.init();
+      // Sin IndexedDB (jsdom en las pruebas, navegación privada restringida) la apertura falla:
+      // se ignora aquí para no dejar una promesa rechazada sin manejar. Cada uso vuelve a
+      // esperar init() dentro de su try/catch y se comporta como sin caché.
+      this.init().catch(() => undefined);
     }
   }
 

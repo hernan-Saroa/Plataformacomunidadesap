@@ -164,8 +164,10 @@ describe('ConfiguracionesSIGLContext · persistencia de las listas de Términos 
     expect(claves).toContain(CLAVE_DESTINATARIOS);
     expect(claves).toContain(CLAVE_FUENTES);
 
+    // La última escritura es la de la edición; la primera puede ser la siembra de fábrica.
     const llamada = vi.mocked(legalService.saveConfiguration).mock.calls
-      .find(c => c[0] === CLAVE_DESTINATARIOS);
+      .filter(c => c[0] === CLAVE_DESTINATARIOS)
+      .pop();
     expect(llamada![1]).toEqual(destinatarios);
   });
 

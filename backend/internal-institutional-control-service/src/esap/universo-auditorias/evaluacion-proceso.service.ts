@@ -105,6 +105,18 @@ export class EvaluacionProcesoService implements OnModuleInit {
     } catch (error) {
       this.logger.warn('No se pudieron limpiar las restricciones antiguas (puedes ignorar esto si la BD está limpia):', error);
     }
+
+    // Columnas de la herencia del universo (EFDS-2450, migración 695). Se aseguran aquí para que
+    // la lista del universo no falle en un ambiente donde la migración aún no se haya aplicado.
+    try {
+      await this.evaluacionRepository.query(
+        `ALTER TABLE control_interno.evaluacion_proceso
+           ADD COLUMN IF NOT EXISTS vigencia_origen integer NULL,
+           ADD COLUMN IF NOT EXISTS evaluacion_origen_id uuid NULL`,
+      );
+    } catch (error) {
+      this.logger.warn('No se pudieron asegurar las columnas de herencia del universo auditable:', error);
+    }
   }
 
   /**

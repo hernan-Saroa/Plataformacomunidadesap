@@ -175,6 +175,35 @@ describe('PanelCdp · ya cargado', () => {
 
     expect(await screen.findByRole('button', { name: /Adjuntar soporte/ })).toBeInTheDocument();
   });
+
+  it('en revisión o aprobado no ofrece corregir', async () => {
+    pintar(respaldo({ cdp: cdp(), expedido: true, soporteAdjunto: true, puedeAbrirse: true }));
+
+    await screen.findByText('CDP CDP-12 cargado');
+    expect(screen.queryByRole('button', { name: /Corregir el CDP/ })).toBeNull();
+  });
+
+  it('retirado o devuelto, deja corregir los datos sin exigir otro certificado (BUG-001)', async () => {
+    const corregir = vi.spyOn(contratacionService, 'corregirCdp').mockResolvedValue({} as never);
+    pintar(
+      respaldo({ cdp: cdp(), expedido: true, soporteAdjunto: true, puedeAbrirse: true, puedeCorregir: true }),
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /Corregir el CDP/ }));
+    // Vuelven los datos de antes, para tocar solo lo que está mal.
+    expect(screen.getByLabelText('Número del CDP')).toHaveValue('CDP-12');
+    fireEvent.change(screen.getByLabelText('Número del CDP'), { target: { value: 'CDP-13' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Guardar y volver a enviar/ }));
+    const dialogo = await screen.findByRole('dialog');
+    fireEvent.click(within(dialogo).getByRole('button', { name: /Guardar y volver a enviar/ }));
+
+    await vi.waitFor(() => expect(corregir).toHaveBeenCalled());
+    const [procesoId, datos, archivo] = corregir.mock.calls[0];
+    expect(procesoId).toBe('p-1');
+    expect(datos).toMatchObject({ numero: 'CDP-13', valor: 2_000_000, rubro: 'A-02' });
+    expect(archivo).toBeNull();
+  });
 });
 
 describe('frenteAlEstimado', () => {

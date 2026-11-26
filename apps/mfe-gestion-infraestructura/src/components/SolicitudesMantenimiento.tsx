@@ -5,7 +5,7 @@ import {
   Package, PackageX, CheckCircle, Archive, Ban, XCircle, ChevronDown,
   ChevronUp, Paperclip, FileText, Image, Download, FileSpreadsheet,
   ShieldCheck, Home, Siren, MapPin, Monitor, GitBranch,
-  User, ThumbsDown, Star, UploadCloud, Database, Info, X, ShoppingCart,
+  User, ThumbsDown, Star, UploadCloud, Database, Info, ShoppingCart, CheckCircle2,
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
@@ -207,19 +207,41 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   const [filtroPrioridad, setFiltroPrioridad] = useState<string>('TODAS');
   const [filtroResponsable, setFiltroResponsable] = useState<string>('TODOS');
   const [filtroContratacion, setFiltroContratacion] = useState<string>('TODAS');
+  const [filtroTerritorial, setFiltroTerritorial] = useState<string>('TODAS');
+  const [ambitoTerritorial, setAmbitoTerritorial] = useState<any>(null);
   const [busquedaTexto, setBusquedaTexto] = useState<string>('');
   const [paginaActual, setPaginaActual] = useState<number>(1);
+
+  // RF-INF-014: Solicitudes de emergencia crítica pendientes de confirmación
+  const emergenciasPendientes = useMemo(() => {
+    const estadosCerrados = ['COMPLETADA', 'RESUELTO', 'CERRADA', 'CERRADA_SIN_RESPUESTA', 'CERRADA_POR_USUARIO', 'CERRADA_SIN_ATENCION', 'ANULADA', 'CANCELADA'];
+    return (mantenimientos || []).filter(
+      (m) => m.esEmergenciaCritica && !m.emergenciaConfirmada && !estadosCerrados.includes(String(m.estado || '').toUpperCase())
+    );
+  }, [mantenimientos]);
+
+  const opcionesTerritoriales = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const m of mantenimientos || []) {
+      if (m.idDireccionTerritorial && m.direccionTerritorialNombre) {
+        map.set(Number(m.idDireccionTerritorial), m.direccionTerritorialNombre);
+      }
+    }
+    return Array.from(map.entries()).map(([id, nombre]) => ({ id, nombre }));
+  }, [mantenimientos]);
 
   useEffect(() => {
     let cancelado = false;
     const cargar = async () => {
-      const [estados, prioridades] = await Promise.all([
+      const [estados, prioridades, ambito] = await Promise.all([
         infraestructuraService.getCatalogo('ESTADO_SOLICITUD'),
         infraestructuraService.getCatalogo('PRIORIDAD'),
+        infraestructuraService.getAmbitoTerritorial(),
       ]);
       if (cancelado) return;
       setCatalogoEstado(estados);
       setCatalogoPrioridad(prioridades);
+      setAmbitoTerritorial(ambito);
     };
     cargar();
     return () => { cancelado = true; };
@@ -336,13 +358,17 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
         String(m.espacioFisico || '').toLowerCase().includes(q)
       );
 
-      return estadoOk && prioridadOk && asignacionOk && contratacionOk && busquedaOk;
+      const territorialOk =
+        filtroTerritorial === 'TODAS' ||
+        String(m.idDireccionTerritorial) === filtroTerritorial;
+
+      return estadoOk && prioridadOk && asignacionOk && contratacionOk && territorialOk && busquedaOk;
     });
-  }, [lista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, busquedaTexto, opcionesResponsableMap]);
+  }, [lista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, filtroTerritorial, busquedaTexto, opcionesResponsableMap]);
 
   useEffect(() => {
     setPaginaActual(1);
-  }, [vista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, busquedaTexto, lista.length]);
+  }, [vista, filtroEstado, filtroPrioridad, filtroResponsable, filtroContratacion, filtroTerritorial, busquedaTexto, lista.length]);
 
   const totalPaginas = Math.max(1, Math.ceil(listaFiltrada.length / PAGE_SIZE_SOLICITUDES));
 
@@ -387,6 +413,20 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   const [exportandoExcel, setExportandoExcel] = useState(false);
   const [toastExport, setToastExport] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
   const [mostrarModalCargaMasiva, setMostrarModalCargaMasiva] = useState(false);
+  const [totalHistorico, setTotalHistorico] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!esRolReportes) return;
+    let cancelado = false;
+    infraestructuraService.getHistoricoEstadisticas()
+      .then((res) => {
+        if (!cancelado && res) setTotalHistorico(res.totalRegistros ?? 0);
+      })
+      .catch(() => {
+        if (!cancelado) setTotalHistorico(0);
+      });
+    return () => { cancelado = true; };
+  }, [esRolReportes, vista]);
 
 
   useEffect(() => {
@@ -428,6 +468,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
     filtroPrioridad !== 'TODAS' ||
     filtroResponsable !== 'TODOS' ||
     filtroContratacion !== 'TODAS' ||
+    filtroTerritorial !== 'TODAS' ||
     Boolean(busquedaTexto.trim());
 
   const toggleExpandir = (id: string) => {
@@ -636,7 +677,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
               <Database className="w-4 h-4 text-sky-600" />
               Histórico Planner / GLPI
               <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-sky-100 text-sky-800 font-bold">
-                1.107
+                {totalHistorico !== null ? totalHistorico.toLocaleString('es-CO') : '...'}
               </span>
             </button>
           )}
@@ -645,13 +686,93 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
 
       {vista === 'historicoPlanner' ? (
         <div className="p-6">
-          <HistoricoMantenimientosExterno esRolReportes={esRolReportes} />
+          <HistoricoMantenimientosExterno
+            esRolReportes={esRolReportes}
+            onTotalChange={(nuevoTotal) => setTotalHistorico(nuevoTotal)}
+          />
         </div>
       ) : (
         <div className="p-6 space-y-4">
+        {/* RF-INF-014: Banner Circuito de Emergencias Críticas */}
+        {emergenciasPendientes.length > 0 && (
+          <div className="rounded-2xl border-2 border-red-300 bg-red-50/95 p-4 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-red-950 animate-in fade-in">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-red-600 text-white shrink-0 shadow-xs">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="font-black text-sm uppercase tracking-wide text-red-900">
+                    Circuito de Emergencias Críticas Activo
+                  </h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-200 text-red-900 border border-red-300">
+                    Prioridad Crítica
+                  </span>
+                </div>
+                <p className="text-xs text-red-800 mt-1">
+                  Hay <strong>{emergenciasPendientes.length}</strong> solicitud(es) con reporte de emergencia pendientes de acuse y confirmación formal por Coordinación GIM.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end md:self-center">
+              <button
+                type="button"
+                onClick={() => setFiltroPrioridad('URGENTE')}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-red-600 text-white hover:bg-red-700 shadow-xs transition"
+              >
+                Filtrar Emergencias ({emergenciasPendientes.length})
+              </button>
+            </div>
+          </div>
+        )}
+
         {vistaLoading && lista.length === 0 && (
           <div className="py-12 text-center text-slate-400 text-sm">Cargando solicitudes...</div>
         )}
+        {/* Banner de Bandeja Territorial Descentralizada */}
+        {!ambitoTerritorial?.esCentral && ambitoTerritorial?.nombreTerritorial && (
+          <div
+            className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 rounded-2xl border shadow-xs gap-3"
+            style={{
+              backgroundColor: '#fffbeb',
+              borderColor: '#fde68a',
+            }}
+          >
+            <div className="flex items-center gap-3.5">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center shadow-xs shrink-0"
+                style={{
+                  backgroundColor: '#d97706',
+                  color: '#ffffff',
+                  boxShadow: '0 0 0 4px #fef3c7',
+                }}
+              >
+                <MapPin className="w-5 h-5" style={{ color: '#ffffff' }} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h4 className="text-xs sm:text-sm font-bold tracking-tight" style={{ color: '#78350f' }}>
+                    Bandeja Territorial Descentralizada
+                  </h4>
+                  <span
+                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border shadow-2xs"
+                    style={{
+                      backgroundColor: '#fef3c7',
+                      color: '#92400e',
+                      borderColor: '#fcd34d',
+                    }}
+                  >
+                    {ambitoTerritorial.nombreTerritorial}
+                  </span>
+                </div>
+                <p className="text-xs mt-0.5 font-medium" style={{ color: '#92400e' }}>
+                  Gestión y seguimiento de solicitudes circunscritas a las sedes y CETAPs de tu jurisdicción territorial.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {!vistaLoading && lista.length > 0 && (
           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 space-y-3">
             {/* EFDS-2373: Buscador libre de texto y radicado */}
@@ -677,7 +798,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
             </div>
 
             <div className="flex flex-col lg:flex-row lg:items-end gap-3">
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className={`flex-1 grid grid-cols-1 sm:grid-cols-2 ${ambitoTerritorial?.esCentral ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-3`}>
                 <label className="block">
                   <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Estado</span>
                   <select
@@ -733,10 +854,27 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   >
                     <option value="TODAS">Todas las solicitudes</option>
                     <option value="REQUIERE_CONTRATACION">Requiere Contratación</option>
-                    <option value="OBRA_MAYOR">Obra Mayor (EFDS-2353)</option>
+                    <option value="OBRA_MAYOR">Obra Mayor</option>
                     <option value="MENOR">Mantenimiento Menor</option>
                   </select>
                 </label>
+                {ambitoTerritorial?.esCentral && (
+                  <label className="block">
+                    <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Territorial</span>
+                    <select
+                      value={filtroTerritorial}
+                      onChange={(e) => setFiltroTerritorial(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                    >
+                      <option value="TODAS">Todas las DT</option>
+                      {opcionesTerritoriales.map((it) => (
+                        <option key={it.id} value={String(it.id)}>
+                          {it.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </div>
               <div className="flex items-center justify-between lg:justify-end gap-2">
                 <span className="text-xs text-slate-500">
@@ -750,6 +888,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       setFiltroPrioridad('TODAS');
                       setFiltroResponsable('TODOS');
                       setFiltroContratacion('TODAS');
+                      setFiltroTerritorial('TODAS');
                       setBusquedaTexto('');
                     }}
                     className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
@@ -838,21 +977,50 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                           </span>
                         )}
                     </span>
-                    {esVencida && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-red-600 text-white shadow-sm ring-2 ring-rose-200">
-                        <AlertTriangle className="w-3 h-3 text-white" />
-                        Vencida
-                      </span>
-                    )}
                     <span
                       className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border ${clasePrioridad(m.prioridad || 'MEDIA')}`}
                     >
                       <AlertTriangle className="w-3 h-3" />
                       Prioridad {m.prioridad || 'MEDIA'}
                     </span>
+                    {/* RF-INF-014: Badges de Emergencia Crítica y Alerta 70% ANS */}
+                    {m.esEmergenciaCritica && (
+                      m.emergenciaConfirmada ? (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-emerald-100 text-emerald-800 border-emerald-300"
+                          title={`Emergencia confirmada por ${m.emergenciaConfirmadaPor || 'Coordinación'}`}
+                        >
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          Emergencia Confirmada
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-red-600 text-white shadow-xs animate-pulse"
+                          title="Emergencia crítica pendiente de confirmación formal por Coordinación GIM"
+                        >
+                          <AlertTriangle className="w-3 h-3 text-white" />
+                          Emergencia Crítica
+                        </span>
+                      )
+                    )}
+                    {m.alerta70Emitida && !esVencida && sla.clase !== 'vencido' && !estadoFinalizado && (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-amber-500 text-white shadow-xs"
+                        title="Alerta preventiva: Solicitud en umbral del 70% de tiempo de atención - Requiere intervención antes de vencer"
+                      >
+                        <Clock className="w-3 h-3 text-white" />
+                        Alerta 70% ANS
+                      </span>
+                    )}
                     <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                       {m.tipoMantenimiento}
                     </span>
+                    {m.tipoMantenimiento === 'PREVENTIVO' && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-sky-100 text-sky-800 border-sky-300">
+                        <Clock className="w-3 h-3 text-sky-600" />
+                        Preventivo {m.fechaProgramada ? `(Prog: ${m.fechaProgramada})` : ''}
+                      </span>
+                    )}
                     {m.clasificacionMantenimiento === 'MAYOR' && (
                       <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border bg-purple-100 text-purple-800 border-purple-300">
                         Obra Mayor
@@ -872,24 +1040,11 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                         Atención {m.tipoAtencion}
                       </span>
                     )}
-                    {(() => {
-                      const b = badgeAreaResp(m.areaResponsableActual);
-                      return (
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${b.clase}`}>
-                          {b.label}
-                        </span>
-                      );
-                    })()}
-                    {Number.isInteger(m.idCategoria) && (() => {
-                      const cat = mapIdCategoria.get(m.idCategoria as number);
-                      if (!cat) return null;
-                      const colorClase = cat?.metadata?.color || 'bg-indigo-100 text-indigo-800 border border-indigo-200';
-                      return (
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${colorClase}`} title={cat.codigo || ''}>
-                          {cat.nombre}
-                        </span>
-                      );
-                    })()}
+                    {(m.areaResponsableActual || '').toUpperCase() === 'TI' && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-sky-100 text-sky-800 border-sky-200">
+                        Resp: TI
+                      </span>
+                    )}
                     {numEvidencias > 0 && (
                       <button
                         type="button"
@@ -1009,7 +1164,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   {String(m.estado || '').toUpperCase() === 'CERRADA_SIN_ATENCION' ? (
                     <span
                       className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-rose-50 text-rose-800 border-rose-300 shadow-sm"
-                      title="Solicitud cerrada por falta de insumos sin alternativa viable de abastecimiento (EFDS-1735)"
+                      title="Solicitud cerrada por falta de insumos sin alternativa viable de abastecimiento"
                     >
                       <PackageX className="w-3.5 h-3.5 text-rose-600" />
                       Cerrada por falta de insumos
@@ -1017,7 +1172,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   ) : String(m.estado || '').toUpperCase() === 'CERRADA_SIN_RESPUESTA' ? (
                     <span
                       className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-slate-100 text-slate-700 border-slate-300 shadow-sm"
-                      title="Solicitud cerrada automáticamente tras vencer el plazo de conformidad sin respuesta del usuario (RF-INF-008)"
+                      title="Solicitud cerrada automáticamente tras vencer el plazo de conformidad sin respuesta del usuario"
                     >
                       <Clock className="w-3.5 h-3.5 text-slate-500" />
                       Cerrada – Sin respuesta

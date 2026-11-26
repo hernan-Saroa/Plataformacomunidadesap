@@ -5,6 +5,8 @@ import { puede } from '../../auth/alcance';
 import { contratacionService } from '../../services/contratacionService';
 import { AccionAlcance, AlcanceVista, EtapaConActividades, RolConAlcance } from '../../types';
 import { useDialogo } from '../shared/useDialogo';
+import { GuiaDeRoles, Personas } from './GuiaDeRoles';
+import { PERFILES } from './perfiles';
 import { NOMBRE_ETAPA } from './simbolos';
 
 /**
@@ -64,61 +66,6 @@ const GRUPOS_DE_TRAMITES = [
   },
 ];
 
-/**
- * Los perfiles por defecto (EFDS-1183), como punto de partida.
- *
- * Catorce roles confunden a quien configura, y la Dirección los resumió en
- * perfiles. Desde la 137 los encarnan los roles que Juan armó en la pantalla
- * de roles, que son los que trae el módulo. Partir de un perfil copia el
- * alcance vigente de ese rol, así que si la Dirección cambia lo que hace el
- * abogado, el perfil cambia con él sin tocar el código.
- */
-const PERFILES = [
-  {
-    nombre: 'Área solicitante',
-    rol: 'AREA_RADICADORA',
-    queHace: 'Diligencia el estudio previo (3.1) y el CDP (4.2) y los corrige si se los devuelven; después solo consulta.',
-  },
-  {
-    nombre: 'Contratación',
-    rol: 'SECRETARIO_DE_CONTRATACION',
-    queHace: 'Ve todos los procesos, los recibe en la 3.3 y asigna los puestos.',
-  },
-  {
-    nombre: 'Abogado estructurador',
-    rol: 'ABOGADO_ESTRUCTURADOR',
-    queHace: 'Lleva el caso: aprueba el estudio previo y hace las etapas 5 a 8 y lo jurídico de la 9 y la 10.',
-  },
-  {
-    nombre: 'Abogado revisor',
-    rol: 'ABOGADO_REVISOR',
-    queHace: 'Aprueba el estudio previo, el CDP, el proyecto de pliego y el pliego definitivo.',
-  },
-  {
-    nombre: 'Experto en sector y mercado',
-    rol: 'EXPERTO_EN_ANALISIS_DEL_SECTOR_Y_DEL_MERCADO',
-    queHace: 'Aprueba el estudio previo y el CDP en lo del análisis del sector y del mercado.',
-  },
-  {
-    nombre: 'Archivo y supervisión',
-    rol: 'GESTOR_DE_ARCHIVO_Y_SUPERVISION',
-    queHace:
-      'Registra la ejecución por el supervisor (reunión de inicio, soportes, presunto incumplimiento, pagos, informe final) y archiva el expediente.',
-  },
-  {
-    // Sesión de QA del 04/11 (138): quien apoya al abogado en la reasignación.
-    nombre: 'Estructurador de apoyo',
-    rol: 'ESTRUCTURADOR_DE_APOYO',
-    queHace: 'Registra la reasignación de supervisor (9.3) y la notifica por correo; del resto, solo consulta.',
-  },
-  {
-    nombre: 'Dirección',
-    rol: 'DIRECTORA_DE_CONTRATACION',
-    queHace: 'Lo puede todo en el módulo: aprueba al final de las cadenas, reparte y configura.',
-  },
-  { nombre: 'Consulta', rol: 'ENTE_DE_CONTROL', queHace: 'Consulta todo el proceso sin modificar nada.' },
-];
-
 const clave = (accion: AccionAlcance, lugar: string) => `${accion}|${lugar}`;
 
 function aLista(claves: Set<string>): AlcanceVista[] {
@@ -148,6 +95,8 @@ export function PermisosPorEtapa() {
   const [busqueda, setBusqueda] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  /** La matriz para configurar, o la guía de los roles y quién los tiene. */
+  const [vista, setVista] = useState<'matriz' | 'guia'>('matriz');
   const dialogo = useDialogo();
 
   useEffect(() => {
@@ -305,8 +254,64 @@ export function PermisosPorEtapa() {
     );
   };
 
+  /** Cambiar de rol, preguntando antes si hay cambios sin guardar. */
+  async function cambiarA(rol: RolConAlcance): Promise<boolean> {
+    if (rol.id === elegidoId) return true;
+    if (
+      sucio &&
+      !(await dialogo.confirmar({
+        titulo: 'Hay cambios sin guardar',
+        descripcion: `Los permisos que marcaste para ${elegido?.nombre ?? 'este rol'} se perderán si cambias de rol.`,
+        confirmar: 'Descartar y cambiar',
+        tono: 'peligro',
+      }))
+    )
+      return false;
+    elegir(rol);
+    return true;
+  }
+
+  const selectorDeVista = (
+    <div role="group" aria-label="Qué ver" className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5">
+      {(
+        [
+          ['matriz', 'Matriz de permisos'],
+          ['guia', 'Roles y personas'],
+        ] as const
+      ).map(([valor, etiqueta]) => (
+        <button
+          key={valor}
+          type="button"
+          aria-pressed={vista === valor}
+          onClick={() => setVista(valor)}
+          className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+            vista === valor ? 'bg-[#003DA5] text-white' : 'text-slate-600 hover:bg-gray-50'
+          }`}
+        >
+          {etiqueta}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (vista === 'guia') {
+    return (
+      <div className="space-y-3">
+        {selectorDeVista}
+        <GuiaDeRoles
+          roles={roles}
+          onVerPermisos={async (rol) => {
+            if (await cambiarA(rol)) setVista('matriz');
+          }}
+        />
+        {dialogo.elemento}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
+      {selectorDeVista}
       <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 space-y-2">
         <p className="m-0 text-xs text-gray-600 leading-relaxed">
           Elige un rol y marca dónde puede <strong className="font-bold text-gray-700">ver, editar,
@@ -335,20 +340,7 @@ export function PermisosPorEtapa() {
               <li key={rol.id}>
                 <button
                   type="button"
-                  onClick={async () => {
-                    if (rol.id === elegidoId) return;
-                    if (
-                      sucio &&
-                      !(await dialogo.confirmar({
-                        titulo: 'Hay cambios sin guardar',
-                        descripcion: `Los permisos que marcaste para ${elegido?.nombre ?? 'este rol'} se perderán si cambias de rol.`,
-                        confirmar: 'Descartar y cambiar',
-                        tono: 'peligro',
-                      }))
-                    )
-                      return;
-                    elegir(rol);
-                  }}
+                  onClick={() => void cambiarA(rol)}
                   aria-pressed={rol.id === elegidoId}
                   className={`w-full rounded-lg px-2.5 py-1.5 text-left transition-colors ${
                     rol.id === elegidoId ? 'bg-blue-50 text-[#003DA5]' : 'hover:bg-gray-50 text-slate-700'
@@ -380,6 +372,7 @@ export function PermisosPorEtapa() {
               {elegido.descripcion && (
                 <p className="m-0 text-[11.5px] text-slate-600 leading-relaxed">{elegido.descripcion}</p>
               )}
+              <Personas rol={elegido} />
               {elegido.transversales.length > 0 && (
                 <p className="m-0 text-[11.5px] text-gray-500">
                   También puede, fuera de las etapas: {elegido.transversales.join(', ')}

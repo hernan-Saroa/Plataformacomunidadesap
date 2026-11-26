@@ -29,6 +29,15 @@ export interface RolConAlcance {
   /** Los permisos transversales que tiene. */
   transversales: string[];
   alcances: AlcanceVista[];
+  /** Las cuentas activas que tienen el rol: quién lo ejerce hoy. */
+  personas: PersonaDelRol[];
+}
+
+/** Una cuenta activa con un rol, para saber quién lo ejerce. */
+export interface PersonaDelRol {
+  id: string;
+  nombre: string;
+  correo: string | null;
 }
 
 /**
@@ -99,7 +108,8 @@ export class AlcanceAdminService {
         ORDER BY r.name`,
     );
 
-    const alcances = await this.alcancesDe(filas.map((f) => f.id));
+    const ids = filas.map((f) => f.id);
+    const [alcances, personas] = await Promise.all([this.alcancesDe(ids), this.personasDe(ids)]);
 
     return filas.map((f) => {
       const permisos = f.permisos ?? [];
@@ -111,8 +121,40 @@ export class AlcanceAdminService {
         acciones: ACCIONES.filter((a) => permisos.includes(`contratacion.${a}`)),
         transversales: PERMISOS_TRANSVERSALES.filter((p) => permisos.includes(p)),
         alcances: alcances.get(f.id) ?? [],
+        personas: personas.get(f.id) ?? [],
       };
     });
+  }
+
+  /**
+   * Las cuentas activas de cada rol, con el nombre de `auth.personas`.
+   *
+   * Solo lectura: las asignaciones se hacen en la administración de usuarios de
+   * la plataforma. Una cuenta sin persona vinculada se nombra por su usuario.
+   */
+  private async personasDe(rolIds: string[]): Promise<Map<string, PersonaDelRol[]>> {
+    const porRol = new Map<string, PersonaDelRol[]>();
+    if (!rolIds.length) return porRol;
+
+    const filas: { rol_id: string; id: string; nombre: string | null; correo: string | null }[] =
+      await this.dataSource.query(
+        `SELECT DISTINCT ur.id_rol::text AS rol_id, u.id_user::text AS id,
+                COALESCE(NULLIF(TRIM(p.nom_largo), ''), NULLIF(TRIM(p.nom_tercero), ''), u.username) AS nombre,
+                COALESCE(NULLIF(TRIM(p.dir_email), ''),
+                         CASE WHEN u.username LIKE '%@%' THEN u.username END) AS correo
+           FROM auth.user_roles ur
+           JOIN auth."user" u        ON u.id_user = ur.id_user AND u.is_active = true
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+          WHERE ur.is_active = true AND ur.id_rol::text = ANY($1::text[])
+          ORDER BY nombre`,
+        [rolIds],
+      );
+    for (const f of filas) {
+      const lista = porRol.get(f.rol_id) ?? [];
+      lista.push({ id: f.id, nombre: f.nombre ?? 'Sin nombre', correo: f.correo });
+      porRol.set(f.rol_id, lista);
+    }
+    return porRol;
   }
 
   /**
