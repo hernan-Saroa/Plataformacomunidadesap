@@ -156,6 +156,10 @@ export class Auditoria {
   @Column({ type: 'jsonb', name: 'dependencias_auditadas', default: () => "'[]'::jsonb" })
   dependenciasAuditadas: string[];
 
+  // Metodología de la auditoría: antes no tenía columna y al editarla se perdía
+  @Column({ type: 'text', nullable: true })
+  metodologia?: string | null;
+
   @Column({ type: 'integer', default: 0 })
   progreso: number; // 0-100
 
