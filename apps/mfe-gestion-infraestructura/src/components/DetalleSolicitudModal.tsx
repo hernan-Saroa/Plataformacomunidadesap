@@ -170,6 +170,7 @@ const resumirExtensionSLA = (obj: Record<string, any>): string | null => {
 const HISTORICO_ACCION_STYLE: Record<string, { badge: string; dot: string; colorHex: string; icon: React.ComponentType<any> }> = {
   APROBADA_Y_ASIGNADA: { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-600', colorHex: '#059669', icon: BadgeCheck },
   ASIGNACION_MANTENIMIENTO_MAYOR_ESCALADO: { badge: 'bg-purple-100 text-purple-800 border-purple-200', dot: 'bg-purple-600', colorHex: '#7e22ce', icon: Building2 },
+  ESCALAMIENTO_GRAN_ENVERGADURA_GIM: { badge: 'bg-purple-100 text-purple-900 border-purple-300', dot: 'bg-purple-700', colorHex: '#6b21a8', icon: Building2 },
   RECHAZADA: { badge: 'bg-rose-100 text-rose-800 border-rose-200', dot: 'bg-rose-600', colorHex: '#e11d48', icon: XCircle },
   REDISTRIBUIDA: { badge: 'bg-indigo-100 text-indigo-800 border-indigo-200', dot: 'bg-indigo-600', colorHex: '#4f46e5', icon: Users },
   INICIO_VALORACION: { badge: 'bg-sky-100 text-sky-800 border-sky-200', dot: 'bg-blue-600', colorHex: '#2563eb', icon: ClipboardList },
@@ -1707,7 +1708,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const puedeRedistribuir =
     detalle &&
     !esAreaTI &&
-    estadoActual === 'ASIGNADA' &&
+    ['ASIGNADA', 'ESCALADA_GIM'].includes(estadoActual) &&
     tienePerm('infraestructura.solicitud.redistribute');
 
   // Visibilidad caja Motor sugerencia + reasignación manual (EFDS-1734 / 1735 / 1736):
@@ -1727,7 +1728,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const puedeIniciarEjecOValoracion =
     detalle &&
     !esAreaTI &&
-    ['ASIGNADA', 'EN_CAMPO_VALORACION', 'EN_VALORACION'].includes(estadoActual) &&
+    ['ASIGNADA', 'ESCALADA_GIM', 'EN_CAMPO_VALORACION', 'EN_VALORACION'].includes(estadoActual) &&
     (
       tienePerm('infraestructura.solicitud.cierre_tecnico') ||
       tienePerm('infraestructura.solicitud.close_with_evidence') ||
@@ -2236,6 +2237,8 @@ const puedeCerrarTecnicamente = Boolean(
                         ? 'CERRADA POR FALTA DE INSUMOS'
                         : esCerradaSinRespuesta
                         ? 'CERRADA – SIN RESPUESTA'
+                        : String(detalle.estado || '').toUpperCase() === 'ESCALADA_GIM'
+                        ? 'ESCALADA COORDINACIÓN GIM'
                         : (detalle.estado || 'RECIBIDA')}
                     </span>
                   )}
