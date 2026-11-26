@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   textoEstadoGuardado, contarPlanesDeEnte, resolverEnteControl, colorFondoSuave, agruparPlanesPorEnte,
+  generarIdEnteControlPM, validarEntesControlPM,
 } from './entesControlPM';
 import type { EnteControlPM } from './ConfiguracionesSIGLContext';
 
@@ -51,5 +52,17 @@ describe('entesControlPM utils', () => {
     expect(g.C).toEqual([]);
     expect(g.B).toHaveLength(1);
     expect(g.LEGADO).toHaveLength(1);
+  });
+
+  it('generarIdEnteControlPM evita colisiones cuando ya existe el id con el mismo timestamp', () => {
+    const existentes = [{ id: 'ente-1000' }, { id: 'ente-1000-1' }];
+    expect(generarIdEnteControlPM([], 1000)).toBe('ente-1000');
+    expect(generarIdEnteControlPM(existentes, 1000)).toBe('ente-1000-2');
+  });
+
+  it('validarEntesControlPM rechaza nombres vacíos o ids repetidos y acepta listas válidas', () => {
+    expect(validarEntesControlPM([ente('A', 'Contraloría')])).toBeNull();
+    expect(validarEntesControlPM([ente('A', '   ')])).toContain('nombre');
+    expect(validarEntesControlPM([ente('A', 'Uno'), ente('A', 'Dos')])).toContain('repetido');
   });
 });

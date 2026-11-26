@@ -124,7 +124,16 @@ export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps
                                     <SelectContent>
                                         {entesControl.map(ente => (
                                             <SelectItem key={ente.id} value={ente.id}>
-                                                {ente.nombre}
+                                                <span className="inline-flex items-center gap-2">
+                                                    <span
+                                                        aria-hidden="true"
+                                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-xs text-white flex-shrink-0"
+                                                        style={{ backgroundColor: ente.color }}
+                                                    >
+                                                        {ente.icono}
+                                                    </span>
+                                                    <span>{ente.nombre}</span>
+                                                </span>
                                             </SelectItem>
                                         ))}
                                     </SelectContent>

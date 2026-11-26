@@ -6,7 +6,7 @@
  * ✅ ORGANIZADO CON TABS para mejor usabilidad
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign, ChevronDown, ChevronUp, Info, FolderOpen, Activity, Columns, Send, Building, UserCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { legalService, procesosCoactivosService } from '../../../../services/api/legal.service';
@@ -29,7 +29,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { authService } from '../../../../services/api/authService';
-import { textoEstadoGuardado, contarPlanesDeEnte } from '../config/entesControlPM';
+import { textoEstadoGuardado, contarPlanesDeEnte, generarIdEnteControlPM } from '../config/entesControlPM';
 import { rolesService } from '../../../../services/api/roles.service';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
@@ -296,6 +296,20 @@ export function ConfiguracionesSIGL() {
   // Ente de control pendiente de confirmar para eliminarlo (null = diálogo cerrado).
   const [enteAEliminar, setEnteAEliminar] = useState<EnteControlPM | null>(null);
   const [verificandoEnte, setVerificandoEnte] = useState(false);
+  const enteNombreInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const nuevoEnteFocoRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const idPendiente = nuevoEnteFocoRef.current;
+    if (!idPendiente) return;
+    const input = enteNombreInputRefs.current[idPendiente];
+    if (input) {
+      nuevoEnteFocoRef.current = null;
+      input.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      input.focus();
+      input.select();
+    }
+  }, [entesControlPM]);
 
   // Un ente con planes de mejoramiento asociados solo puede inactivarse. Se consultan los
   // planes activos y los archivados; si no se puede verificar, no se ofrece eliminar
@@ -2643,19 +2657,22 @@ export function ConfiguracionesSIGL() {
                       </p>
                     </div>
                     <button
+                      type="button"
                       onClick={() => {
+                        const nuevoId = generarIdEnteControlPM(entesControlPM);
                         const nuevo: EnteControlPM = {
-                          id: `ente-${Date.now()}`,
+                          id: nuevoId,
                           nombre: 'Nuevo Ente',
                           descripcion: 'Descripción del ente de control',
                           icono: '🏛️',
                           color: '#6B7280',
                           activo: true
                         };
+                        nuevoEnteFocoRef.current = nuevoId;
                         actualizarEntesControlPM([...entesControlPM, nuevo]);
                         toast.success('Ente de control agregado');
                       }}
-                      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                      className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0 w-full sm:w-auto"
                       style={{
                         background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
                         boxShadow: '0 2px 4px rgba(5, 150, 105, 0.2)'
@@ -2667,13 +2684,17 @@ export function ConfiguracionesSIGL() {
                   </div>
 
                   <div className="space-y-3">
-                    {entesControlPM.map((ente, index) => (
+                    {entesControlPM.map((ente) => {
+                      const nombreVacio = !ente.nombre.trim();
+                      return (
                       <div
                         key={ente.id}
-                        className="p-3 sm:p-4 bg-gradient-to-br from-gray-50 to-white rounded-lg border border-gray-200 hover:border-emerald-300 transition-colors"
+                        className={`p-3 sm:p-4 bg-gradient-to-br from-gray-50 to-white rounded-lg border transition-colors ${
+                          nombreVacio ? 'border-red-300' : 'border-gray-200 hover:border-emerald-300'
+                        }`}
                       >
                         {/* Header: Color preview + Nombre + Icono + Activo + Eliminar */}
-                        <div className="flex items-center gap-3 mb-3">
+                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 mb-3">
                           <div
                             className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm flex-shrink-0"
                             style={{ backgroundColor: ente.color }}
@@ -2681,20 +2702,35 @@ export function ConfiguracionesSIGL() {
                             {ente.icono}
                           </div>
 
-                          <input
-                            type="text"
-                            value={ente.nombre}
-                            onChange={(e) => {
-                              const nuevos = entesControlPM.map(item =>
-                                item.id === ente.id ? { ...item, nombre: e.target.value } : item
-                              );
-                              actualizarEntesControlPM(nuevos);
-                            }}
-                            className="flex-1 px-3 py-2 text-sm font-bold text-gray-800 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-                            placeholder="Nombre del ente..."
-                          />
+                          <div className="flex-1 min-w-0">
+                            <input
+                              ref={(el) => {
+                                enteNombreInputRefs.current[ente.id] = el;
+                              }}
+                              type="text"
+                              value={ente.nombre}
+                              onChange={(e) => {
+                                const nuevos = entesControlPM.map(item =>
+                                  item.id === ente.id ? { ...item, nombre: e.target.value } : item
+                                );
+                                actualizarEntesControlPM(nuevos);
+                              }}
+                              aria-invalid={nombreVacio}
+                              className={`w-full px-3 py-2 text-sm font-bold text-gray-800 border rounded-lg focus:outline-none focus:ring-2 bg-white ${
+                                nombreVacio
+                                  ? 'border-red-400 focus:ring-red-500'
+                                  : 'border-gray-300 focus:ring-emerald-500'
+                              }`}
+                              placeholder="Nombre del ente..."
+                            />
+                            {nombreVacio && (
+                              <p className="text-xs text-red-600 mt-1">
+                                El nombre del ente es obligatorio para guardar.
+                              </p>
+                            )}
+                          </div>
 
-                          <div className="flex items-center gap-2 ml-2">
+                          <div className="flex items-center gap-2 sm:ml-2 flex-shrink-0">
                             <label className="flex items-center gap-2 cursor-pointer bg-white px-2 py-1 rounded-md border border-gray-200 shadow-sm hover:bg-gray-50">
                               <input
                                 type="checkbox"
@@ -2711,6 +2747,7 @@ export function ConfiguracionesSIGL() {
                             </label>
 
                             <button
+                              type="button"
                               onClick={() => solicitarEliminarEnte(ente)}
                               disabled={verificandoEnte}
                               aria-label={`Eliminar ente ${ente.nombre}`}
@@ -2723,7 +2760,7 @@ export function ConfiguracionesSIGL() {
                         </div>
 
                         {/* Icono + Color row */}
-                        <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
                           <div>
                             <label className="text-xs font-medium text-gray-500 mb-1 block">Icono (emoji)</label>
                             <input
@@ -2784,7 +2821,8 @@ export function ConfiguracionesSIGL() {
                           rows={2}
                         />
                       </div>
-                    ))}
+                      );
+                    })}
 
                     {entesControlPM.length === 0 && (
                       <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">

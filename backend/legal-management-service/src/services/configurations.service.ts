@@ -3,6 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { SystemConfiguration } from '../entities/system-configuration.entity';
 import { PlanMejoramiento } from '../entities/planes-mejoramiento.entity';
+import {
+    detectarEntesEliminados,
+    validarEstructuraEntesControlPM,
+} from '../utils/entes-control-pm.util';
 
 // Entes de control de Planes de Mejoramiento (Configuraciones SIGL). Cada plan guarda el id
 // del ente en `origen`.
@@ -24,24 +28,13 @@ export class ConfigurationsService {
      * estructura mínima y que no se elimine un ente que ya tiene planes asociados (activos o
      * archivados); en ese caso solo puede inactivarse.
      */
-    private async validarEntesControlPM(anterior: any, nuevo: any): Promise<void> {
-        if (!Array.isArray(nuevo)) {
-            throw new BadRequestException('La lista de entes de control es inválida.');
-        }
-        const ids = new Set<string>();
-        for (const ente of nuevo) {
-            const id = typeof ente?.id === 'string' ? ente.id.trim() : '';
-            if (!id || typeof ente?.nombre !== 'string' || !ente.nombre.trim() || typeof ente?.activo !== 'boolean') {
-                throw new BadRequestException('Cada ente de control debe tener id, nombre y estado Activo/Inactivo.');
-            }
-            if (ids.has(id)) {
-                throw new BadRequestException(`El ente de control "${id}" está repetido.`);
-            }
-            ids.add(id);
+    private async validarEntesControlPM(anterior: unknown, nuevo: unknown): Promise<void> {
+        const resultado = validarEstructuraEntesControlPM(nuevo);
+        if (!resultado.valido) {
+            throw new BadRequestException(resultado.error);
         }
 
-        const previos: any[] = Array.isArray(anterior) ? anterior : [];
-        const eliminados = previos.filter((e) => e?.id && !ids.has(e.id));
+        const eliminados = detectarEntesEliminados(anterior, resultado.ids);
         if (eliminados.length === 0) return;
 
         const planes = await this.configRepository.manager.find(PlanMejoramiento, {

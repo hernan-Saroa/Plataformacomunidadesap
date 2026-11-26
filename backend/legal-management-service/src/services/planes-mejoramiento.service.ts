@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In, IsNull, Not } from 'typeorm';
 import { PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario } from '../entities/planes-mejoramiento.entity';
@@ -6,7 +6,9 @@ import { PlanHallazgo } from '../entities/plan-hallazgo.entity';
 import { Riesgo } from '../entities/riesgo.entity';
 
 @Injectable()
-export class PlanesMejoramientoService {
+export class PlanesMejoramientoService implements OnModuleInit {
+    private readonly logger = new Logger(PlanesMejoramientoService.name);
+
     constructor(
         @InjectRepository(PlanMejoramiento)
         private planRepo: Repository<PlanMejoramiento>,
@@ -20,6 +22,18 @@ export class PlanesMejoramientoService {
         private hallazgoRepo: Repository<PlanHallazgo>,
         private dataSource: DataSource
     ) { }
+
+    async onModuleInit(): Promise<void> {
+        try {
+            await this.dataSource.query(
+                'ALTER TABLE legal_management.planes_mejoramiento DROP CONSTRAINT IF EXISTS planes_mejoramiento_origen_check;',
+            );
+        } catch (error) {
+            this.logger.warn(
+                `No se pudo verificar la eliminación de planes_mejoramiento_origen_check en arranque: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+    }
 
     // ==================== Bug 5c: HALLAZGOS / ACCIONES DE MEJORA ====================
 
