@@ -1416,37 +1416,41 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       saved.evidencias = [];
     }
 
-    if (saved.tipoAtencion === 'TECNOLOGICA' || saved.areaResponsableActual === 'TI') {
-      await this.notificarOTIC(saved, { evento: 'RADICACIÓN DE SOLICITUD TECNOLÓGICA', clave: 'UMI_OTIC_SOLICITUD_RADICADA' });
-    }
-    await this.notificarAlSolicitante(saved, {
-      tipo: 'SOLICITUD_RADICADA',
-      titulo: `Solicitud #${saved.consecutivo} radicada`,
-      mensaje: `Tu solicitud de mantenimiento ha sido radicada correctamente con tipo de atención ${saved.tipoAtencion}.`,
-      icono: 'Inbox',
-      color: '#2563eb',
-      prioridad: 'Media',
-      textoAccion: 'Ver solicitud',
-      emailSubject: `[UMI] Solicitud #${saved.consecutivo} radicada exitosamente`,
-      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+    // EFDS-1731 / Rendimiento Radicación: Despacho asíncrono en segundo plano
+    // para evitar que reintentos de red o envíos de correo bloqueen la respuesta HTTP (TTFB < 250ms).
+    setImmediate(async () => {
+      try {
+        if (saved.tipoAtencion === 'TECNOLOGICA' || saved.areaResponsableActual === 'TI') {
+          await this.notificarOTIC(saved, { evento: 'RADICACIÓN DE SOLICITUD TECNOLÓGICA', clave: 'UMI_OTIC_SOLICITUD_RADICADA' });
+        }
+        await this.notificarAlSolicitante(saved, {
+          tipo: 'SOLICITUD_RADICADA',
+          titulo: `Solicitud #${saved.consecutivo} radicada`,
+          mensaje: `Tu solicitud de mantenimiento ha sido radicada correctamente con tipo de atención ${saved.tipoAtencion}.`,
+          icono: 'Inbox',
+          color: '#2563eb',
+          prioridad: 'Media',
+          textoAccion: 'Ver solicitud',
+          emailSubject: `[UMI] Solicitud #${saved.consecutivo} radicada exitosamente`,
+          emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
 <h3 style="margin:0 0 8px;color:#1e40af">Solicitud Radicada con Éxito</h3>
 <p style="margin:0 0 8px">Tu solicitud <strong>#${saved.consecutivo}</strong> ha sido radicada en el sistema.</p>
 <p style="margin:0 0 8px"><strong>Tipo de atención:</strong> ${saved.tipoAtencion}</p>
 <p style="margin:0 0 8px"><strong>Descripción:</strong> ${saved.descripcion}</p>
 <p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
 </div>`,
-    });
+        });
 
-    await this.notificarEncargadosUMI(saved, {
-      tipo: 'SOLICITUD_RADICADA_ENCARGADO',
-      titulo: `Nueva solicitud #${saved.consecutivo} pendiente por asignar`,
-      mensaje: `Se ha radicado una nueva solicitud de mantenimiento en ${saved.sede?.nombre ?? saved.idSede ?? 'la sede'}. Tipo: ${saved.tipoAtencion}.`,
-      icono: 'Inbox',
-      color: '#2563eb',
-      prioridad: 'Media',
-      textoAccion: 'Clasificar y Asignar',
-      emailSubject: `[UMI] Nueva solicitud #${saved.consecutivo} para asignar - ${saved.sede?.nombre ?? ''}`,
-      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+        await this.notificarEncargadosUMI(saved, {
+          tipo: 'SOLICITUD_RADICADA_ENCARGADO',
+          titulo: `Nueva solicitud #${saved.consecutivo} pendiente por asignar`,
+          mensaje: `Se ha radicado una nueva solicitud de mantenimiento en ${saved.sede?.nombre ?? saved.idSede ?? 'la sede'}. Tipo: ${saved.tipoAtencion}.`,
+          icono: 'Inbox',
+          color: '#2563eb',
+          prioridad: 'Media',
+          textoAccion: 'Clasificar y Asignar',
+          emailSubject: `[UMI] Nueva solicitud #${saved.consecutivo} para asignar - ${saved.sede?.nombre ?? ''}`,
+          emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
 <h3 style="margin:0 0 8px;color:#1e40af">Nueva Solicitud Pendiente de Asignación</h3>
 <p style="margin:0 0 8px">Se ha radicado la solicitud <strong>#${saved.consecutivo}</strong> en estado <strong>RECIBIDA</strong>.</p>
 <p style="margin:0 0 8px"><strong>Solicitante:</strong> ${saved.solicitanteNombre ?? 'N/A'}</p>
@@ -1454,15 +1458,21 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 <p style="margin:0 0 8px"><strong>Descripción:</strong> ${saved.descripcion}</p>
 <p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none">Clasificar y Asignar Técnico</a></p>
 </div>`,
-    });
+        });
 
-    if (saved.esEmergenciaCritica) {
-      try {
-        await this.notificarEmergenciaCritica(saved);
-      } catch (errCritica: any) {
-        this.notifLogger.warn(`[EmergenciaCritica] Error enviando notificaciones para #${saved.consecutivo}: ${errCritica?.message || errCritica}`);
+        if (saved.esEmergenciaCritica) {
+          try {
+            await this.notificarEmergenciaCritica(saved);
+          } catch (errCritica: any) {
+            this.notifLogger.warn(`[EmergenciaCritica] Error enviando notificaciones para #${saved.consecutivo}: ${errCritica?.message || errCritica}`);
+          }
+        }
+      } catch (errNotifs: any) {
+        this.notifLogger.warn(
+          `[Radicación Background] Error despachando notificaciones para #${saved.consecutivo}: ${errNotifs?.message || errNotifs}`,
+        );
       }
-    }
+    });
 
     const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
     return enriquecida || saved;
