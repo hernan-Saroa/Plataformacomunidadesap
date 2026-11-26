@@ -10,11 +10,20 @@ describe('periodos: cerrar, desactivar y eliminar', () => {
   const crear = (p: any) => new PeriodoAcademicoController(
     { findOne: async () => p, save: guardar, count: async () => 0, find: async () => [] } as any, {} as any, {} as any);
 
-  it('eliminar es solo del superusuario; cerrar y desactivar, de quienes crean periodos', () => {
-    expect(rolesDe('remove').map((r) => r.toLowerCase())).toEqual(['super_admin', 'super_admin']);
-    for (const m of ['cerrar', 'desactivar']) {
+  // Bug QA 18-nov («no deja eliminar periodos»): eliminar ya no es solo del superusuario. Pasa los
+  // mismos roles que crear, cerrar y desactivar, y además el servidor exige el permiso de gestionar
+  // periodos (ver periodo-eliminacion.agregado.spec.ts para lo que se borra y lo que no).
+  it('eliminar, cerrar y desactivar: de quienes crean periodos', () => {
+    for (const m of ['remove', 'cerrar', 'desactivar']) {
       expect(rolesDe(m)).toEqual(expect.arrayContaining(['ADMIN_PROGRAMACION', 'GESTION_PROFESORAL', 'SUPER_ADMIN']));
     }
+  });
+
+  it('eliminar exige el permiso de gestionar periodos aunque el rol pase (403)', async () => {
+    const ctrl = new PeriodoAcademicoController(
+      { findOne: async () => ({ id: '9', codigo: '2091-1', estado: 'planeacion' }) } as any, {} as any,
+      { userHasAnyPermission: async () => false } as any);
+    await expect(ctrl.remove('9', { user: { userId: 'x' } })).rejects.toThrow(/permiso/);
   });
 
   it('cerrar deja el periodo en cerrado, incluso el principal en curso', async () => {

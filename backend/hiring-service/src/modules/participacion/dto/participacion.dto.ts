@@ -65,6 +65,11 @@ export class GuardarPuestoDto {
   @IsInt()
   @Min(0)
   orden?: number;
+
+  @ApiPropertyOptional({ description: 'Rol que suele ocupar el puesto; null lo quita' })
+  @IsOptional()
+  @IsUUID('all', { message: 'El rol se identifica con su id' })
+  rolId?: string | null;
 }
 
 /** Lo que se cambia de un puesto: cualquiera de sus datos. */
@@ -92,4 +97,9 @@ export class ActualizarPuestoDto {
   @IsInt()
   @Min(0)
   orden?: number;
+
+  @ApiPropertyOptional({ description: 'Rol que suele ocupar el puesto; null lo quita' })
+  @IsOptional()
+  @IsUUID('all', { message: 'El rol se identifica con su id' })
+  rolId?: string | null;
 }

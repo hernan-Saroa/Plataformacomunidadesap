@@ -141,34 +141,30 @@ describe('laSesionCierra · de qué depende la firma', () => {
 
 describe('exigeObservaciones · cuándo hay que decir qué objetó el comité', () => {
   it('observar y rechazar siempre', () => {
-    expect(exigeObservaciones('OBSERVADO', false)).toBe(true);
-    expect(exigeObservaciones('RECHAZADO', false)).toBe(true);
+    expect(exigeObservaciones('OBSERVADO')).toBe(true);
+    expect(exigeObservaciones('RECHAZADO')).toBe(true);
   });
 
-  it('aprobar solo si además reabre algo', () => {
-    // La actividad reabierta le llega a su responsable devuelta: sin texto no
-    // sabría qué tiene que validar.
-    expect(exigeObservaciones('APROBADO', false)).toBe(false);
-    expect(exigeObservaciones('APROBADO', true)).toBe(true);
-    expect(exigeObservaciones('APROBADO_CON_CONDICIONES', true)).toBe(true);
-  });
-
-  it('las condiciones no sirven de texto: dicen a qué queda sujeto, no qué validar', () => {
-    // Una aprobación condicionada sin reabrir nada solo pide condiciones.
-    expect(exigeObservaciones('APROBADO_CON_CONDICIONES', false)).toBe(false);
+  it('aprobar no: si el comité aprobó, no objetó nada', () => {
+    expect(exigeObservaciones('APROBADO')).toBe(false);
+    // Las condiciones dicen a qué queda sujeto, no qué se objetó.
+    expect(exigeObservaciones('APROBADO_CON_CONDICIONES')).toBe(false);
   });
 });
 
 describe('laSesionAdmiteReabrir · qué desenlaces dejan algo abierto', () => {
+  it('solo observar reabre: es la decisión que pide corregir', () => {
+    expect(laSesionAdmiteReabrir('OBSERVADO')).toBe(true);
+  });
+
+  it('aprobar no reabre nada: si se aprueba es que todo está bien', () => {
+    expect(laSesionAdmiteReabrir('APROBADO')).toBe(false);
+    expect(laSesionAdmiteReabrir('APROBADO_CON_CONDICIONES')).toBe(false);
+  });
+
   it('rechazar no reabre nada: el expediente queda negado', () => {
     // Una actividad devuelta dentro de un proceso muerto es trabajo que se le
     // pide a alguien para nada.
     expect(laSesionAdmiteReabrir('RECHAZADO')).toBe(false);
-  });
-
-  it('los demás sí, para corregir o para validar', () => {
-    expect(laSesionAdmiteReabrir('OBSERVADO')).toBe(true);
-    expect(laSesionAdmiteReabrir('APROBADO')).toBe(true);
-    expect(laSesionAdmiteReabrir('APROBADO_CON_CONDICIONES')).toBe(true);
   });
 });

@@ -262,7 +262,7 @@ export class RegistroActividadService {
 
         if (actividadPrevia?.estado !== 'DEVUELTO') {
           throw new BadRequestException(
-            `La actividad ${numeral} ya tiene un registro vigente. Anúlelo antes de registrar otro.`,
+            `La actividad ${numeral} ya tiene un registro vigente. Anúlalo antes de registrar otro.`,
           );
         }
 
@@ -370,7 +370,7 @@ export class RegistroActividadService {
 
   private async exigirProceso(em: EntityManager, procesoId: string) {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 
@@ -418,7 +418,7 @@ export class RegistroActividadService {
 
     const parametro = await em.getRepository(ActividadConSoporte).findOne({ where: { numeral } });
     if (!parametro) {
-      throw new NotFoundException(`La actividad ${numeral} no está parametrizada`);
+      throw new NotFoundException(`La actividad ${numeral} no está configurada para cumplirse con un registro`);
     }
     return parametro;
   }
@@ -446,7 +446,7 @@ export class RegistroActividadService {
     }
 
     const expediente = await em.findOne(Expediente, { where: { procesoId } });
-    if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+    if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
     return em.save(
       em.create(Documento, {

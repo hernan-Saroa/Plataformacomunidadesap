@@ -82,7 +82,7 @@ export class PublicacionContratoService {
     if (!contrato) {
       return {
         suscrito: false,
-        motivoNoSuscrito: 'el proceso todavía no tiene contrato generado',
+        motivoNoSuscrito: 'el proceso todavía no tiene contrato (se genera en la 8.1)',
         plazo,
         publicaciones: [] as any[],
         pendientes: [] as DestinoPublicacion[],
@@ -170,7 +170,7 @@ export class PublicacionContratoService {
       const fechaLimite = sumarDiasHabiles(desde, plazo.diasHabiles, festivos);
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const doc = await this.guardarDocumento(
         em,
@@ -312,7 +312,7 @@ export class PublicacionContratoService {
 
   private async contratoDelProceso(em: EntityManager, procesoId: string, bloquear = false) {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
 
     const consulta = em
       .getRepository(Contrato)
@@ -327,7 +327,7 @@ export class PublicacionContratoService {
 
   private async exigirContratoSuscrito(em: EntityManager, procesoId: string) {
     const contrato = await this.contratoDelProceso(em, procesoId, true);
-    if (!contrato) throw new NotFoundException('El proceso no tiene contrato generado');
+    if (!contrato) throw new NotFoundException('El proceso todavía no tiene contrato: se genera en la 8.1');
 
     if (!admitePublicacion(contrato.estado)) {
       throw new ConflictException(

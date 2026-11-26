@@ -124,7 +124,7 @@ describe('FilesController', () => {
   it('al visor le sigue respondiendo el 404 en JSON', async () => {
     const visor: any = { accepts: () => 'json' };
     await expect(controlador.descargar('nohay.pdf', respuesta(), undefined, visor)).rejects.toThrow(
-      'Documento no encontrado',
+      'El documento no existe o ya no está disponible',
     );
   });
 

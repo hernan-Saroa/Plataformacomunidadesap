@@ -1,5 +1,5 @@
 export function isRundAuditUrl(url: string): boolean {
-  return /\/(?:banco-docentes|macro-docente|docentes-disponibles|autogestion\/docentes|fotos-perfil|portal\/foto-perfil)(?:\/|\?|$)/i.test(url);
+  return /\/(?:banco-docentes|macro-docente|docentes-disponibles|autogestion\/docentes|fotos-perfil|portal\/foto-perfil|rund\/interoperabilidad)(?:\/|\?|$)/i.test(url);
 }
 
 /** Los logs de infraestructura conservan la operación, sin tokens, consultas ni cédulas en la URL. */
@@ -8,5 +8,6 @@ export function redactRundAuditUrl(url: string): string {
   return url.split('?')[0]
     .replace(/\/(drafts|submit|me|externo)\/[^/]+/gi, '/$1/[REDACTED]')
     .replace(/\/banco-docentes\/(\d[\d.]{4,})(?=\/|$)/gi, '/banco-docentes/[DOCUMENTO]')
+    .replace(/(\/rund\/interoperabilidad\/(?:perfiles|historial)\/)[^/]+/gi, '$1[DOCUMENTO]')
     .replace(/(\/fotos-perfil\/docentes\/)[^/]+/gi, '$1[DOCENTE]');
 }

@@ -14,6 +14,7 @@ import { BancoDocenteEditModal } from './BancoDocenteEditModal';
 import { nivelTituloDeFila, titulosAdicionalesDeCampos } from '../../../utils/titulosFormacion';
 import { TitulosOrigenFila } from './TitulosOrigenFila';
 import { RundDocumentManager } from './RundDocumentManager';
+import { RundConfirmarEliminacion, type ConfirmacionEliminar } from './RundConfirmarEliminacion';
 import { RundExtractionPanel } from './RundExtractionPanel';
 import { RundDatosCargaOriginal } from './RundDatosCargaOriginal';
 import { RundSoportesCodificacion } from './RundSoportesCodificacion';
@@ -519,10 +520,20 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     };
   }, [fetchRundData]);
 
-  const deleteEvidenceFromTable = async (evidence: any) => {
+  // Confirmación de eliminación con el diálogo de la ficha (no el confirm del navegador).
+  const [confirmacionEliminar, setConfirmacionEliminar] = useState<ConfirmacionEliminar | null>(null);
+
+  const deleteEvidenceFromTable = (evidence: any) => {
     const documentId = evidence?.documento_perfil_id;
     if (!documentId) { toast.error('Este archivo es un soporte histórico y no se puede eliminar desde aquí.'); return; }
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm(`¿Eliminar "${evidence.nombre_archivo || 'este archivo'}"? La versión queda en el historial.`)) return;
+    setConfirmacionEliminar({
+      titulo: 'Eliminar archivo', objeto: evidence.nombre_archivo || 'Archivo sin nombre',
+      descripcion: 'El archivo dejará de estar entre los documentos vigentes. La versión queda en el historial.',
+      confirmar: () => { setConfirmacionEliminar(null); return eliminarEvidencia(evidence, documentId); },
+    });
+  };
+
+  const eliminarEvidencia = async (evidence: any, documentId: string) => {
     setRundActionLoading(`eliminar-${evidence.id}`);
     try {
       await apiClient.delete(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/documentos/${documentId}`);
@@ -560,8 +571,17 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     const tipoSoporte = group.field.tipoSoporte;
     if (!canManageSupport(tipoSoporte) || rundActionLoading || loadingRund || loadError || !tarjetaRund?.docenteId) return;
     if (evidence && !evidence.documento_perfil_id) { toast.error('Este archivo es un soporte histórico y no se puede eliminar desde aquí.'); return; }
-    const mensaje = evidence ? `¿Eliminar el título «${titulo}» y su documento? Las versiones quedan en el historial.` : `¿Eliminar el título «${titulo}»?`;
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm(mensaje)) return;
+    setConfirmacionEliminar({
+      titulo: 'Eliminar título', objeto: titulo,
+      descripcion: evidence ? 'Se eliminará el título y su documento. Las versiones quedan en el historial.' : 'Se eliminará el título de la ficha del docente.',
+      detalle: evidence?.nombre_archivo || undefined,
+      confirmar: () => { setConfirmacionEliminar(null); return ejecutarEliminarTitulo(group, titulo, evidence); },
+    });
+  };
+
+  const ejecutarEliminarTitulo = async (group: RundSupportGroup, titulo: string, evidence?: any) => {
+    const tipoSoporte = group.field.tipoSoporte;
+    if (!tarjetaRund?.docenteId) return;
     setRundActionLoading(`titulo-${tipoSoporte}`);
     try {
       if (evidence) await apiClient.delete(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/documentos/${evidence.documento_perfil_id}`);
@@ -668,6 +688,28 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       toast.error(err?.message || 'Error al subir el soporte.');
     } finally {
       setRundActionLoading(null);
+    }
+  };
+
+  /** Carga masiva: sube un archivo como evidencia nueva de su soporte (con título si hace falta). No refresca la vista: lo hace el lote al terminar. */
+  const subirSoporteMasivo = async (file: File, group: RundSupportGroup, opciones: { titulo?: string; descripcion: string }): Promise<string | null> => {
+    const tipoSoporte = group.field.tipoSoporte;
+    if (!canManageSupport(tipoSoporte)) return 'No tiene permiso para cargar este soporte.';
+    if (loadError || !tarjetaRund?.docenteId || !selectedRundBloque) return 'Actualice el expediente e intente de nuevo.';
+    const field = CATALOGO_BR039[selectedRundBloque]?.campos.find(item => item.campo === group.uploadField.campo && item.tipoSoporte === tipoSoporte);
+    if (!field) return 'El soporte no está disponible en esta carpeta.';
+    try {
+      const formData = new FormData();
+      formData.append('tipoSoporte', tipoSoporte);
+      formData.append('campo', field.revisionId || field.tipoSoporte);
+      formData.append('modo', 'agregar');
+      formData.append('descripcion', opciones.descripcion);
+      if (opciones.titulo && esSoporteDeTitulo(tipoSoporte)) formData.append('titulo', opciones.titulo);
+      formData.append('file', file);
+      const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${selectedRundBloque}/soportes`, formData);
+      return res?.id ? null : 'El servidor no confirmó la carga.';
+    } catch (err: any) {
+      return err?.message || 'No fue posible cargar el archivo.';
     }
   };
 
@@ -1034,6 +1076,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
           canManage={(canManageDocuments || canRegisterIncorporation && selectedRundBloque === 'VINCULACION') && !loadError}
           allowedSupportTypes={canRegisterIncorporation && !canManageDocuments ? [...RUND_INCORPORATION_SUPPORTS] : undefined}
           revision={documentRevision}
+          onSubirMasivo={subirSoporteMasivo}
           activeBlock={selectedRundBloque}
           activeBlockLabel={CATALOGO_BR039[selectedRundBloque]?.label}
           renderSupportTable={({ accionesExtra }) => <RundSoportesCodificacion incrustada
@@ -1067,6 +1110,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
           onView={(url, name, label) => openDocViewer(url, name, label)}
           onChanged={fetchRundData}
         />}
+
+        <RundConfirmarEliminacion confirmacion={confirmacionEliminar} onCancelar={() => setConfirmacionEliminar(null)} />
 
         {showSupportingTools && <details className="rund-review-tools rund-review-tools--after-documents" key={`tools-${selectedRundBloque}`}>
           <summary>

@@ -27,6 +27,7 @@ import { RUND_BLOCK_LABELS, rundDocumentBlock } from '../../../utils/rundDocumen
 import { RUND_MAX_ARCHIVO_BYTES, RUND_MAX_EVIDENCES_PER_TYPE, rundDocumentDecision, rundEvidenceGroup } from '../../../utils/rundEvidenceRules';
 import { RundSupportList, type RundSupportReview, type RundSupportGroup } from './RundSupportList';
 import { RundPdfPicker } from './RundCheckpointEvidence';
+import { RundCargaMasivaSoportes } from './RundCargaMasivaSoportes';
 
 type Category = {
   codigo: string;
@@ -71,6 +72,8 @@ type Props = {
   supportReview?: RundSupportReview;
   /** Si se entrega, la tabla de soportes por codificación reemplaza las tarjetas de soportes dentro de esta sección. */
   renderSupportTable?: (contexto: { accionesExtra: (evidence: any, group: RundSupportGroup) => React.ReactNode }) => React.ReactNode;
+  /** Sube un archivo de la carga masiva a su soporte; devuelve null si quedó cargado o el mensaje de error. Sin esto no hay botón «Carga masiva». */
+  onSubirMasivo?: (file: File, group: RundSupportGroup, opciones: { titulo?: string; descripcion: string }) => Promise<string | null>;
   onView: (url: string, name: string, label: string) => void;
   onChanged?: () => Promise<void> | void;
 };
@@ -99,7 +102,7 @@ const evidenceCategory = (block: string, type: string) => {
   return 'OTROS';
 };
 
-export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes, onView, onChanged, revision = 0, evidenceOptions = [], activeBlock, activeBlockLabel, supportReview, renderSupportTable }: Props) {
+export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes, onView, onChanged, revision = 0, evidenceOptions = [], activeBlock, activeBlockLabel, supportReview, renderSupportTable, onSubirMasivo }: Props) {
   const auth = useAuth();
   // «Consulta RUND» visualiza en el visor, pero no descarga ni ve el historial de versiones (el servidor también lo rechaza).
   const readOnly = isRundReadOnly(auth.session?.permisos, auth.isSuperUser);
@@ -472,6 +475,13 @@ export function RundDocumentManager({ docenteId, canManage, allowedSupportTypes,
               toast.error(error?.message || 'No fue posible preparar el expediente. Puede reintentar.');
             } finally { setBusy(null); }
           }}>{busy === 'expediente' ? 'Preparando…' : 'Preparar expediente'}</button>}
+          {canManage && !allowedSupportTypes && !!supportReview && !!activeBlock && activeBlock !== 'TRANSVERSAL' && !!onSubirMasivo && !history && <RundCargaMasivaSoportes
+            bloque={activeBlock} etiquetaCarpeta={sectionLabel} grupos={supportReview.groups} disabled={actionsDisabled} onSubir={onSubirMasivo}
+            onTerminado={async () => {
+              await load();
+              await onChanged?.();
+              window.dispatchEvent(new CustomEvent('rund:soporte-uploaded', { detail: { docenteId, bloque: activeBlock } }));
+            }} />}
           {canManage && <button type="button" className={supportReview ? 'rund-documents__add-primary' : undefined} disabled={actionsDisabled} onClick={() => { setShowUpload(value => expanded ? !value : true); setExpanded(true); }} aria-expanded={showUpload && expanded} style={supportReview ? undefined : secondaryButton(showUpload)}>
             <FilePlus2 size={15} /> {showUpload && expanded ? 'Cerrar carga' : 'Agregar documento'}
           </button>}

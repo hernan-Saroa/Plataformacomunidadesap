@@ -32,7 +32,7 @@ import { resolveFrontendBaseUrl } from '../common/url-resolver.util';
 import { buildEmailButton } from '../common/email-button.util';
 import { AlertasService } from './alertas.service';
 import { TipoAlerta } from '../entities/alerta-enviada.entity';
-import { NotificationClientService } from './notification-client.service';
+import { MODULO_NOTIFICACIONES, NotificationClientService } from './notification-client.service';
 
 export function normalizeProcessStage(stage?: string | ProcessStage): ProcessStage {
   if (!stage) return ProcessStage.INVESTIGACION;
@@ -2388,6 +2388,7 @@ const documentos = noticia.adjuntos && Array.isArray(noticia.adjuntos)
               if (this.httpService) {
                 await firstValueFrom(
                   this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
+                    modulo: MODULO_NOTIFICACIONES,
                     to: rad.email,
                     subject: asunto,
                     html,

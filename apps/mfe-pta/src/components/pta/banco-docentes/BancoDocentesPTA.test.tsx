@@ -21,6 +21,8 @@ vi.mock('./BancoDocenteDetalleInline', () => ({ BancoDocenteDetalleInline: () =>
 vi.mock('./BancoDocenteEditModal', () => ({ BancoDocenteEditModal: () => null }));
 vi.mock('./BancoDocenteEstadoModal', () => ({ BancoDocenteEstadoModal: () => null }));
 vi.mock('./BancoDocenteDecisionPruebaModal', () => ({ BancoDocenteDecisionPruebaModal: ({ docente }: any) => <div role="dialog">Decisión del comité de {docente.nombre_completo}</div> }));
+vi.mock('./BancoDocenteComiteIncorporacionModal', () => ({ BancoDocenteComiteIncorporacionModal: ({ docente }: any) => <div role="dialog">Comité de incorporación de {docente.nombre_completo}</div> }));
+vi.mock('./BancoDocenteRecategorizacionModal', () => ({ BancoDocenteRecategorizacionModal: ({ docente }: any) => <div role="dialog">Recategorización de {docente.nombre_completo}</div> }));
 vi.mock('./BancoDocentesBulkUpload', () => ({ BancoDocentesBulkUpload: () => null }));
 vi.mock('./TableroInvitacionesRUND', () => ({ TableroInvitacionesRUND: () => null }));
 vi.mock('./RundConfiguracionCarpetas', () => ({ RundConfiguracionCarpetas: () => <div>Configuración de carpetas abierta</div> }));
@@ -343,5 +345,63 @@ describe('HU 2424 · periodo de prueba en el Banco de Docentes', () => {
     await waitFor(() => expect(previewRundDeletion).toHaveBeenCalledWith(expect.objectContaining({
       todosFiltrados: true, filters: expect.objectContaining({ periodoPrueba: 'PENDIENTE' }),
     })));
+  });
+});
+
+describe('HU 2349 · ciclo de estados del docente en el listado', () => {
+  const ciclo = (etapa: string, etapaEtiqueta: string, puedeRegistrarComite = false) => ({ etapa, etapaEtiqueta, puedeRegistrarComite, decision: null });
+  const docentes = [
+    { id: 'd-cargado', nombre_completo: 'DOCENTE CARGADO', estado: 'ACTIVO', ciclo: ciclo('CARGADO', 'Cargado / Elegible') },
+    { id: 'd-validado', nombre_completo: 'DOCENTE VALIDADO', estado: 'ACTIVO', ciclo: ciclo('VALIDADO_CUMPLE', 'Validado – Cumple', true) },
+    { id: 'd-activo', nombre_completo: 'DOCENTE APTO', estado: 'ACTIVO', ciclo: ciclo('ACTIVO', 'Apto para incorporación / Activo') },
+    { id: 'd-inactivo', nombre_completo: 'DOCENTE INACTIVO', estado: 'INACTIVO', ciclo: ciclo('INACTIVO', 'Inactivo') },
+  ];
+  const cargar = async (permissions: string[] | null) => {
+    grantedPermissions = permissions;
+    vi.mocked(getBancoDocentes).mockResolvedValue({ success: true, data: { data: docentes, total: 4, pages: 1 } } as any);
+    render(<BancoDocentesPTA />);
+    await screen.findByText('DOCENTE CARGADO');
+  };
+  const fila = (nombre: string) => screen.getByText(nombre).closest('tr')!;
+
+  it('muestra la etapa de cada docente', async () => {
+    await cargar(['banco-docentes.rund.manage']);
+    expect(within(fila('DOCENTE CARGADO')).getByTestId('docente-etapa-ciclo').textContent).toBe('Cargado / Elegible');
+    expect(within(fila('DOCENTE VALIDADO')).getByTestId('docente-etapa-ciclo').textContent).toBe('Validado – Cumple');
+    expect(within(fila('DOCENTE APTO')).getByTestId('docente-etapa-ciclo').textContent).toBe('Apto para incorporación / Activo');
+    expect(within(fila('DOCENTE INACTIVO')).getByTestId('docente-etapa-ciclo').textContent).toBe('Inactivo');
+  });
+
+  it('el comité de incorporación solo se ofrece a Validado – Cumple', async () => {
+    await cargar(['banco-docentes.rund.manage']);
+    expect(screen.getAllByTitle('Registrar decisión del comité para la incorporación')).toHaveLength(1);
+    expect(within(fila('DOCENTE VALIDADO')).getByTitle('Registrar decisión del comité para la incorporación')).toBeTruthy();
+    fireEvent.click(screen.getByTitle('Registrar decisión del comité para la incorporación'));
+    expect(await screen.findByText('Comité de incorporación de DOCENTE VALIDADO')).toBeTruthy();
+  });
+
+  it('la recategorización solo se ofrece a docentes activos', async () => {
+    await cargar(['banco-docentes.rund.manage']);
+    expect(screen.getAllByTitle('Recategorización')).toHaveLength(3);
+    expect(within(fila('DOCENTE INACTIVO')).queryByTitle('Recategorización')).toBeNull();
+    fireEvent.click(within(fila('DOCENTE APTO')).getByTitle('Recategorización'));
+    expect(await screen.findByText('Recategorización de DOCENTE APTO')).toBeTruthy();
+  });
+
+  it('sin permiso de gestión RUND no aparecen el comité ni la recategorización, pero sí la etapa', async () => {
+    await cargar(['banco-docentes.rund.view', 'banco-docentes.rund.edit']);
+    expect(screen.queryByTitle('Registrar decisión del comité para la incorporación')).toBeNull();
+    expect(screen.queryByTitle('Recategorización')).toBeNull();
+    expect(within(fila('DOCENTE VALIDADO')).getByTestId('docente-etapa-ciclo')).toBeTruthy();
+  });
+
+  it('con una respuesta antigua sin el campo ciclo deduce la etapa y no se rompe', async () => {
+    grantedPermissions = ['banco-docentes.rund.manage'];
+    vi.mocked(getBancoDocentes).mockResolvedValue({ success: true, data: { data: [
+      { id: 'viejo', nombre_completo: 'DOCENTE ANTIGUO', estado: 'ACTIVO', estadoAprobacion: 'ACTIVO_RUND' },
+    ], total: 1, pages: 1 } } as any);
+    render(<BancoDocentesPTA />);
+    const row = (await screen.findByText('DOCENTE ANTIGUO')).closest('tr')!;
+    expect(within(row).getByTestId('docente-etapa-ciclo').textContent).toBe('Validado – Cumple');
   });
 });

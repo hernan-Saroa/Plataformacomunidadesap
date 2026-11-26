@@ -3,6 +3,11 @@
 # Uso: docker-compose -f docker-compose.pre.yml up -d --build
 
 services:
+  mailpit:
+    image: axllent/mailpit:v1.22.3
+    networks:
+      - superapp-net-pre
+
   # ============ FRONTEND (React + Vite - Build de producción con Nginx) ============
   frontend:
     build:
@@ -304,6 +309,8 @@ services:
       dockerfile: Dockerfile
     container_name: internal-disciplinary-control-service-pre
     environment:
+      JURIDICA_EMAIL: ${JURIDICA_EMAIL:-${PRE_LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT:-}}}}
+      MAIL_ENVIRONMENT: pre
       NODE_ENV: production
       PORT: 3005
       TZ: America/Bogota
@@ -418,6 +425,8 @@ services:
       dockerfile: Dockerfile
     container_name: legal-management-service-pre
     environment:
+      JURIDICA_EMAIL: ${JURIDICA_EMAIL:-${PRE_LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT:-}}}}
+      MAIL_ENVIRONMENT: pre
       NODE_ENV: production
       PORT: 3008
 
@@ -434,9 +443,9 @@ services:
       AZURE_TENANT_ID: ${AZURE_TENANT_ID}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
-      LEGAL_EMAIL_ACCOUNT: ${LEGAL_EMAIL_ACCOUNT}
-      LEGAL_EMAIL_ACCOUNT_JUDICIAL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL}
-      LEGAL_EMAIL_ACCOUNT_CORREOS: ${LEGAL_EMAIL_ACCOUNT_CORREOS}
+      LEGAL_EMAIL_ACCOUNT: ${LEGAL_EMAIL_ACCOUNT:-}
+      LEGAL_EMAIL_ACCOUNT_JUDICIAL: ${PRE_LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-}}
+      LEGAL_EMAIL_ACCOUNT_CORREOS: ${PRE_LEGAL_EMAIL_ACCOUNT_CORREOS:-${LEGAL_EMAIL_ACCOUNT_CORREOS:-}}
       NOTIFICATIONS_EMAIL_ACCOUNT: ${NOTIFICATIONS_EMAIL_ACCOUNT:-}
       LEGAL_SYNC_EXCLUDED_SENDERS: ${LEGAL_SYNC_EXCLUDED_SENDERS:-}
 
@@ -467,6 +476,9 @@ services:
       dockerfile: Dockerfile
     container_name: notifications-service-pre
     environment:
+      MAIL_TEST_INBOX: ${MAIL_TEST_INBOX:-}
+      JURIDICA_EMAIL: ${JURIDICA_EMAIL:-${PRE_LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT_JUDICIAL:-${LEGAL_EMAIL_ACCOUNT:-}}}}
+      MAIL_ENVIRONMENT: pre
       NODE_ENV: production
       PORT: 3009
 
@@ -480,13 +492,12 @@ services:
       # JWT - debe coincidir con gateway y auth-service
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
 
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS}
-      SMTP_FROM: ${SMTP_FROM}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
-      EMAIL_REDIRECT_TO: ${EMAIL_REDIRECT_TO:-}
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}

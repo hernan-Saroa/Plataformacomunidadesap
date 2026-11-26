@@ -89,6 +89,21 @@ export class MacroDocenteController {
     return { success: true, ...result, items };
   }
 
+  /**
+   * Catálogo de filtros (períodos con historial y valores distintos de
+   * territorial/CETAP/programa/núcleo). Solo valores de catálogo, sin datos
+   * personales, por eso no se audita como consulta.
+   */
+  @Get('opciones')
+  @RequierePermisoMacroDocente(MACRO_DOCENTE_PERMISOS.CONSULTAR)
+  async getOpciones(
+    @Query('docenteId') docenteId: string | undefined,
+    @Query('periodo') periodo: string | undefined,
+  ) {
+    const opciones = await this.service.getOpciones({ docenteId, periodo });
+    return { success: true, ...opciones };
+  }
+
   /** REQ-RUND-F022 — "¿qué dictó el docente X en el período Y?" */
   @Get('consulta')
   @RequierePermisoMacroDocente(MACRO_DOCENTE_PERMISOS.CONSULTAR)

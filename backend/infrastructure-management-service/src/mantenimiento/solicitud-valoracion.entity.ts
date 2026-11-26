@@ -36,14 +36,14 @@ export class SolicitudValoracion {
   @Column({ type: 'varchar', length: 200, name: 'tecnico_nombre' })
   tecnicoNombre: string;
 
-  @Column({ type: 'varchar', length: 30, name: 'estado_al_finalizar' })
-  estadoAlFinalizar: 'EN_PROGRESO' | 'EN_ESPERA_DE_INSUMOS' | 'CERRADA_SIN_ATENCION';
+  @Column({ type: 'varchar', length: 30, name: 'estado_al_finalizar', nullable: true })
+  estadoAlFinalizar?: 'EN_PROGRESO' | 'EN_ESPERA_DE_INSUMOS' | 'CERRADA_SIN_ATENCION';
 
-  @Column({ type: 'text' })
-  diagnostico: string;
+  @Column({ type: 'text', nullable: true })
+  diagnostico?: string;
 
-  @Column({ type: 'text', name: 'alcance_identificado' })
-  alcanceIdentificado: string;
+  @Column({ type: 'text', name: 'alcance_identificado', nullable: true })
+  alcanceIdentificado?: string;
 
   @Column({
     type: 'numeric',
@@ -72,8 +72,8 @@ export class SolicitudValoracion {
   @Column({ type: 'timestamptz', name: 'fecha_inicio_valoracion' })
   fechaInicioValoracion: Date;
 
-  @Column({ type: 'timestamptz', name: 'fecha_fin_valoracion' })
-  fechaFinValoracion: Date;
+  @Column({ type: 'timestamptz', name: 'fecha_fin_valoracion', nullable: true })
+  fechaFinValoracion?: Date;
 
   @Column({
     type: 'boolean',

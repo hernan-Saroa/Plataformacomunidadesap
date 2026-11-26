@@ -2,6 +2,7 @@
  * ControlesSeguimientoTab - Pestaña "Controles" del detalle de riesgo con seguimiento cuatrimestral (EFDS-2416)
  */
 
+import { useMemo } from 'react';
 import { CheckCircle, ClipboardCheck, Download, Loader2, Paperclip, Shield } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import {
@@ -12,6 +13,7 @@ import {
 import {
   ESTADO_CORTE_CONFIG,
   RESULTADO_LABEL,
+  construirVistaFallback,
   formatearFechaISO,
   formatearTamano,
 } from './riesgoSeguimientoUtils';
@@ -29,6 +31,12 @@ interface ControlesSeguimientoTabProps {
 
 export function ControlesSeguimientoTab({ controlesRiesgo, vista, cargando, error, puedeRegistrar, onReintentar, onRegistrar }: ControlesSeguimientoTabProps) {
   const sinControles = !controlesRiesgo || controlesRiesgo.length === 0;
+
+  const vistaFallback = useMemo(() => {
+    return construirVistaFallback(controlesRiesgo);
+  }, [controlesRiesgo]);
+
+  const vistaAMostrar = vista || (error ? vistaFallback : null);
 
   return (
     <div>
@@ -54,13 +62,13 @@ export function ControlesSeguimientoTab({ controlesRiesgo, vista, cargando, erro
             </div>
           )}
 
-          {vista ? (
+          {vistaAMostrar ? (
             <div className="space-y-3">
-              {vista.controles.map(control => (
+              {vistaAMostrar.controles.map(control => (
                 <TarjetaControl
                   key={control.controlId}
                   control={control}
-                  vista={vista}
+                  vista={vistaAMostrar}
                   puedeRegistrar={puedeRegistrar}
                   onRegistrar={onRegistrar}
                 />
@@ -107,11 +115,13 @@ function TarjetaControl({ control, vista, puedeRegistrar, onRegistrar }: {
 
   return (
     <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg" data-testid={`control-${control.controlId}`}>
-      <div className="flex items-start gap-3">
-        <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-gray-900">{control.descripcion}</p>
-          <Barra efectividad={control.efectividad} />
+      <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-900">{control.descripcion}</p>
+            <Barra efectividad={control.efectividad} />
+          </div>
         </div>
         {puedeRegistrar && (
           <Button
@@ -120,7 +130,7 @@ function TarjetaControl({ control, vista, puedeRegistrar, onRegistrar }: {
             disabled={!hayAbierto}
             title={hayAbierto ? undefined : 'No hay un cuatrimestre abierto'}
             onClick={() => onRegistrar(control)}
-            className="flex-shrink-0 bg-white"
+            className="w-full sm:w-auto flex-shrink-0 bg-white"
           >
             <ClipboardCheck className="w-4 h-4 mr-1" />
             Registrar seguimiento

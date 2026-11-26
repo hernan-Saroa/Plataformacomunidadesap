@@ -10,6 +10,8 @@ import { PTA_COMPONENT_KEYS, PTA_COMPONENT_REVIEW_PERMISSION, REVIEW_SUBSECCIONE
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  // EFDS-2336: el catálogo del ambiente vuelve a vacío; una prueba que lo carga no se filtra a la siguiente.
+  vi.mocked(getCatalogoTerritoriales).mockReset().mockResolvedValue({ success: true, data: [] });
   permisosGranulares.clear();
   permisosGranulares.add('pta.approve.academica.pregrado');
 });
@@ -61,27 +63,49 @@ describe('tarjetas del detalle administrativo', () => {
     expect(within(chip()).getByText('Pendiente')).toBeTruthy();
   });
 
-  it.each(['aprobado', 'devuelto'])('resuelve el UUID de la territorial de una decisión %s sin cambiar su ID', async estado => {
-    const territorialId = '265cf9d0-536c-4405-9c62-219ea59c07ab';
+  // EFDS-2336, reabierto en PRE: docente de Cauca con docencia en Tolima, aprobada por el aprobador de Tolima.
+  // La tarjeta mostraba «Cauca» (la territorial del docente, que la pantalla guardaba como alcance de la
+  // decisión). Debe mostrar la territorial de la docencia, y decirlo en el rótulo. Ids que no son de una base concreta.
+  it.each(['aprobado', 'devuelto'])('Docencia (Territorial) %s: muestra la territorial de la docencia, no la del docente', async estado => {
+    const cauca = '265cf9d0-536c-4405-9c62-219ea59c07ab';
+    const tolima = '7d1f0c2a-4b9e-4f1a-9a55-0c3e2b6d8e10';
     let resolverCatalogo!: (result: any) => void;
     vi.mocked(getCatalogoTerritoriales).mockImplementationOnce(() => new Promise(resolve => { resolverCatalogo = resolve; }));
     const decision = { componente: 'academica_territorial', estado, estado_visual: estado,
-      scope: 'territorial', scopeId: territorialId, aplica: true, horas: 96, aprobadorNombre: 'Aprobador territorial' };
+      scope: 'territorial', scopeId: cauca, aplica: true, horas: 96, aprobadorNombre: 'Aprobador territorial' };
     vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: true, data: [decision] } as any);
+    vi.mocked(getAprobacionTerritorial).mockResolvedValueOnce({ success: true, data: [
+      { territorialId: tolima, territorialNombre: 'Tolima', nivel: 'pregrado', estado, actorNombre: 'Aprobador territorial', comentarios: null, fechaDecision: null },
+    ] } as any);
     render(<PTADetallePanelBackoffice {...baseProps({ pta: basePta({
-      territorial: 'Sede Central',
-      asignaturas: [{ nombre: 'Curso territorial', territorial_id: territorialId, componente_docencia: 'academica_territorial', total_horas: 96 }],
+      territorial: cauca,
+      asignaturas: [{ nombre: 'Curso territorial', territorial_id: tolima, componente_docencia: 'academica_territorial', total_horas: 96 }],
     }) })} />);
     fireEvent.click(screen.getByText('Aprobación').closest('button')!);
     await screen.findByText('Aprobador territorial');
-    expect(screen.queryByText(territorialId)).toBeNull();
-    expect(screen.getByText('Territorial no disponible')).toBeTruthy();
-    await act(async () => resolverCatalogo({ success: true, data: [{ id: territorialId, nombre: 'Risaralda', codigo: '900017' }] }));
-    expect(await screen.findByText('Risaralda')).toBeTruthy();
-    expect(screen.queryByText(territorialId)).toBeNull();
-    expect(decision.scopeId).toBe(territorialId);
+    const valor = () => screen.getByText('Territorial de la docencia').nextElementSibling?.textContent;
+    await waitFor(() => expect(valor()).toBe('Territorial no identificada'));
+    expect(screen.queryByText(tolima)).toBeNull();
+    await act(async () => resolverCatalogo({ success: true, data: [
+      { id: cauca, nombre: 'Cauca', codigo: '900019' }, { id: tolima, nombre: 'Tolima', codigo: '900041' },
+    ] }));
+    await waitFor(() => expect(valor()).toBe('Tolima'));
+    expect(decision.scopeId).toBe(cauca);
     expect(getCatalogoTerritoriales).toHaveBeenCalledWith();
     expect(aprobarComponente).not.toHaveBeenCalled();
+  });
+
+  it('un componente no territorial muestra la territorial del docente y su rótulo lo dice', async () => {
+    const cauca = '265cf9d0-536c-4405-9c62-219ea59c07ab';
+    vi.mocked(getCatalogoTerritoriales).mockResolvedValueOnce({ success: true, data: [{ id: cauca, nombre: 'Cauca', codigo: '900019' }] });
+    vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: true, data: [
+      { componente: 'academica_pregrado', estado: 'aprobado', estado_visual: 'aprobado', scope: 'territorial', scopeId: 'Sede Nacional',
+        aplica: true, horas: 96, aprobadorNombre: 'Gestión Profesoral QA', aprobadorRol: 'Gestión Profesoral' },
+    ] } as any);
+    render(<PTADetallePanelBackoffice {...baseProps({ pta: basePta({ territorial: cauca }) })} />);
+    fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+    await screen.findByText('Gestión Profesoral QA');
+    await waitFor(() => expect(screen.getByText('Territorial del docente').nextElementSibling?.textContent).toBe('Cauca'));
   });
 
   it('muestra al aprobador los cruces guardados sin impedir su decisión', async () => {
@@ -528,6 +552,8 @@ describe('autorización vigente del servidor', () => {
   });
 
   it('ofrece solamente el par territorial y nivel autorizado y no reaparece al resolverlo', async () => {
+    // EFDS-2336: el nombre del par sale del catálogo del ambiente, no del texto guardado en la fila.
+    vi.mocked(getCatalogoTerritoriales).mockResolvedValue({ success: true, data: [{ id: 'narino', nombre: 'Nariño' }, { id: 'meta', nombre: 'Meta' }] });
     const permisos = { ...sinPermisos, data: { ...sinPermisos.data,
       allowedComponents: ['academica_territorial'],
       territorial: { ...sinPermisos.data.territorial,
@@ -575,6 +601,8 @@ describe('autorización vigente del servidor', () => {
   });
 
   it('habilita todas las territoriales concedidas por el rol sin seccional personal y se actualiza al limitar el alcance', async () => {
+    // EFDS-2336: el nombre del par sale del catálogo del ambiente, no del texto guardado en la fila.
+    vi.mocked(getCatalogoTerritoriales).mockResolvedValue({ success: true, data: [{ id: 'narino', nombre: 'Nariño' }, { id: 'meta', nombre: 'Meta' }] });
     const pairs = [
       { territorialId: 'narino', territorialNombre: 'Nariño', nivel: 'pregrado' as const, estado: 'pendiente' },
       { territorialId: 'meta', territorialNombre: 'Meta', nivel: 'pregrado' as const, estado: 'pendiente' },

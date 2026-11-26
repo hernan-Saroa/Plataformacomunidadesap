@@ -22,7 +22,7 @@ export class RegistrarPublicacionDto {
     description: 'Fecha real de publicación en SECOP II (YYYY-MM-DD)',
     example: '2026-09-07',
   })
-  @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato YYYY-MM-DD' })
+  @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato AAAA-MM-DD' })
   fechaPublicacion: string;
 
   @ApiPropertyOptional({

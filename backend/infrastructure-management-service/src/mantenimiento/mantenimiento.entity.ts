@@ -6,12 +6,14 @@ import {
   UpdateDateColumn,
   ManyToOne,
   OneToMany,
+  OneToOne,
   JoinColumn,
 } from 'typeorm';
 import { EspacioFisico } from '../espacios/espacio.entity.js';
 import { Sede } from '../sedes/sede.entity.js';
 import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
 import { SolicitudValoracion } from './solicitud-valoracion.entity.js';
+import { SolicitudEjecucionTerritorial } from './solicitud-ejecucion-territorial.entity.js';
 
 @Entity({ name: 'solicitud_mantenimiento', schema: 'infrastructure-management' })
 export class SolicitudMantenimiento {
@@ -351,6 +353,57 @@ export class SolicitudMantenimiento {
   })
   responsableCalificacionDisplay?: string;
 
+  // ===== RF-INF-014 Alarmas y Notificaciones Multicanal (Umbral 70% y Emergencias Críticas) =====
+  @Column({
+    type: 'boolean',
+    name: 'alerta_70_emitida',
+    default: false,
+  })
+  alerta70Emitida: boolean;
+
+  @Column({
+    type: 'timestamptz',
+    name: 'fecha_alerta_70',
+    nullable: true,
+  })
+  fechaAlerta70?: Date | null;
+
+  @Column({
+    type: 'boolean',
+    name: 'es_emergencia_critica',
+    default: false,
+  })
+  esEmergenciaCritica: boolean;
+
+  @Column({
+    type: 'boolean',
+    name: 'emergencia_confirmada',
+    default: false,
+  })
+  emergenciaConfirmada: boolean;
+
+  @Column({
+    type: 'varchar',
+    length: 150,
+    name: 'emergencia_confirmada_por',
+    nullable: true,
+  })
+  emergenciaConfirmadaPor?: string | null;
+
+  @Column({
+    type: 'timestamptz',
+    name: 'fecha_confirmacion_emergencia',
+    nullable: true,
+  })
+  fechaConfirmacionEmergencia?: Date | null;
+
+  @Column({
+    type: 'text',
+    name: 'notas_confirmacion_emergencia',
+    nullable: true,
+  })
+  notasConfirmacionEmergencia?: string | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 
@@ -370,4 +423,7 @@ export class SolicitudMantenimiento {
 
   @OneToMany(() => SolicitudValoracion, (v) => v.solicitud, { nullable: true })
   valoraciones?: SolicitudValoracion[];
+
+  @OneToOne(() => SolicitudEjecucionTerritorial, (t) => t.solicitud, { nullable: true, cascade: true })
+  ejecucionTerritorial?: SolicitudEjecucionTerritorial;
 }

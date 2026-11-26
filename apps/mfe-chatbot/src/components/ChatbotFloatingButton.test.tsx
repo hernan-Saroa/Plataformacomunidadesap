@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ChatbotFloatingButton } from '../../../shell/src/components/esap/ChatbotFloatingButton';
 
@@ -25,6 +25,67 @@ it('entrega al remoto el mismo gateway configurado por el contenedor', async () 
   render(<ChatbotFloatingButton isActive userId="alice" apiBaseUrl="https://qa.example/services" />);
   fireEvent.click(screen.getByRole('button', { name: 'Asistente ESAP' }));
   expect((await screen.findByRole('textbox', { name: 'Mensaje pendiente' })).getAttribute('data-api-base')).toBe('https://qa.example/services');
+});
+
+it('anima la salida sin desmontar la conversación ni dejar controles ocultos interactivos', async () => {
+  render(<ChatbotFloatingButton isActive />);
+  const launcher = screen.getByRole('button', { name: 'Asistente ESAP' });
+  fireEvent.click(launcher);
+  const input = await screen.findByRole('textbox', { name: 'Mensaje pendiente' });
+  const dialog = screen.getByRole('dialog');
+  await waitFor(() => expect(dialog.style.getPropertyValue('--chatbot-panel-fold')).toBe('0'));
+  fireEvent.change(input, { target: { value: 'Conservar durante la salida' } });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Minimizar chat' }));
+
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(dialog.hasAttribute('inert')).toBe(true);
+  expect(dialog.style.pointerEvents).toBe('none');
+  expect(dialog.style.display).not.toBe('none');
+  expect(document.activeElement).toBe(launcher);
+  await waitFor(() => expect(dialog.style.visibility).toBe('hidden'));
+  expect(dialog.style.display).toBe('none');
+  expect(input.isConnected).toBe(true);
+  fireEvent.click(launcher);
+  expect(screen.getByRole('textbox', { name: 'Mensaje pendiente' })).toBe(input);
+  expect((input as HTMLInputElement).value).toBe('Conservar durante la salida');
+  expect(dialog.hasAttribute('inert')).toBe(false);
+  expect(document.activeElement).toBe(dialog);
+});
+
+it('permite reabrir durante la salida sin que una animación anterior oculte el panel', async () => {
+  render(<ChatbotFloatingButton isActive />);
+  const launcher = screen.getByRole('button', { name: 'Asistente ESAP' });
+  fireEvent.click(launcher);
+  const input = await screen.findByRole('textbox', { name: 'Mensaje pendiente' });
+  const dialog = screen.getByRole('dialog');
+  await waitFor(() => expect(dialog.style.getPropertyValue('--chatbot-panel-fold')).toBe('0'));
+  fireEvent.change(input, { target: { value: 'Reapertura rápida' } });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Minimizar chat' }));
+  fireEvent.click(launcher);
+
+  await waitFor(() => expect(dialog.style.getPropertyValue('--chatbot-panel-fold')).toBe('0'));
+  expect(dialog.style.visibility).toBe('visible');
+  expect(dialog.hasAttribute('inert')).toBe(false);
+  expect(screen.getByRole('textbox', { name: 'Mensaje pendiente' })).toBe(input);
+  expect((input as HTMLInputElement).value).toBe('Reapertura rápida');
+});
+
+it('termina de ocultarse si se cierra antes de completar la primera entrada', async () => {
+  render(<ChatbotFloatingButton isActive />);
+  const launcher = screen.getByRole('button', { name: 'Asistente ESAP' });
+  fireEvent.click(launcher);
+  const dialog = screen.getByRole('dialog');
+
+  fireEvent.keyDown(dialog, { key: 'Escape' });
+
+  expect(dialog.hasAttribute('inert')).toBe(true);
+  expect(document.activeElement).toBe(launcher);
+  await waitFor(() => expect(dialog.style.display).toBe('none'));
+  fireEvent.click(launcher);
+  expect(screen.getByRole('dialog')).toBe(dialog);
+  expect(dialog.hasAttribute('inert')).toBe(false);
 });
 
 it('declara el diálogo, enfoca el panel y devuelve el foco al minimizar con Escape', async () => {
@@ -58,7 +119,7 @@ it('amplía y restaura el mismo panel conservando el borrador', async () => {
   expect(screen.getByRole('button', { name: 'Ampliar chat' }).getAttribute('aria-pressed')).toBe('false');
 });
 
-it('adapta el panel al viewport visual y retira los listeners al minimizar', () => {
+it('adapta el panel al viewport visual y conserva su posición hasta terminar la salida', async () => {
   const viewport = Object.assign(new EventTarget(), { width: 390, height: 700, offsetLeft: 0, offsetTop: 0 });
   const remove = vi.spyOn(viewport, 'removeEventListener');
   const previous = Object.getOwnPropertyDescriptor(window, 'visualViewport');
@@ -71,9 +132,14 @@ it('adapta el panel al viewport visual y retira los listeners al minimizar', () 
     act(() => { viewport.height = 300; viewport.offsetTop = 25; viewport.dispatchEvent(new Event('resize')); });
     expect(root.style.getPropertyValue('--chatbot-viewport-height')).toBe('300px');
     expect(root.style.getPropertyValue('--chatbot-viewport-top')).toBe('25px');
+    const dialog = screen.getByRole('dialog');
+    await waitFor(() => expect(dialog.style.getPropertyValue('--chatbot-panel-fold')).toBe('0'));
     fireEvent.click(screen.getByRole('button', { name: 'Minimizar chat' }));
+    expect(root.style.getPropertyValue('--chatbot-viewport-height')).toBe('300px');
     expect(remove).toHaveBeenCalledWith('resize', expect.any(Function));
     expect(remove).toHaveBeenCalledWith('scroll', expect.any(Function));
+    await waitFor(() => expect(dialog.style.visibility).toBe('hidden'));
+    expect(root.style.getPropertyValue('--chatbot-viewport-height')).toBe('');
   } finally {
     if (previous) Object.defineProperty(window, 'visualViewport', previous);
     else Reflect.deleteProperty(window, 'visualViewport');

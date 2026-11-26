@@ -8,7 +8,7 @@ import { DataSource, EntityManager } from 'typeorm';
 
 import { alMenos, Contrato, EstadoContrato, TipoPersona } from '../../entities/contrato.entity';
 import { Garantia } from '../../entities/garantia.entity';
-import { Amparo, TipoAmparo } from '../../entities/amparo.entity';
+import { Amparo, TipoAmparo, TipoPoliza } from '../../entities/amparo.entity';
 import { AfiliacionArl } from '../../entities/afiliacion-arl.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -196,6 +196,14 @@ export class LegalizacionService {
       where: { activo: true },
       order: { orden: 'ASC', nombre: 'ASC' },
     });
+    const tiposPoliza = await this.dataSource.getRepository(TipoPoliza).find({
+      where: { activo: true },
+      order: { orden: 'ASC', nombre: 'ASC' },
+    });
+    const catalogo = {
+      tiposPoliza: tiposPoliza.map((t) => ({ codigo: t.codigo, nombre: t.nombre })),
+      tiposAmparo: tipos.map((t) => ({ codigo: t.codigo, nombre: t.nombre, tiposPoliza: t.tiposPoliza ?? [] })),
+    };
 
     // Qué puede hacer quien consulta, dicho por el servidor: la pantalla no
     // debe ofrecer un botón que va a responder 403.
@@ -205,9 +213,9 @@ export class LegalizacionService {
     if (!contrato) {
       return {
         suscrito: false,
-        motivoNoSuscrito: 'el proceso todavía no tiene contrato generado',
+        motivoNoSuscrito: 'el proceso todavía no tiene contrato (se genera en la 8.1)',
         requiereArl: false,
-        tiposAmparo: tipos.map((t) => ({ codigo: t.codigo, nombre: t.nombre })),
+        ...catalogo,
         garantias: [],
         arl: null,
         legalizado: false,
@@ -246,7 +254,7 @@ export class LegalizacionService {
         tipo: contrato.contratistaTipo,
       },
       requiereArl,
-      tiposAmparo: tipos.map((t) => ({ codigo: t.codigo, nombre: t.nombre })),
+      ...catalogo,
       garantias,
       arl: arl
         ? {
@@ -299,10 +307,20 @@ export class LegalizacionService {
         );
       }
 
-      await this.validarAmparos(em, dto);
+      if (dto.tipoPoliza) {
+        const tipo = await em
+          .getRepository(TipoPoliza)
+          .findOne({ where: { codigo: dto.tipoPoliza, activo: true } });
+        if (!tipo) {
+          throw new BadRequestException(
+            `El tipo de póliza ${dto.tipoPoliza} no existe en el catálogo o fue retirado`,
+          );
+        }
+      }
+      await this.validarAmparos(em, dto, dto.tipoPoliza);
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const doc = await this.guardarDocumento(
         em,
@@ -342,6 +360,7 @@ export class LegalizacionService {
           contratoId: contrato.id,
           aseguradora: dto.aseguradora,
           numeroPoliza: dto.numeroPoliza,
+          tipoPoliza: dto.tipoPoliza ?? null,
           documentoId: doc.id,
           estado: aprobadaEnSecop ? ('APROBADA' as const) : ('CARGADA' as const),
           cargadaPor: acceso.userName,
@@ -373,6 +392,7 @@ export class LegalizacionService {
       await this.traza(em, procesoId, garantia.id, 'ADJUNTAR', acceso, {
         actividad: NUMERAL_GARANTIAS,
         poliza: dto.numeroPoliza,
+        tipoPoliza: dto.tipoPoliza ?? null,
         aseguradora: dto.aseguradora,
         amparos: dto.amparos.map((a) => a.tipo),
         fechaAprobacionSecop: dto.fechaAprobacionSecop ?? null,
@@ -413,7 +433,7 @@ export class LegalizacionService {
           })),
           dto,
         ],
-      } as CargarGarantiaDto);
+      } as CargarGarantiaDto, garantia.tipoPoliza);
 
       await em.save(
         em.create(Amparo, {
@@ -541,7 +561,7 @@ export class LegalizacionService {
       }
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
       const doc = await this.guardarDocumento(
         em,
@@ -585,7 +605,21 @@ export class LegalizacionService {
    * Se comprueba aquí para responder con un mensaje de negocio en vez de con un
    * error de llave foránea o de restricción única.
    */
-  private async validarAmparos(em: EntityManager, dto: CargarGarantiaDto) {
+  private async validarAmparos(
+    em: EntityManager,
+    dto: CargarGarantiaDto,
+    tipoPoliza?: string | null,
+  ) {
+    // Las garantías registradas antes de la 145 no tienen tipo: a esas no se
+    // les exige que el amparo corresponda.
+    let poliza: TipoPoliza | null = null;
+    if (tipoPoliza) {
+      poliza = await em.getRepository(TipoPoliza).findOne({ where: { codigo: tipoPoliza } });
+      if (!poliza) {
+        throw new BadRequestException(`El tipo de póliza ${tipoPoliza} no existe en el catálogo`);
+      }
+    }
+
     const vistos = new Set<string>();
 
     for (const amparo of dto.amparos) {
@@ -608,6 +642,11 @@ export class LegalizacionService {
       if (!tipo) {
         throw new BadRequestException(
           `El amparo ${amparo.tipo} no existe en el catálogo o está inactivo`,
+        );
+      }
+      if (poliza && tipo.tiposPoliza?.length && !tipo.tiposPoliza.includes(poliza.codigo)) {
+        throw new BadRequestException(
+          `El amparo de ${tipo.nombre.toLowerCase()} no se ofrece en ${poliza.nombre.toLowerCase()}`,
         );
       }
     }
@@ -750,6 +789,10 @@ export class LegalizacionService {
       order: { createdAt: 'ASC' },
     });
 
+    const nombresPoliza = new Map(
+      (await em.getRepository(TipoPoliza).find()).map((t) => [t.codigo, t.nombre]),
+    );
+
     const salida = [] as any[];
     for (const garantia of garantias) {
       const amparos = await em.getRepository(Amparo).find({
@@ -762,6 +805,10 @@ export class LegalizacionService {
         id: garantia.id,
         aseguradora: garantia.aseguradora,
         numeroPoliza: garantia.numeroPoliza,
+        tipoPoliza: garantia.tipoPoliza,
+        tipoPolizaNombre: garantia.tipoPoliza
+          ? (nombresPoliza.get(garantia.tipoPoliza) ?? garantia.tipoPoliza)
+          : null,
         estado: garantia.estado,
         cargadaPor: garantia.cargadaPor,
         revisadaPor: garantia.revisadaPor,
@@ -788,7 +835,7 @@ export class LegalizacionService {
 
   private async contratoDelProceso(em: EntityManager, procesoId: string, bloquear = false) {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
 
     const consulta = em
       .getRepository(Contrato)
@@ -806,7 +853,7 @@ export class LegalizacionService {
 
   private async exigirContratoSuscrito(em: EntityManager, procesoId: string) {
     const contrato = await this.contratoDelProceso(em, procesoId, true);
-    if (!contrato) throw new NotFoundException('El proceso no tiene contrato generado');
+    if (!contrato) throw new NotFoundException('El proceso todavía no tiene contrato: se genera en la 8.1');
 
     if (!admiteLegalizacion(contrato.estado)) {
       throw new ConflictException(

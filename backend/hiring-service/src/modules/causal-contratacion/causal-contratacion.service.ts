@@ -233,7 +233,7 @@ export class CausalContratacionService {
       // es esta línea: una causal de otra modalidad no sustenta nada.
       if (causal.modalidad !== proceso.modalidad) {
         throw new BadRequestException(
-          `Esa causal es de otra modalidad: la ${causal.modalidad} no es la del proceso`,
+          'Esa causal es de otra modalidad, no de la del proceso: elige una de la lista',
         );
       }
 
@@ -335,7 +335,7 @@ export class CausalContratacionService {
     if (bloquear) consulta.setLock('pessimistic_write');
 
     const proceso = await consulta.getOne();
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

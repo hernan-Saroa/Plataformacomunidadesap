@@ -141,6 +141,18 @@ export class PuestosConfigController {
     return this.service.actualizar(id, dto, getHiringAccess(req));
   }
 
+  @Post(':puestoId/completar-permisos')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
+  @ApiOperation({
+    summary: 'Darle al rol del puesto los permisos por etapa que le faltan',
+    description:
+      'Agrega, punto por punto, lo que el puesto hace o aprueba y su rol no tiene. No quita nada. Las acciones que el rol no tiene en la administración de roles de la plataforma no se tocan: vuelven en `pendientes`.',
+  })
+  completarPermisos(@Param('puestoId', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.service.completarPermisos(id, getHiringAccess(req));
+  }
+
   @Delete(':puestoId')
   @UseGuards(PermisosGuard)
   @Permisos('contratacion.config.manage')

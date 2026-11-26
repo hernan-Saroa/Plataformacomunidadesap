@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, FilePlus2, Info, Paperclip } from 'lucide-react';
+import { AlertTriangle, FilePlus2, Info, Paperclip, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -91,6 +91,21 @@ export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [rubro, setRubro] = useState('');
   const [soporte, setSoporte] = useState<File | null>(null);
+  /**
+   * Corrigiendo lo ya cargado (BUG-001): con la 4.2 retirada de aprobación o
+   * devuelta, el formulario vuelve con los datos de antes y el certificado
+   * pasa a ser opcional —si no llega otro, se conserva el que estaba—.
+   */
+  const [corrigiendo, setCorrigiendo] = useState(false);
+
+  const empezarCorreccion = (actual: Cdp) => {
+    setNumero(actual.numero ?? '');
+    setValorTexto(actual.valor !== null && actual.valor !== undefined ? String(actual.valor) : '');
+    setFecha(actual.fechaExpedicion ?? new Date().toISOString().slice(0, 10));
+    setRubro(actual.rubro ?? '');
+    setSoporte(null);
+    setCorrigiendo(true);
+  };
 
   const cargar = async () => {
     setCargando(true);
@@ -146,7 +161,7 @@ export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
 
   const cdp = respaldo.cdp;
 
-  if (cdp?.estado === 'EXPEDIDO') {
+  if (cdp?.estado === 'EXPEDIDO' && !corrigiendo) {
     const frente = frenteAlEstimado(cdp.valor, valorEstimado);
     return (
       <Marco>
@@ -185,6 +200,17 @@ export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
             </Boton>
           </>
         )}
+        {respaldo.puedeCorregir && (
+          <>
+            <Ayuda>
+              La actividad no está en revisión: puedes corregir los datos o reemplazar el certificado.
+              Al guardar se vuelve a enviar a aprobación.
+            </Ayuda>
+            <Boton onClick={() => empezarCorreccion(cdp)} icono={<Pencil className="w-3.5 h-3.5" />}>
+              Corregir el CDP
+            </Boton>
+          </>
+        )}
       </Marco>
     );
   }
@@ -204,7 +230,8 @@ export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
 
   const valor = aNumero(valorTexto);
   const frente = frenteAlEstimado(valor, valorEstimado);
-  const completo = !!rubro.trim() && !!numero.trim() && valor !== null && !!fecha && !!soporte;
+  const completo =
+    !!rubro.trim() && !!numero.trim() && valor !== null && !!fecha && (!!soporte || corrigiendo);
 
   /*
    * Confirmar antes de cargar, con la comparación a la vista.
@@ -217,43 +244,52 @@ export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
     if (!completo) return;
     const resumen =
       `CDP ${numero.trim()} por ${formatoPesos.format(valor!)} del ${fecha}, ` +
-      `contra el rubro ${rubro.trim()}, con el soporte «${soporte!.name}».`;
+      `contra el rubro ${rubro.trim()}, ` +
+      (soporte ? `con el soporte «${soporte.name}».` : 'con el soporte que ya estaba.');
     const confirmado = await dialogo.confirmar({
       titulo:
         frente?.tono === 'aviso'
           ? 'El valor no coincide con el estimado del proceso'
-          : 'Confirmar el cargue del CDP',
-      descripcion: `${resumen}${frente ? ` ${frente.texto}` : ''} Al confirmar, el proceso queda respaldado y la apertura deja de estar bloqueada.`,
-      confirmar: 'Cargar el CDP',
+          : corrigiendo
+            ? 'Confirmar la corrección del CDP'
+            : 'Confirmar el cargue del CDP',
+      descripcion: corrigiendo
+        ? `${resumen}${frente ? ` ${frente.texto}` : ''} Al confirmar, la corrección queda en la traza y la actividad se vuelve a enviar a aprobación.`
+        : `${resumen}${frente ? ` ${frente.texto}` : ''} Al confirmar, el proceso queda respaldado y la apertura deja de estar bloqueada.`,
+      confirmar: corrigiendo ? 'Guardar y volver a enviar' : 'Cargar el CDP',
     });
     if (!confirmado) return;
+    const datos = {
+      rubro: rubro.trim(),
+      numero: numero.trim(),
+      valor: valor!,
+      fechaExpedicion: fecha,
+    };
     firma.conFirma((firmaOtp) =>
       ejecutar(
-        () =>
-          contratacionService.cargarCdp(
-            procesoId,
-            {
-              rubro: rubro.trim(),
-              numero: numero.trim(),
-              valor: valor!,
-              fechaExpedicion: fecha,
-              firma: firmaOtp,
-            },
-            soporte!,
-          ),
-        'CDP cargado',
+        async () => {
+          if (corrigiendo) {
+            await contratacionService.corregirCdp(procesoId, { ...datos, firma: firmaOtp }, soporte);
+            setCorrigiendo(false);
+            setSoporte(null);
+          } else {
+            await contratacionService.cargarCdp(procesoId, { ...datos, firma: firmaOtp }, soporte!);
+          }
+        },
+        corrigiendo ? 'CDP corregido y enviado de nuevo' : 'CDP cargado',
       ),
     );
   };
 
   return (
     <Marco>
-      <Titulo>Cargar el CDP</Titulo>
+      <Titulo>{corrigiendo ? 'Corregir el CDP' : 'Cargar el CDP'}</Titulo>
       <Ayuda>
-        El CDP se solicita y se expide por fuera del aplicativo. Transcribe el certificado tal como
-        lo expidió la Dirección Financiera y adjúntalo.
+        {corrigiendo
+          ? 'Corrige lo que haga falta. Si no adjuntas otro certificado, se conserva el que estaba.'
+          : 'El CDP se solicita y se expide por fuera del aplicativo. Transcribe el certificado tal como lo expidió la Dirección Financiera y adjúntalo.'}
       </Ayuda>
-      {cdp && (
+      {cdp && !corrigiendo && (
         <Aviso tono="aviso" titulo="Quedó una solicitud de antes">
           Este proceso pidió el CDP cuando se tramitaba en el aplicativo
           {cdp.solicitadoPor ? ` (lo pidió ${cdp.solicitadoPor})` : ''}. Al cargar el certificado, la
@@ -302,10 +338,15 @@ export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
         </Aviso>
       )}
       <SelectorArchivo
-        etiqueta="Certificado expedido"
+        etiqueta={corrigiendo ? 'Reemplazar el certificado' : 'Certificado expedido'}
         archivo={soporte}
         onElegir={setSoporte}
-        ayuda="El CDP firmado: es la evidencia del certificado en el expediente."
+        obligatorio={!corrigiendo}
+        ayuda={
+          corrigiendo
+            ? 'Opcional: solo si el certificado cambió. El anterior queda en el expediente.'
+            : 'El CDP firmado: es la evidencia del certificado en el expediente.'
+        }
       />
       <div className="flex items-center gap-2 flex-wrap">
         <Boton
@@ -313,8 +354,21 @@ export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
           onClick={confirmarCargue}
           icono={<FilePlus2 className="w-3.5 h-3.5" />}
         >
-          Cargar el CDP
+          {corrigiendo ? 'Guardar y volver a enviar' : 'Cargar el CDP'}
         </Boton>
+        {corrigiendo && (
+          <button
+            type="button"
+            onClick={() => {
+              setCorrigiendo(false);
+              setSoporte(null);
+            }}
+            disabled={trabajando}
+            className="text-[11.5px] font-bold text-slate-500 hover:underline"
+          >
+            Cancelar
+          </button>
+        )}
       </div>
       {dialogo.elemento}
       {firma.modal}

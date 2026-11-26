@@ -976,17 +976,30 @@ describe('[EFDS-1732] AC-03 Mini CRUD Categoría Servicio: toggleCategoriaServic
     expect(t2.isActivo).toBe(true);
   });
 
-  it('eliminar idCategoria 47 existente → catalogoRepo.delete llamada + retorna {idCatalogo, eliminado:true}', async () => {
+  it('eliminar categoría oficial CS_001 → BadRequest 400 por estar protegida', async () => {
+    const s = servicio({
+      catalogoRepo: {
+        findOne: jest.fn().mockResolvedValue({ idCatalogo: 47, codigo: 'CS_001', nombre: 'Cerrajería', catalogo: 'CATEGORIA_SERVICIO' }),
+      } as any,
+    });
+    await expect(s.eliminarCategoriaServicio(47)).rejects.toThrow(BadRequestException);
+  });
+
+  it('eliminar subcategoría custom existente → catalogoRepo.delete llamada + retorna {idCatalogo, eliminado:true}', async () => {
     const del = jest.fn();
     const s = servicio({
       catalogoRepo: {
-        findOne: jest.fn().mockResolvedValue({ idCatalogo: 47, catalogo: 'CATEGORIA_SERVICIO' }),
+        findOne: jest.fn().mockResolvedValue({ idCatalogo: 99, codigo: 'CS_001_S01', nombre: 'Cerrajería Digital', catalogo: 'CATEGORIA_SERVICIO' }),
+        find: jest.fn().mockResolvedValue([]),
         delete: del,
       } as any,
+      mantenimientoRepo: {
+        count: jest.fn().mockResolvedValue(0),
+      } as any,
     });
-    const r = await s.eliminarCategoriaServicio(47);
-    expect(del).toHaveBeenCalledWith({ idCatalogo: 47 });
-    expect(r).toEqual({ idCatalogo: 47, eliminado: true });
+    const r = await s.eliminarCategoriaServicio(99);
+    expect(del).toHaveBeenCalledWith({ idCatalogo: 99 });
+    expect(r).toEqual({ idCatalogo: 99, eliminado: true });
   });
 
   it('eliminar idCategoria 99999 NO existente → NotFound 404', async () => {
@@ -1201,6 +1214,59 @@ describe('[EFDS-1733] AC-01 Categoría CS_002 Eléctricas (id=48) ESPECIALIZACI�
     expect(r.sugerido).toBeNull();
     expect(typeof r.advertencia).toBe('string');
     expect(r.advertencia!.length).toBeGreaterThan(10);
+  });
+
+  it('EFDS-1733 QA: idCategoria=33 (código CS_002 en ambiente QA) resuelve ESPECIALIZACION obligatoria dinámicamente', async () => {
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-QA-ELEC',
+          idCategoria: 33, // ID dinámico de QA
+          areaResponsableActual: 'UMI',
+        }),
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(0),
+        })),
+      } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          const where = w?.where || w;
+          if (where?.catalogo === 'CATEGORIA_SERVICIO' && where?.idCatalogo === 33) {
+            return { idCatalogo: 33, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_002', nombre: 'Eléctricas y Electrónicas' };
+          }
+          if (where?.catalogo === 'REGLA_ESCALAMIENTO' && where?.codigo === 'REG_001_CATEGORIA_48_ELECTRICAS') {
+            return {
+              idCatalogo: 70,
+              catalogo: 'REGLA_ESCALAMIENTO',
+              codigo: 'REG_001_CATEGORIA_48_ELECTRICAS',
+              metadata: { tecnicoCodigo: 'TEC-ELC-001', codCategoriaCS: 'CS_002', idCategoria: 33 },
+              isActivo: true,
+            };
+          }
+          return null;
+        }),
+        find: jest.fn().mockImplementation((w: any) => {
+          const where = w?.where || w;
+          if (where?.catalogo === 'CATEGORIA_SERVICIO') {
+            return [{ idCatalogo: 33, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_002', nombre: 'Eléctricas' }];
+          }
+          if (where?.catalogo === 'TECNICO_MANTENIMIENTO') {
+            return [
+              { idCatalogo: 80, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-ELC-001', nombre: 'Carlos Electricista', isActivo: true, metadata: { roleCod: 'P3' } },
+              { idCatalogo: 81, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-MULTI-001', nombre: 'Técnico Multipropósito', isActivo: true, metadata: { roleCod: 'P4' } },
+            ];
+          }
+          return [];
+        }),
+      } as any,
+    });
+    const r = await s.sugerirAsignacion('SOL-QA-ELEC');
+    expect(r.regla).toBe('ESPECIALIZACION');
+    expect(r.obligatorio).toBe(true);
+    expect(r.idCategoria).toBe(33);
+    expect(r.sugerido?.codigo).toBe('TEC-ELC-001');
   });
 });
 
@@ -1891,7 +1957,7 @@ describe('[EFDS-1734] AC-03 Histórico auditoría JSONB asignaciones push entrie
     expect(keys).toEqual([
       'accion', 'fecha', 'id', 'id_tecnico_asignado', 'motivo',
       'observaciones', 'tecnico_codigo', 'tecnico_nombre_display',
-      'usuario_email', 'usuario_id', 'usuario_roles',
+      'usuario_cargo', 'usuario_email', 'usuario_id', 'usuario_nombre', 'usuario_roles',
     ]);
     expect(String(entry.tecnico_codigo)).toBe('TEC-HIST-1');
     expect(String(entry.tecnico_nombre_display)).toBe('Histórico 1');

@@ -7,6 +7,25 @@
  */
 
 /**
+ * Un plazo en días dicho también en meses, como referencia: «aproximadamente 3 meses».
+ *
+ * Un plazo de 120 días se entendía mal (AJU-002 de QA, 14/11). Los días siguen
+ * siendo el valor que cuenta; esto es solo la lectura. Meses de 30 días y
+ * redondeo a medio mes: por debajo de un mes no se dice nada, porque «0,5
+ * meses» no aclara más que «15 días».
+ */
+export function plazoEnMeses(dias: unknown): string | null {
+  const n = Number(dias);
+  if (!Number.isFinite(n) || n < 30) return null;
+  const meses = Math.round((n / 30) * 2) / 2;
+  const texto = meses.toLocaleString('es-CO', { maximumFractionDigits: 1 });
+  return `aproximadamente ${texto} ${meses === 1 ? 'mes' : 'meses'}`;
+}
+
+/** Los campos del estudio previo que son un plazo en días (AJU-002). */
+export const CAMPOS_PLAZO_EN_DIAS = ['plazo_ejecucion_dias'];
+
+/**
  * Fecha `YYYY-MM-DD` en texto legible.
  *
  * Se formatea en UTC a propósito: `new Date('2026-09-21')` se interpreta como

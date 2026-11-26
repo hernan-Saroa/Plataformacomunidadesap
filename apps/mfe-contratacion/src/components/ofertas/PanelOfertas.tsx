@@ -16,6 +16,9 @@ import { EstadoOfertas, Oferente, ProrrogaDelCierre } from '../../types';
 import { Aviso, Ayuda, Boton, campo, Marco, Pendiente, Titulo } from '../shared/PiezasPanel';
 import { fechaLarga, horaEnBogota, hoyEnBogota, momentoConHora } from '../shared/fechas';
 import { useDialogo } from '../shared/useDialogo';
+import { LARGO_MAXIMO_NIT, problemaDelNit } from '../shared/nit';
+import { Carga, useCargaPorPartes } from '../shared/useCargaPorPartes';
+import { BarraDeCarga } from '../shared/BarraDeCarga';
 
 interface Props {
   procesoId: string;
@@ -76,6 +79,18 @@ export function PanelOfertas({ procesoId, onCambio, onIrAAdendas }: Props) {
   const [radicacion, setRadicacion] = useState('');
   const [valor, setValor] = useState('');
   const [soporte, setSoporte] = useState<File | null>(null);
+  /**
+   * El soporte sube por partes en cuanto se elige (BUG-004): mientras tanto se
+   * sigue llenando el formulario, y la barra dice cuánto falta.
+   */
+  const subida = useCargaPorPartes(procesoId, '6.1');
+  const soporteListo = subida.carga.estado === 'lista' && !!subida.carga.cargaId;
+
+  const elegirSoporte = (archivo: File) => {
+    subida.descartar();
+    setSoporte(archivo);
+    subida.subir(archivo);
+  };
 
   const leer = () =>
     contratacionService
@@ -93,6 +108,7 @@ export function PanelOfertas({ procesoId, onCambio, onIrAAdendas }: Props) {
   }, [procesoId]);
 
   const limpiar = () => {
+    subida.descartar();
     setNombre('');
     setIdentificacion('');
     setRadicacion('');
@@ -101,8 +117,11 @@ export function PanelOfertas({ procesoId, onCambio, onIrAAdendas }: Props) {
     setRegistrando(false);
   };
 
+  /** El NIT se comprueba con su dígito de verificación, mientras se escribe (BUG-003). */
+  const problemaNit = identificacion.trim() ? problemaDelNit(identificacion) : null;
+
   const registrar = async () => {
-    if (!nombre.trim() || !identificacion.trim() || !radicacion || !soporte) return;
+    if (!nombre.trim() || !identificacion.trim() || problemaNit || !radicacion || !soporteListo) return;
 
     setGuardando(true);
     try {
@@ -118,9 +137,12 @@ export function PanelOfertas({ procesoId, onCambio, onIrAAdendas }: Props) {
             fechaRadicacion: `${radicacion}:00-05:00`,
             valorOfertado: valor.trim() ? Number(valor) : undefined,
           },
-          soporte,
+          // Solo el id: el archivo ya subió por partes.
+          { cargaId: subida.carga.cargaId! },
         ),
       );
+      // La carga ya es del expediente: se olvida sin pedir que la borren.
+      subida.olvidar();
       limpiar();
       toast.success('Oferta registrada');
       onCambio?.();
@@ -395,15 +417,27 @@ export function PanelOfertas({ procesoId, onCambio, onIrAAdendas }: Props) {
 
           <div>
             <label htmlFor="oferta-nit" className="block text-xs font-bold text-gray-600 mb-1.5">
-              NIT o documento <span className="text-red-600">*</span>
+              NIT con dígito de verificación <span className="text-red-600">*</span>
             </label>
             <input
               id="oferta-nit"
               value={identificacion}
+              maxLength={LARGO_MAXIMO_NIT}
               onChange={(e) => setIdentificacion(e.target.value)}
-              placeholder="900123456-1"
-              className={campo}
+              placeholder="900123456-8"
+              aria-invalid={!!problemaNit}
+              aria-describedby="oferta-nit-ayuda"
+              className={`${campo} ${problemaNit ? '!border-red-400' : ''}`}
             />
+            <p
+              id="oferta-nit-ayuda"
+              role={problemaNit ? 'alert' : undefined}
+              className={`text-[11px] mt-1.5 mb-0 leading-relaxed ${
+                problemaNit ? 'text-red-600 font-bold' : 'text-gray-500'
+              }`}
+            >
+              {problemaNit ?? 'El número, un guion y el dígito de verificación, sin puntos ni espacios.'}
+            </p>
           </div>
 
           <div>
@@ -446,17 +480,38 @@ export function PanelOfertas({ procesoId, onCambio, onIrAAdendas }: Props) {
             </p>
           </div>
 
-          <SelectorArchivo etiqueta="Soporte de la oferta" archivo={soporte} onElegir={setSoporte} />
+          <SelectorArchivo
+            etiqueta="Soporte de la oferta"
+            archivo={soporte}
+            onElegir={elegirSoporte}
+            carga={subida.carga}
+            onReintentar={subida.reintentar}
+            onCancelarCarga={() => {
+              subida.descartar();
+              setSoporte(null);
+            }}
+          />
 
           <div className="flex items-center gap-2">
             <Boton
               icono={<UserPlus className="w-3.5 h-3.5" />}
               disabled={
-                guardando || !nombre.trim() || !identificacion.trim() || !radicacion || !soporte
+                guardando ||
+                !nombre.trim() ||
+                !identificacion.trim() ||
+                !!problemaNit ||
+                !radicacion ||
+                !soporteListo
               }
               onClick={registrar}
             >
-              {guardando ? 'Registrando…' : 'Registrar oferta'}
+              {guardando
+                ? 'Registrando…'
+                : subida.carga.estado === 'subiendo'
+                  ? `Esperando el archivo · ${subida.carga.porcentaje} %`
+                  : subida.carga.estado === 'verificando'
+                    ? 'Verificando el archivo…'
+                    : 'Registrar oferta'}
             </Boton>
             <button
               type="button"
@@ -688,17 +743,24 @@ function FilaOferente({
   );
 }
 
-/** Adjunto obligatorio, con su nombre cuando ya está elegido. */
+/** Adjunto obligatorio, con su nombre y la barra de su carga por partes (BUG-004). */
 function SelectorArchivo({
   etiqueta,
   archivo,
   onElegir,
+  carga,
+  onReintentar,
+  onCancelarCarga,
 }: {
   etiqueta: string;
   archivo: File | null;
   onElegir: (archivo: File) => void;
+  carga?: Carga;
+  onReintentar?: () => void;
+  onCancelarCarga?: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const ocupado = carga?.estado === 'subiendo' || carga?.estado === 'verificando';
 
   return (
     <div
@@ -742,10 +804,14 @@ function SelectorArchivo({
           onElegir(elegido);
         }}
       />
+      {carga && onReintentar && onCancelarCarga ? (
+        <BarraDeCarga carga={carga} onReintentar={onReintentar} onCancelar={onCancelarCarga} />
+      ) : null}
       <button
         type="button"
+        disabled={ocupado}
         onClick={() => input.current?.click()}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md bg-white text-slate-700 border border-slate-300 hover:border-[#003DA5] hover:text-[#003DA5] transition-all"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md bg-white text-slate-700 border border-slate-300 hover:border-[#003DA5] hover:text-[#003DA5] transition-all disabled:opacity-50"
       >
         <Paperclip className="w-3.5 h-3.5" />
         {archivo ? 'Cambiar archivo' : 'Seleccionar archivo'}

@@ -70,6 +70,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from 'react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+import { normasATexto } from './services/normatividad';
 import { renderAsync } from 'docx-preview';
 import { notificationsService } from '../../services/api/notificationsService';
 
@@ -95,6 +96,7 @@ import { SeccionTareasExpediente } from './SeccionTareasExpediente';
 import { API_MODE, getDefaultHeaders, getServiceUrl } from '../../../config/environment';
 import { controlInternoService, type Hallazgo } from '../../../services/api/controlInternoService';
 import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/api';
+import { ROL_OCI_AUDITOR, rolesOciDe } from '../config/roles-ocig-operativos';
 import { exportarPDFInformeEjecutivo } from './services/exportarPDFInformeCierreEjecutivo';
 import { dibujarEncabezadoInstitucional, dibujarPieInstitucional, type ConfiguracionDocumento } from './services/pdfESAPHeader';
 import { estructuraService } from '../../services/estructuraService';
@@ -791,7 +793,8 @@ export function ExpedienteAuditoriaCompleto({
           checklistCompletados: data.checklistCompletados || {},
         };
         if(auditoriaBackend.normatividadAplicable?.length == 0) {
-          auditoriaBackend.normatividadAplicable = data.programaAnualMetadata.normatividadAplicable || []
+          // En la metadata la norma puede venir como objeto con tipo: aquí se muestra como texto (EFDS-2451)
+          auditoriaBackend.normatividadAplicable = normasATexto(data.programaAnualMetadata?.normatividadAplicable)
         }
         if(auditoriaBackend.riesgosIdentificados?.length == 0) {
           auditoriaBackend.riesgosIdentificados = data.programaAnualMetadata.riesgosIdentificados || []
@@ -2322,11 +2325,14 @@ function TabGeneral({
           const nombre = p.nombreCompleto ||
             (p.persona ? `${p.persona.nombre || ''} ${p.persona.apellido || ''}`.trim() : '') ||
             p.nombre || '';
+          // Todos sus roles OCI, no solo el principal (EFDS-2452)
+          const rolesOci = rolesOciDe({ rolOcig: p.rolOcig, rolesAdicionales: p.rolesAdicionales });
           return {
             ...p,
             _idPersona: personaId,
             _nombre: nombre,
-            _cargo: p.cargo || p.rol || p.rolOcig || 'Profesional OCI',
+            _cargo: p.cargo || p.rol || rolesOci.join(' · ') || 'Profesional OCI',
+            _rolesOci: rolesOci,
             _email: p.email || p.persona?.email || '',
           };
         })
@@ -2396,7 +2402,8 @@ function TabGeneral({
       );
       const personaId = prof?._idPersona || prof?.idTercero || selectedEquipoProfId;
       const nombre = prof?._nombre || 'Auditor';
-      const cargo = prof?._cargo || 'Auditor';
+      // Si entre sus roles está Auditor, entra al equipo como auditor aunque su principal sea otro (EFDS-2452)
+      const cargo = prof?._rolesOci?.includes(ROL_OCI_AUDITOR) ? ROL_OCI_AUDITOR : (prof?._cargo || 'Auditor');
       const email = prof?._email || '';
 
       const nuevoMiembro = {

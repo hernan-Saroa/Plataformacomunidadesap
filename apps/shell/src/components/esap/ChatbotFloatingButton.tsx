@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef, useState, Suspense, lazy } from 'react';
+import React, { useEffect, useLayoutEffect, useId, useRef, useState, Suspense, lazy } from 'react';
 import { Bot, Maximize2, Minimize2, ChevronDown } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import './ChatbotFloatingButton.css';
@@ -22,6 +22,7 @@ export const ChatbotFloatingButton: React.FC<ChatbotFloatingButtonProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
+  const [panelHidden, setPanelHidden] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [viewport, setViewport] = useState<{ width: number; height: number; left: number; top: number } | null>(null);
   const [ChatbotRemoteModule] = useState(() => lazy(() => import('chatbot/Module')));
@@ -33,7 +34,10 @@ export const ChatbotFloatingButton: React.FC<ChatbotFloatingButtonProps> = ({
   const reducedMotion = useReducedMotion();
   const suppressed = hidden || currentModule === 'chatbot' || !isActive;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // Mantener la conversación montada durante la salida sin dejar controles
+    // ocultos accesibles al teclado o al mouse.
+    panel.current?.toggleAttribute('inert', !isOpen || suppressed);
     if (suppressed) return;
     if (isOpen) panel.current?.focus({ preventScroll: true });
     else if (returnFocus.current) {
@@ -43,7 +47,9 @@ export const ChatbotFloatingButton: React.FC<ChatbotFloatingButtonProps> = ({
   }, [isOpen, suppressed]);
 
   useEffect(() => {
-    if (!isOpen || suppressed) { setViewport(null); return; }
+    if (suppressed) { setViewport(null); return; }
+    // Conservar el viewport durante la salida evita saltos al cerrar el teclado móvil.
+    if (!isOpen) return;
     // El viewport visual descuenta el teclado móvil sin modificar el scroll del documento.
     const visual = window.visualViewport;
     const update = () => setViewport({
@@ -83,9 +89,20 @@ export const ChatbotFloatingButton: React.FC<ChatbotFloatingButtonProps> = ({
           event.preventDefault(); event.stopPropagation(); minimize();
         }
       }}
-      initial={false} animate={{ opacity: isOpen ? 1 : 0 }} transition={{ duration: reducedMotion ? 0 : 0.15 }}
+      variants={{ open: { '--chatbot-panel-fold': 0 }, folded: { '--chatbot-panel-fold': 1 } }}
+      initial={reducedMotion ? 'open' : 'folded'}
+      animate={isOpen ? 'open' : 'folded'}
+      transition={{ duration: reducedMotion ? 0 : isOpen ? 0.42 : 0.32,
+        ease: isOpen ? [0.2, 0.75, 0.25, 1] : [0.4, 0, 0.6, 1] }}
+      onAnimationComplete={(target) => {
+        if (target === 'folded' && panel.current?.getAttribute('aria-hidden') === 'true') {
+          setPanelHidden(true);
+          setViewport(null);
+        }
+      }}
       className={`esap-chatbot-widget__panel${expanded ? ' esap-chatbot-widget__panel--expanded' : ''}`}
-      style={{ display: isOpen ? 'flex' : 'none' }}>
+      style={{ display: panelHidden ? 'none' : 'flex', visibility: panelHidden ? 'hidden' : 'visible',
+        pointerEvents: isOpen ? 'auto' : 'none' }}>
       <div className="esap-chatbot-widget__header">
         <div className="esap-chatbot-widget__identity">
           <Bot aria-hidden="true" size={22} />
@@ -110,10 +127,11 @@ export const ChatbotFloatingButton: React.FC<ChatbotFloatingButtonProps> = ({
       </div>
     </motion.div>}
     <motion.button ref={launcher} type="button" className="esap-chatbot-widget__launcher"
+      aria-label="Asistente ESAP"
       aria-haspopup="dialog" aria-expanded={isOpen} aria-controls={hasOpened ? panelId : undefined}
-      whileHover={reducedMotion ? undefined : { scale: 1.03 }} whileTap={reducedMotion ? undefined : { scale: 0.98 }}
+      whileTap={reducedMotion ? undefined : { scale: 0.98 }}
       style={{ display: isOpen ? 'none' : 'flex' }}
-      onClick={() => { setHasOpened(true); setIsOpen(true); }}>
+      onClick={() => { setPanelHidden(false); setHasOpened(true); setIsOpen(true); }}>
       <Bot aria-hidden="true" size={22} /><span>Asistente ESAP</span>
     </motion.button>
   </div>;

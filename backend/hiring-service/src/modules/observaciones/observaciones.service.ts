@@ -301,6 +301,7 @@ export class ObservacionesService {
     dto: ResponderObservacionDto,
     acceso: HiringAccess,
     pliego: PliegoObservado = 'PROYECTO',
+    soportes: SoporteCargado[] = [],
   ) {
     return this.dataSource.transaction(async (em) => {
       const observacion = await em.getRepository(ObservacionPliego).findOne({
@@ -314,7 +315,15 @@ export class ObservacionesService {
         );
       }
 
+      // La respuesta a un solo interesado también puede ir en documento, como
+      // la general: el texto solo resume lo que dice el archivo.
+      const documentos = [];
+      for (const { archivo, hash } of soportes) {
+        documentos.push(await this.guardarSoporte(em, procesoId, archivo, hash, acceso, pliego));
+      }
+
       observacion.respuesta = dto.respuesta;
+      observacion.respuestaSoportesIds = documentos.map((d) => d.id);
       observacion.modificoPliego = dto.modificoPliego ?? null;
       observacion.respondidaPor = acceso.userName;
       observacion.respondidaAt = new Date();
@@ -326,6 +335,7 @@ export class ObservacionesService {
       await this.traza(em, procesoId, observacion.id, 'APROBAR', acceso, {
         actividad: numeralDe(pliego),
         accion: 'RESPONDER',
+        archivos: documentos.length,
         modificoPliego: dto.modificoPliego ?? null,
       });
 
@@ -477,7 +487,7 @@ export class ObservacionesService {
     pliego: PliegoObservado = 'PROYECTO',
   ) {
     const expediente = await em.findOne(Expediente, { where: { procesoId } });
-    if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+    if (!expediente) throw new NotFoundException('El proceso no tiene expediente, y debería tenerlo desde que se creó: avisa a quien administra la plataforma');
 
     return em.save(
       em.create(Documento, {
@@ -497,7 +507,7 @@ export class ObservacionesService {
 
   private async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    if (!proceso) throw new NotFoundException('El proceso no existe o fue eliminado');
     return proceso;
   }
 

@@ -370,7 +370,7 @@ export class CadenaAprobacionService {
       .getRepository(EscalonRonda)
       .find({ where: { aprobacionId: ronda.id }, order: { orden: 'ASC' } });
     const escalon = escalones.find((e) => e.estado === 'PENDIENTE');
-    if (!escalon) throw new ConflictException('Ningún escalón de esta ronda está esperando decisión');
+    if (!escalon) throw new ConflictException('Esta aprobación no tiene ningún escalón pendiente de decidir');
 
     const quien = await this.quienEs(em, actividad.procesoId, acceso, actividad.numeral);
     const previas = await this.previasDe(em, ronda.id);
@@ -731,7 +731,7 @@ export class CadenaAprobacionService {
   /** La actividad del proceso, o 404. */
   async actividad(em: EntityManager, procesoId: string, numeral: string) {
     const actividad = await em.getRepository(ProcesoActividad).findOne({ where: { procesoId, numeral } });
-    if (!actividad) throw new NotFoundException(`La actividad ${numeral} no está instanciada en el proceso`);
+    if (!actividad) throw new NotFoundException(`El proceso no tiene la actividad ${numeral}`);
     return actividad;
   }
 }

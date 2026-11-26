@@ -75,7 +75,9 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
   onSaved,
 }) => {
   const [finalizadaInterna, setFinalizadaInterna] = useState(false);
-  const isReadOnly = Boolean(readOnly) || finalizadaInterna;
+  // Si readOnly viene definido explícitamente desde el padre (por ejemplo, forzarEditableValoracion = true -> readOnly = false),
+  // se respeta la decisión del llamador. Si no, se evalúa si la valoración fue cerrada internamente.
+  const isReadOnly = readOnly !== undefined && readOnly !== null ? Boolean(readOnly) : finalizadaInterna;
   const [diagnostico, setDiagnostico] = useState('');
   const [alcance, setAlcance] = useState('');
   const [tiempoHoras, setTiempoHoras] = useState<string>('1');
@@ -119,11 +121,23 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
         .then((lista) => {
           const v = lista.find((x) => x.idValoracion === idValoracion);
           if (v) {
-            if (v.estadoAlFinalizar || v.fechaFinValoracion) {
-              setFinalizadaInterna(true);
-            }
-            setDiagnostico(v.diagnostico || '');
-            setAlcance(v.alcanceIdentificado || '');
+            const estaCerrada = Boolean(
+              v.fechaFinValoracion &&
+              v.estadoAlFinalizar &&
+              v.estadoAlFinalizar !== 'EN_CURSO' &&
+              v.estadoAlFinalizar !== 'EN_PROGRESO'
+            );
+            setFinalizadaInterna(estaCerrada);
+            setDiagnostico(
+              v.diagnostico && !v.diagnostico.includes('Visita técnica en curso')
+                ? v.diagnostico
+                : ''
+            );
+            setAlcance(
+              v.alcanceIdentificado && !v.alcanceIdentificado.includes('Pendiente diligenciar')
+                ? v.alcanceIdentificado
+                : ''
+            );
             setTiempoHoras(String(v.tiempoEstimadoHoras || 0.5));
             setNivelRiesgo(v.nivelRiesgo || 'BAJO');
             setRequiereApagado(v.requiereApagadoElectrico ?? (esCategoriaElectrica ? null : false));

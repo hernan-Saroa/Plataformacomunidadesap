@@ -34,6 +34,19 @@ describe('JuridicaEmailService', () => {
     expect(service).toBeDefined();
   });
 
+  it.each([true, false])('solo acredita una entrega confirmada por Notificaciones (sent=%s)', async sent => {
+    const anterior = process.env.JURIDICA_EMAIL;
+    process.env.JURIDICA_EMAIL = 'judicial@qa.invalid';
+    try {
+      mockHttpService.post.mockReturnValue(of({ status: sent ? 201 : 202, data: { sent } }));
+      const datos = { radicado: '126' } as Parameters<JuridicaEmailService['enviarCorreoJuridica']>[1];
+      expect(await service.enviarCorreoJuridica('126', datos)).toBe(sent);
+    } finally {
+      if (anterior === undefined) delete process.env.JURIDICA_EMAIL;
+      else process.env.JURIDICA_EMAIL = anterior;
+    }
+  });
+
   describe('notificarTransferenciaAModuloLegal', () => {
     it('debe enviar la transferencia a legal-management-service con el payload correcto', async () => {
       const datosConsolidados = {

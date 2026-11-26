@@ -16,6 +16,7 @@
 import { controlInternoService } from '../../services/api/controlInternoService';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import type { NormaAplicable } from '../services/normatividad';
 import { useKanbanConfig } from '../context/KanbanConfigContext';
 import { auditoriaService, type AuditoriaFormData } from '../services/auditoriaService';
 import { useCrearNotificacion } from './useCrearNotificacion';
@@ -480,7 +481,8 @@ export interface AuditoriaCreateData {
   periodicidad?: string;
   objetivos?: string[];
   criteriosAuditoria?: string[];
-  normatividadAplicable?: string[];
+  // Texto legado u objeto con tipo (EFDS-2451)
+  normatividadAplicable?: Array<string | NormaAplicable>;
   metodologia?: string;
   nivelRiesgo?: string;
   riesgosIdentificados?: string[];
