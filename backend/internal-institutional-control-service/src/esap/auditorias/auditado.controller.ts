@@ -24,6 +24,8 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AuditoriasService } from './auditorias.service';
 import { HallazgosService } from '../hallazgos/hallazgos.service';
 import { DocumentosService } from '../documentos/documentos.service';
+import { EtapaDocumento, TipoDocumento } from '../documentos/entities/documento.entity';
+import { informePreliminarYaEnviado } from './informe-preliminar-estado';
 import { CreateDocumentoDto } from '../documentos/dto/create-documento.dto';
 import { PlanesMejoramientoService } from '../planes-mejoramiento/planes-mejoramiento.service';
 import { UpdateAccionDto } from '../planes-mejoramiento/dto/update-accion.dto';
@@ -533,10 +535,16 @@ export class AuditadoController {
       this.auditoriasService.findOne(id),
     ]);
 
-    const hayEnBorrador = hallazgos.some(
-      (h: any) => (h.estado || '').toLowerCase() === 'borrador',
-    );
-    const informePreliminarGenerado = !hayEnBorrador;
+    // Sin hallazgos ya no aparece como enviado si nadie subió el informe
+    const checklistPreliminar = (auditoria as any).checklistCompletados || {};
+    const documentosComunicacion = checklistPreliminar.informePreliminarGenerado
+      ? []
+      : await this.documentosService.getDocumentosPorEtapa(id, EtapaDocumento.COMUNICACION);
+    const informePreliminarGenerado = informePreliminarYaEnviado({
+      marcadoEnChecklist: !!checklistPreliminar.informePreliminarGenerado,
+      hayDocumento: documentosComunicacion.some((d) => d.tipoDocumento === TipoDocumento.INFORME_PRELIMINAR),
+      hallazgos,
+    });
     const hayControversiasPendientes =
       await this.hallazgosService.hayControversiasPendientes(id);
     const checklist = (auditoria as any).checklistCompletados || {};
