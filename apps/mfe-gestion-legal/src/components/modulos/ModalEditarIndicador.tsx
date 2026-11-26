@@ -12,6 +12,7 @@ import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
+import { resolverEjeVisual } from './planAccionUtils';
 import { SelectorResponsable, useResponsablesProcesoLegal } from './SelectorResponsable';
 import {
   estadoResponsable, requiereReasignacion, resolverResponsableActual, MENSAJE_RESPONSABLE_OBLIGATORIO,
@@ -45,7 +46,7 @@ interface ModalEditarIndicadorProps {
 
 export function ModalEditarIndicador({ isOpen, onClose, indicador, onGuardar }: ModalEditarIndicadorProps) {
   // Obtener ejes estratégicos y tipos indicador desde el Context
-  const { getEjesEstrategicosActivos, getTiposIndicadoresActivos } = useConfiguracionesSIGL();
+  const { ejesEstrategicos, getEjesEstrategicosActivos, getTiposIndicadoresActivos } = useConfiguracionesSIGL();
   const ejesActivos = getEjesEstrategicosActivos();
   const tiposIndicadorActivos = getTiposIndicadoresActivos();
 
@@ -206,6 +207,14 @@ export function ModalEditarIndicador({ isOpen, onClose, indicador, onGuardar }: 
                     {ejesActivos.map(eje => (
                       <option key={eje.id} value={eje.id}>{eje.icono} {eje.nombre}</option>
                     ))}
+                    {formData.ejeEstrategico && !ejesActivos.some(e => e.id === formData.ejeEstrategico) && (() => {
+                      const ejeActual = resolverEjeVisual(formData.ejeEstrategico, ejesEstrategicos);
+                      return (
+                        <option value={formData.ejeEstrategico}>
+                          {ejeActual.icon} {ejeActual.nombre} (Inactivo)
+                        </option>
+                      );
+                    })()}
                   </select>
                 </div>
               </div>

@@ -3,7 +3,7 @@
  * Modal para crear nuevos indicadores del Plan de Acción Institucional
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Target, Calendar, Users, TrendingUp } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Input } from '@esap-mfe/shared-ui/input';
@@ -30,14 +30,11 @@ export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIn
   // Usuarios activos del proceso Gestión Legal
   const { responsables, error: errorResponsables } = useResponsablesProcesoLegal(isOpen);
 
-  // 🐛 DEBUG: Ver si los ejes están cargando
-  console.log('🔍 Ejes Estratégicos Activos:', ejesActivos);
-
   const [formData, setFormData] = useState({
     codigo: '',
     nombre: '',
     descripcion: '',
-    ejeEstrategico: 'GESTION_INSTITUCIONAL',
+    ejeEstrategico: ejesActivos[0]?.id || '',
     responsable: '',
     responsableId: '',
     meta: '',
@@ -49,10 +46,28 @@ export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIn
     tipoIndicador: 'EFICIENCIA'
   });
 
+  // Garantiza que el eje seleccionado siempre pertenezca a los ejes activos vigentes
+  useEffect(() => {
+    if (!isOpen) return;
+    if (ejesActivos.length === 0) {
+      if (formData.ejeEstrategico) {
+        setFormData(prev => ({ ...prev, ejeEstrategico: '' }));
+      }
+      return;
+    }
+    if (!ejesActivos.some(e => e.id === formData.ejeEstrategico)) {
+      setFormData(prev => ({ ...prev, ejeEstrategico: ejesActivos[0].id }));
+    }
+  }, [isOpen, ejesActivos, formData.ejeEstrategico]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     // Validaciones
+    if (!formData.ejeEstrategico || !ejesActivos.some(eje => eje.id === formData.ejeEstrategico)) {
+      toast.error('Debe seleccionar un eje estratégico activo');
+      return;
+    }
     if (!formData.nombre.trim()) {
       toast.error('El nombre del indicador es obligatorio');
       return;

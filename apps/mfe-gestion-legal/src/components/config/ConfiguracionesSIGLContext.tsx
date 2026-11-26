@@ -1689,6 +1689,10 @@ export function useConfiguracionesSIGL() {
   return context;
 }
 
+export function useConfiguracionesSIGLOpcional() {
+  return useContext(ConfiguracionesSIGLContext);
+}
+
 // ============ HOOK PARA MÓDULO ESPECÍFICO ============
 
 export function useConfiguracionModulo(moduloId: string) {

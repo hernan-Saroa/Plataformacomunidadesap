@@ -3,6 +3,8 @@ import {
   Indicador, FILTROS_VACIOS, filtrarIndicadores, agruparPorEje, calcularAvanceConsolidado,
   calcularMetricas, getNivelSemaforo, configurarSemaforo, resetSemaforo, getFechaCorte,
   hayFiltrosActivos, SEMAFORO_DEFAULT, getSemaforoConfig,
+  mapEjeFromBackend, mapEjeToBackend, hexToSoftBg, obtenerEjesOrdenados, resolverEjeVisual,
+  EjeEstrategicoConfig,
 } from './planAccionUtils';
 import { construirFilasExport, construirResumenEjes, describirFiltros, COLUMNAS_EXPORT } from './planAccionExport';
 
@@ -178,5 +180,61 @@ describe('exportación respeta filtros', () => {
     expect(txt).toContain('Tecnología');
     expect(txt).toContain('Vencido');
     expect(txt).toContain('2025-01-01');
+  });
+});
+
+describe('Ejes Estratégicos dinámicos (Bug 2414)', () => {
+  const ejesConfig: EjeEstrategicoConfig[] = [
+    { id: 'GESTION_INSTITUCIONAL', nombre: 'Gestión Administrativa e institucional', icono: '🏢', descripcion: 'Admin', color: '#112233', activo: true, orden: 1 },
+    { id: 'TALENTO_HUMANO', nombre: 'Gestión Humana', icono: '🧑‍🤝‍🧑', descripcion: 'GH', color: '#FF8800', activo: true, orden: 2 },
+    { id: 'TRANSPARENCIA', nombre: 'Transparencia', icono: '🔍', descripcion: 'T', color: '#00C853', activo: false, orden: 3 },
+    { id: 'eje-1795668749776', nombre: 'Innovación Pública', icono: '🚀', descripcion: 'Nuevo', color: '#6366F1', activo: true, orden: 4 },
+  ];
+
+  it('mapea códigos legados y preserva ejes personalizados ida y vuelta', () => {
+    expect(mapEjeFromBackend('GESTION')).toBe('GESTION_INSTITUCIONAL');
+    expect(mapEjeFromBackend('TALENTO')).toBe('TALENTO_HUMANO');
+    expect(mapEjeFromBackend('eje-1795668749776')).toBe('eje-1795668749776');
+
+    expect(mapEjeToBackend('GESTION_INSTITUCIONAL')).toBe('GESTION');
+    expect(mapEjeToBackend('TALENTO_HUMANO')).toBe('TALENTO');
+    expect(mapEjeToBackend('eje-1795668749776')).toBe('eje-1795668749776');
+  });
+
+  it('resuelve nombre, ícono, color y fondo suave desde Configuraciones SIGL', () => {
+    const visual = resolverEjeVisual('GESTION_INSTITUCIONAL', ejesConfig);
+    expect(visual.nombre).toBe('Gestión Administrativa e institucional');
+    expect(visual.icon).toBe('🏢');
+    expect(visual.color).toBe('#112233');
+    expect(visual.bgColor).toBe('rgba(17, 34, 51, 0.12)');
+    expect(hexToSoftBg('invalido')).toBe('#E3F2FD');
+  });
+
+  it('agrupa respetando ejes activos configurados sin perder indicadores de ejes históricos o personalizados', () => {
+    const activosIds = obtenerEjesOrdenados(ejesConfig, true).map(e => e.id);
+    expect(activosIds).toEqual(['GESTION_INSTITUCIONAL', 'TALENTO_HUMANO', 'eje-1795668749776']);
+
+    const inds = [
+      mk({ id: '1', ejeEstrategico: 'GESTION_INSTITUCIONAL' }),
+      mk({ id: '2', ejeEstrategico: 'TRANSPARENCIA' }), // inactivo pero con indicador histórico
+      mk({ id: '3', ejeEstrategico: 'eje-1795668749776' }),
+    ];
+    const grupos = agruparPorEje(inds, activosIds);
+    expect(Object.keys(grupos)).toEqual(['GESTION_INSTITUCIONAL', 'TALENTO_HUMANO', 'eje-1795668749776', 'TRANSPARENCIA']);
+    expect(grupos['eje-1795668749776']).toHaveLength(1);
+    expect(grupos['TRANSPARENCIA']).toHaveLength(1);
+  });
+
+  it('la exportación refleja los nombres actualizados y ejes personalizados', () => {
+    const inds = [
+      mk({ id: '1', ejeEstrategico: 'GESTION_INSTITUCIONAL' }),
+      mk({ id: '2', ejeEstrategico: 'eje-1795668749776', avance: 80 }),
+    ];
+    const filas = construirFilasExport(inds, ejesConfig);
+    expect(filas.map(f => f[0])).toEqual(['Gestión Administrativa e institucional', 'Innovación Pública']);
+    expect(construirResumenEjes(inds, ejesConfig).map(r => r.eje)).toEqual([
+      'Gestión Administrativa e institucional',
+      'Innovación Pública',
+    ]);
   });
 });
