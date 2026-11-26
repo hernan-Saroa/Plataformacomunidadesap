@@ -1359,9 +1359,10 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       }),
       alerta70Emitida: false,
       fechaAlerta70: null,
+      // EFDS-2437 / RF-INF-012 / RF-INF-014: Prioridad Urgente / Emergencia activa automáticamente alarma crítica
       esEmergenciaCritica: Boolean(
         dto.esEmergenciaCritica ||
-        String(dto.prioridad || '').toUpperCase() === 'EMERGENCIA',
+        ['EMERGENCIA', 'URGENTE'].includes(String(dto.prioridad || '').toUpperCase()),
       ),
       emergenciaConfirmada: false,
       emergenciaConfirmadaPor: null,
@@ -1536,6 +1537,32 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
   // Catálogos
   // ---------------------------------------------------------------------------
   async getCatalogo(catalogo: string, soloActivos = true): Promise<CatalogoItem[]> {
+    if (catalogo === 'ESTADO_SOLICITUD') {
+      try {
+        const existeEscalada = await this.catalogoRepo.findOne({
+          where: { catalogo: 'ESTADO_SOLICITUD', codigo: 'ESCALADA_GIM' },
+        });
+        if (!existeEscalada) {
+          const itemEscalada = this.catalogoRepo.create({
+            catalogo: 'ESTADO_SOLICITUD',
+            codigo: 'ESCALADA_GIM',
+            nombre: 'Escalada Coordinación GIM',
+            descripcion: 'Requerimiento de gran envergadura escalado al Coordinador GIM para diagnóstico y trámite (RF-INF-012).',
+            orden: 17,
+            isActivo: true,
+            metadata: {
+              icon: 'siren',
+              color: 'bg-purple-100 text-purple-900 border border-purple-300',
+              grupo: 'ESCALAMIENTO',
+              permiteRevisionGIM: true,
+            },
+          });
+          await this.catalogoRepo.save(itemEscalada as any);
+        }
+      } catch (e: any) {
+        // En tests o mocks sin save no bloquea la consulta
+      }
+    }
     const where: any = { catalogo };
     if (soloActivos) where.isActivo = true;
     return this.catalogoRepo.find({ where, order: { orden: 'ASC', idCatalogo: 'ASC' } });
@@ -3025,6 +3052,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     args: {
       accion:
         | 'APROBADA_Y_ASIGNADA'
+        | 'ESCALAMIENTO_GRAN_ENVERGADURA_GIM'
         | 'APROBADA_REMISION_TI'
         | 'RECHAZADA'
         | 'REDISTRIBUIDA'
@@ -3286,6 +3314,17 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       solicitud.requiereVoBo = true;
     }
 
+    // EFDS-2437 / RF-INF-012: Si es Gran Envergadura (MAYOR), se escala al Coordinador GIM
+    const esEscalamientoMayor = solicitud.clasificacionMantenimiento === 'MAYOR';
+    // RF-INF-012 Criterio 3: Gran envergadura con riesgo (o prioridad URGENTE/EMERGENCIA) = emergencia con alarma crítica
+    const implicaRiesgoEmergencia =
+      Boolean(solicitud.esEmergenciaCritica) ||
+      ['EMERGENCIA', 'URGENTE', 'ALTA'].includes(String(solicitud.prioridad || '').toUpperCase());
+
+    if (esEscalamientoMayor && implicaRiesgoEmergencia) {
+      solicitud.esEmergenciaCritica = true;
+    }
+
     // EFDS-1734: Validar estado permitido para primera aprobación (no permite N veces sobre ASIGNADA).
     // Si la solicitud ya fue aprobada y asignada, para cambiar técnico usar REDISTRIBUIR.
     const ESTADOS_PERMITIDOS_APROBAR = esTI
@@ -3352,7 +3391,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       });
     } else {
       tec = await this.resolverTecnicoActivo(idTecnicoIdent);
-      solicitud.estado = 'ASIGNADA';
+      // EFDS-2437 Criterio 4: El escalamiento al Coordinador GIM queda registrado como estado del flujo (ESCALADA_GIM)
+      solicitud.estado = esEscalamientoMayor ? 'ESCALADA_GIM' : 'ASIGNADA';
       solicitud.responsableAsignado = `${tec.codigo} · ${tec.nombre}`;
       if (tec.idTecnicoAsignado) solicitud.idTecnicoAsignado = tec.idTecnicoAsignado;
       solicitud.motivoRechazo = undefined;
@@ -3383,11 +3423,13 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       }
 
       this.pushAsignacion(solicitud, {
-        accion: 'APROBADA_Y_ASIGNADA',
+        accion: esEscalamientoMayor ? 'ESCALAMIENTO_GRAN_ENVERGADURA_GIM' : 'APROBADA_Y_ASIGNADA',
         tecnicoCodigo: tec.codigo,
         tecnicoNombreDisplay: tec.nombre,
         idTecnicoAsignado: tec.idTecnicoAsignado ?? null,
-        motivo: null,
+        motivo: esEscalamientoMayor
+          ? `Requerimiento clasificado como Gran Envergadura (Mantenimiento Mayor). Escalado a Coordinación GIM y asignado técnico para diagnóstico previo.`
+          : null,
         observaciones: args.observaciones ?? null,
         clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
         requiereContratacion: solicitud.requiereContratacion,
@@ -3483,6 +3525,13 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 <p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:${esMayor ? '#7c3aed' : '#4338ca'};color:#fff;border-radius:6px;text-decoration:none">${esMayor ? 'Abrir para diagnóstico técnico' : 'Abrir para valoración'}</a></p>
 </div>`,
       });
+    }
+    if (saved.esEmergenciaCritica && !saved.emergenciaConfirmada) {
+      try {
+        await this.notificarEmergenciaCritica(saved);
+      } catch (errCritica: any) {
+        this.notifLogger.warn(`[EmergenciaCritica] Error enviando notificaciones para #${saved.consecutivo}: ${errCritica?.message || errCritica}`);
+      }
     }
     if (warning) (saved as any).__meta = { warning };
     return saved as any;
@@ -3957,9 +4006,9 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
       throw new ForbiddenException('No está autorizado para registrar la valoración de esta solicitud.');
     }
     await this.validarEspecializacionCS002(solicitud, per, user);
-    if (!['ASIGNADA', 'EN_CAMPO_VALORACION'].includes(solicitud.estado || '')) {
+    if (!['ASIGNADA', 'ESCALADA_GIM', 'EN_CAMPO_VALORACION'].includes(solicitud.estado || '')) {
       throw new ConflictException(
-        `La solicitud debe estar ASIGNADA o EN_CAMPO_VALORACION para registrar valoración. Estado actual: ${solicitud.estado}`,
+        `La solicitud debe estar ASIGNADA, ESCALADA_GIM o EN_CAMPO_VALORACION para registrar valoración. Estado actual: ${solicitud.estado}`,
       );
     }
 
