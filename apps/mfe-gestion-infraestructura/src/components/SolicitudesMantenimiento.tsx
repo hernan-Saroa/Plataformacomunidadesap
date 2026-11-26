@@ -268,7 +268,11 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   }, [catalogoCS]);
 
   const claseEstado = (estado: string): string => {
-    const it = mapEstado.get((estado || '').toUpperCase());
+    const est = (estado || '').toUpperCase();
+    if (est === 'ESCALADA_GIM') {
+      return 'bg-purple-100 text-purple-900 border border-purple-300';
+    }
+    const it = mapEstado.get(est);
     return it?.metadata?.color || FALLBACK_CLASE_ESTADO;
   };
 
@@ -1176,6 +1180,14 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     >
                       <Clock className="w-3.5 h-3.5 text-slate-500" />
                       Cerrada – Sin respuesta
+                    </span>
+                  ) : String(m.estado || '').toUpperCase() === 'ESCALADA_GIM' ? (
+                    <span
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-purple-100 text-purple-900 border-purple-300 shadow-sm"
+                      title="Requerimiento de gran envergadura escalado formalmente al Coordinador GIM (RF-INF-012)"
+                    >
+                      <Siren className="w-3.5 h-3.5 text-purple-700" />
+                      Escalada Coordinación GIM
                     </span>
                   ) : (
                     <span
