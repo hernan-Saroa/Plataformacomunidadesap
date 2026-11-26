@@ -269,23 +269,42 @@ function limpiarNombrePersona(texto?: string | null): string {
 function nuevoItemRemision(args: {
   usuarioId?: string;
   usuarioEmail?: string;
+  usuarioNombre?: string;
   origenArea: 'UMI' | 'FORMULARIO' | 'TI' | 'PENDIENTE_CLASIFICACION';
   destinoArea: 'UMI' | 'TI';
   motivo: string;
   canalRemision?: string;
+  destinatarioEmail?: string;
+  eventoNotificacion?: string;
   consecutivoCruzadoTi?: string;
   estadoRemision?: string;
 }): Record<string, any> {
+  const ahora = new Date().toISOString();
   return {
-    fecha: new Date().toISOString(),
+    fecha: ahora,
+    fechaRemision: ahora,
+    fecha_remision: ahora,
     usuario_id: args.usuarioId ?? null,
+    usuarioId: args.usuarioId ?? null,
     usuario_email: args.usuarioEmail ?? null,
+    usuarioEmail: args.usuarioEmail ?? null,
+    usuario_nombre: args.usuarioNombre ?? null,
+    usuarioNombre: args.usuarioNombre ?? null,
     origen_area: args.origenArea,
+    origenArea: args.origenArea,
     destino_area: args.destinoArea,
+    destinoArea: args.destinoArea,
     motivo: args.motivo,
-    canal_remision: args.canalRemision ?? 'EMAIL_SIN_INTEGRAR',
+    canal_remision: args.canalRemision ?? 'CORREO_ELECTRONICO_OTIC',
+    canalRemision: args.canalRemision ?? 'CORREO_ELECTRONICO_OTIC',
+    destinatario_email: args.destinatarioEmail ?? null,
+    destinatarioEmail: args.destinatarioEmail ?? null,
+    evento_notificacion: args.eventoNotificacion ?? null,
+    eventoNotificacion: args.eventoNotificacion ?? null,
     consecutivo_cruzado_ti: args.consecutivoCruzadoTi ?? null,
+    consecutivoCruzadoTi: args.consecutivoCruzadoTi ?? null,
     estado_remision: args.estadoRemision ?? 'PENDIENTE_CONFIRMACION_TI',
+    estadoRemision: args.estadoRemision ?? 'PENDIENTE_CONFIRMACION_TI',
   };
 }
 
@@ -1301,16 +1320,20 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    let solicitanteEmailResuelto = user.email || (user.username ? `${user.username}@esap.edu.co` : undefined);
     const remisionesIniciales: Record<string, any>[] = [];
     if (dto.tipoAtencion === 'TECNOLOGICA') {
       remisionesIniciales.push(
         nuevoItemRemision({
           usuarioId: userIdUuidOrNull(user.userId) ?? undefined,
-          usuarioEmail: user.email,
+          usuarioEmail: solicitanteEmailResuelto,
+          usuarioNombre: solicitanteNombreResuelto,
           origenArea: 'FORMULARIO',
           destinoArea: 'TI',
           motivo: 'Clasificación TECNOLÓGICA seleccionada por el solicitante en el formulario de radicación (EFDS-1731)',
-          canalRemision: 'EMAIL_SIN_INTEGRAR',
+          canalRemision: 'CORREO_ELECTRONICO_OTIC',
+          destinatarioEmail: this.CORREO_OTIC_DESTINO,
+          eventoNotificacion: 'UMI OTIC SOLICITUD RADICADA',
           estadoRemision: 'PENDIENTE_CONFIRMACION_TI',
         }),
       );
@@ -1490,11 +1513,14 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 
     const item = nuevoItemRemision({
       usuarioId: user.userId,
-      usuarioEmail: user.email,
+      usuarioEmail: user.email || (user.username ? `${user.username}@esap.edu.co` : undefined),
+      usuarioNombre: user.name || (user as any).nombreCompleto || user.username || undefined,
       origenArea: 'UMI',
       destinoArea: 'TI',
       motivo: dto.motivo,
-      canalRemision: dto.canalRemision,
+      canalRemision: dto.canalRemision || 'CORREO_ELECTRONICO_OTIC',
+      destinatarioEmail: this.CORREO_OTIC_DESTINO,
+      eventoNotificacion: 'UMI_OTIC_REMITIDA_TI',
       consecutivoCruzadoTi: dto.consecutivoCruzadoTi,
       estadoRemision: 'PENDIENTE_CONFIRMACION_TI',
     });
@@ -1530,7 +1556,73 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     const lista = Array.isArray(solicitud.remisiones) ? solicitud.remisiones : [];
     return lista
       .slice()
-      .sort((a, b) => new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime());
+      .sort(
+        (a, b) =>
+          new Date(b.fecha || b.fechaRemision || b.fecha_remision || 0).getTime() -
+          new Date(a.fecha || a.fechaRemision || a.fecha_remision || 0).getTime(),
+      )
+      .map((item) => {
+        const fecha =
+          item.fechaRemision ||
+          item.fecha ||
+          item.fecha_remision ||
+          solicitud.fechaRadicacion ||
+          solicitud.creadoEn ||
+          new Date().toISOString();
+        const esOrigenFormulario =
+          (item.origenArea || item.origen_area) === 'FORMULARIO' ||
+          (!item.origenArea && !item.origen_area && solicitud.tipoAtencion === 'TECNOLOGICA');
+        const usuarioNombre =
+          item.usuarioNombre ||
+          item.usuario_nombre ||
+          (esOrigenFormulario ? (solicitud.solicitanteNombre || 'Solicitante') : null);
+        const usuarioEmail =
+          item.usuarioEmail ||
+          item.usuario_email ||
+          (esOrigenFormulario ? (solicitud.usuarioSolicitanteEmail || solicitud.solicitanteEmail) : null);
+        const usuarioId =
+          item.usuarioId ||
+          item.usuario_id ||
+          (esOrigenFormulario ? (solicitud.idUsuarioSolicitante || (solicitud as any).solicitanteId) : null);
+        const origenArea =
+          item.origenArea || item.origen_area || (solicitud.tipoAtencion === 'TECNOLOGICA' ? 'FORMULARIO' : 'UMI');
+        const destinoArea = item.destinoArea || item.destino_area || 'TI';
+        const canalRemision = item.canalRemision || item.canal_remision || 'CORREO_ELECTRONICO_OTIC';
+        const destinatarioEmail =
+          item.destinatarioEmail || item.destinatario_email || (item as any).correoDestinatario || this.CORREO_OTIC_DESTINO;
+        const eventoNotificacion =
+          item.eventoNotificacion || item.evento_notificacion || 'UMI OTIC SOLICITUD RADICADA';
+        const consecutivoCruzadoTi = item.consecutivoCruzadoTi || item.consecutivo_cruzado_ti || null;
+        const estadoRemision = item.estadoRemision || item.estado_remision || 'PENDIENTE_CONFIRMACION_TI';
+
+        return {
+          ...item,
+          fecha,
+          fechaRemision: fecha,
+          fecha_remision: fecha,
+          usuarioId,
+          usuario_id: usuarioId,
+          usuarioEmail,
+          usuario_email: usuarioEmail,
+          usuarioNombre,
+          usuario_nombre: usuarioNombre,
+          origenArea,
+          origen_area: origenArea,
+          destinoArea,
+          destino_area: destinoArea,
+          motivo: item.motivo,
+          canalRemision,
+          canal_remision: canalRemision,
+          destinatarioEmail,
+          destinatario_email: destinatarioEmail,
+          eventoNotificacion,
+          evento_notificacion: eventoNotificacion,
+          consecutivoCruzadoTi,
+          consecutivo_cruzado_ti: consecutivoCruzadoTi,
+          estadoRemision,
+          estado_remision: estadoRemision,
+        };
+      });
   }
 
   // ---------------------------------------------------------------------------
