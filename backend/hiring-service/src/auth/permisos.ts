@@ -59,6 +59,15 @@ export const PERMISO_PLAZO_TERMINAR = 'contratacion.plazo.terminar';
 export const PERMISO_PROCESO_BORRAR = 'contratacion.proceso.delete';
 
 /**
+ * Reabrir una actividad ya cerrada para corregir un error humano (153).
+ *
+ * Devuelve la actividad (DEVUELTO) con un motivo, como hace el comité en la
+ * 3.7, sin tocar lo que vino después. No es de ninguna etapa: es una llave de
+ * corrección que se le da a quien responde por el expediente entero.
+ */
+export const PERMISO_ACTIVIDAD_REABRIR = 'contratacion.actividad.reabrir';
+
+/**
  * Los permisos que no dependen de ninguna etapa y la 083 conserva con su
  * código. Todo lo demás se autoriza por acción y alcance (`@Puede`).
  */
@@ -69,6 +78,7 @@ export const PERMISOS_TRANSVERSALES = [
   PERMISO_REPORTE_VER,
   PERMISO_PLAZO_TERMINAR,
   PERMISO_PROCESO_BORRAR,
+  PERMISO_ACTIVIDAD_REABRIR,
 ] as const;
 
 // ------------------------------------------------- de dónde salen hoy --
@@ -101,6 +111,7 @@ export const ROLES_QUE_OTORGAN: Record<string, string[]> = {
   // Las llaves de pruebas: la Directora también las tiene desde la 137.
   [PERMISO_PLAZO_TERMINAR]: ['DIRECTORA_DE_CONTRATACION', 'SUPER_ADMIN'],
   [PERMISO_PROCESO_BORRAR]: ['DIRECTORA_DE_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_ACTIVIDAD_REABRIR]: ['DIRECTORA_DE_CONTRATACION', 'SUPER_ADMIN'],
 };
 
 /**

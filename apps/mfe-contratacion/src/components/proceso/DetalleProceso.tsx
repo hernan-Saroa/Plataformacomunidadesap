@@ -56,6 +56,8 @@ import { FranjaSituacion } from './FranjaSituacion';
 import { FichaDelProceso } from './FichaDelProceso';
 import { VerEstudioPrevio } from '../revision/VerEstudioPrevio';
 import { BorrarProceso } from './BorrarProceso';
+import { ReabrirActividades } from './ReabrirActividades';
+import { PERMISOS } from '../../auth/permisos';
 import { usePlazos } from '../../hooks/usePlazos';
 
 /**
@@ -276,7 +278,7 @@ export function DetalleProceso({
    * trabajo. Mientras el alcance no llega responde que no, así que la duda cae
    * del lado de enseñarlo todo.
    */
-  const { puede, cargado: alcanceCargado } = useAlcance();
+  const { puede, tiene, cargado: alcanceCargado } = useAlcance();
   const soloPresupuesto = esSoloPresupuesto(puede);
   /** Qué roles responden por cada punto, para decir a quién le toca. */
   const responsables = useResponsables();
@@ -960,6 +962,20 @@ export function DetalleProceso({
             {/* En la cabecera y no en la 3.1: se consulta desde cualquier
                 actividad sin perder el sitio. */}
             <VerEstudioPrevio estudio={datos} procesoId={procesoId} />
+            {/* La llave de corrección (153): quien la tiene reabre lo ya cerrado. */}
+            {tiene(PERMISOS.actividadReabrir) && (
+              <ReabrirActividades
+                procesoId={procesoId}
+                radicado={datos.proceso.radicado}
+                onCambio={() => {
+                  contratacionService
+                    .obtenerEstudioPrevio(procesoId)
+                    .then(setDatos)
+                    .catch(() => undefined);
+                  setTokenExpediente((t) => t + 1);
+                }}
+              />
+            )}
             {datos.proceso.puedeBorrar && (
               <BorrarProceso
                 procesoId={procesoId}

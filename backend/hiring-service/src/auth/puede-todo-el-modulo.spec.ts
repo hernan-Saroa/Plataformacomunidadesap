@@ -20,6 +20,7 @@ const TRANSVERSALES = [
   'contratacion.reporte.view',
   'contratacion.plazo.terminar',
   'contratacion.proceso.delete',
+  'contratacion.actividad.reabrir',
 ];
 
 /**
