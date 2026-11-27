@@ -145,9 +145,13 @@ createRoot(document.getElementById('root')).render(<Fixture/>);`);
   const ready = (selector=inputSelector) => page.waitForFunction(selector=>{const input=document.querySelector(selector);return input&&!input.disabled;},{},selector);
   const fill = async(text,selector=inputSelector)=>{await page.focus(selector);await page.keyboard.down('Control');await page.keyboard.press('A');await page.keyboard.up('Control');await page.keyboard.press('Backspace');await page.type(selector,text);};
   const checkBounds = async (selector=inputSelector) => {
+    await page.waitForFunction(() => {
+      const panel = document.querySelector('.esap-chatbot-widget__panel[aria-hidden="false"]');
+      return panel && Number(getComputedStyle(panel).getPropertyValue('--chatbot-panel-fold')) === 0;
+    });
     const sizes=await page.evaluate(field=>{
       const rect=element=>{const r=element.getBoundingClientRect();return{left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
-      const dialog=document.querySelector('[role=dialog]'),input=document.querySelector(field),messages=document.querySelector('[role=log]');
+      const dialog=document.querySelector('[role=dialog]'),input=document.querySelector(field),messages=document.querySelector('.esap-chatbot-temporary__messages');
       const controls=[...dialog.querySelectorAll('.esap-chatbot-widget__actions button'),input,dialog.querySelector('button[type=submit]')];
       return{panel:rect(dialog),controls:controls.map(rect),width:innerWidth,height:innerHeight,overflow:messages.scrollWidth-messages.clientWidth,messagesHeight:messages.clientHeight,
         reachable:controls.every(control=>{const r=control.getBoundingClientRect();return control.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));})};
@@ -161,17 +165,38 @@ createRoot(document.getElementById('root')).render(<Fixture/>);`);
   for(const viewport of [{width:1440,height:900},{width:1333,height:600},{width:1366,height:570},{width:1024,height:500},{width:800,height:450},{width:390,height:844},{width:320,height:568},{width:280,height:500},{width:844,height:390},{width:390,height:300}]){
     await page.setViewport(viewport);await page.goto(origin);await click('Asistente ESAP');await ready();await checkBounds();
     await page.screenshot({path:path.join(screenshots,'transient-'+viewport.width+'x'+viewport.height+'.png')});
+    const processButtons = 'nav[aria-label="Procesos institucionales"] button';
+    assert.equal(await page.$$eval(processButtons, buttons => buttons.length), 17);
+    assert(await page.$eval(processButtons, button => {
+      const rect = button.getBoundingClientRect();
+      return button.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+    }));
+    await page.focus(processButtons);
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('[aria-label="Preguntas frecuentes"]', { visible: true });
+    assert.equal(await page.evaluate(() => document.activeElement?.textContent.trim()), 'Adquisición de Bienes y Servicios');
+    await checkBounds();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.$eval(inputSelector, input => input.value), '¿Dónde consulto el Manual de Contratación de la ESAP?');
+    await click('Volver al menú');
     await fill('Borrador conservado');await click('Ampliar chat');await checkBounds();await click('Restaurar tamaño del chat');
     assert.equal(await page.$eval(inputSelector,input=>input.value),'Borrador conservado');
     await page.focus(inputSelector);await page.keyboard.press('Escape');
     assert.equal(await page.evaluate(()=>document.activeElement?.textContent.trim()),'Asistente ESAP');
     await click('Asistente ESAP');assert.equal(await page.$eval(inputSelector,input=>input.value),'Borrador conservado');
   }
-  console.log('PASS: diez tamaños, controles accesibles, ampliar/restaurar y minimizar sin perder el borrador.');
+  console.log('PASS: diez tamaños, menú y FAQ por teclado, ampliar/restaurar y minimizar sin perder el borrador.');
   await page.setViewport({width:390,height:600});
   rejectSession=true; // Las rutas privadas rechazan la sesión; la consulta general sigue funcionando.
   await fill('Pregunta sin inicio de sesión');await click('Enviar');await ready();
   assert(await page.$eval('[role=log]',log=>log.textContent.includes('Orientación pública.')));
+  await click('Ampliar información');
+  assert.equal(await page.$eval(inputSelector, input => input.value), 'Requisitos');
+  await click('Enviar');
+  await page.waitForFunction(() => document.querySelector('[role=log]')?.textContent.includes('No tengo detalles adicionales'));
+  await click('Volver al menú');
+  await click('Ver conversación');
   await fill('Mantener al navegar');
   for(const action of ['login','navigate','login']){
     await page.evaluate(action=>window.fixtureActions[action](),action);
@@ -190,8 +215,8 @@ createRoot(document.getElementById('root')).render(<Fixture/>);`);
   console.log('PASS: conversación y borrador sobreviven a inicio/cierre de sesión, navegación y vista completa compartida.');
   await page.reload();await click('Asistente ESAP');await ready();
   assert.equal(await page.$eval(inputSelector,input=>input.value),'');
-  assert(!(await page.$eval('[role=log]',log=>log.textContent.includes('Pregunta sin inicio de sesión'))));
-  assert(await page.$eval('[role=log]',log=>log.textContent.includes('¿En qué puedo orientarte hoy?')));
+  assert.equal(await page.$('[role=log]'), null);
+  assert(await page.$eval('.esap-chatbot-guide__welcome', welcome => welcome.textContent.includes('¡Hola! Soy el asistente virtual de la ESAP')));
   await page.evaluate(()=>{window.sessionStorage.setItem('fixture','test');window.sessionStorage.removeItem('fixture');});
   failNextSend=true;
   await fill('Consulta conservada tras error');await click('Enviar');await page.waitForSelector('[role=alert]');await ready();
