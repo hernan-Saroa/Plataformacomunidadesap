@@ -1957,14 +1957,16 @@ export class GraduationCertificatesService {
       );
     }
 
-    await this.sendCertificateEmail(
+    const enviado = await this.sendCertificateEmail(
       requesterEmail,
       certificate,
       frontendBaseUrl,
     );
 
     return {
-      mensaje: `Certificado reenviado a ${requesterEmail}`,
+      mensaje: enviado
+        ? `Certificado reenviado a ${requesterEmail}`
+        : 'El certificado no se envió: las notificaciones de Verificación de Títulos están apagadas.',
       email: requesterEmail,
     };
   }
@@ -3011,7 +3013,7 @@ export class GraduationCertificatesService {
     certificate: GraduationCertificate,
     frontendBaseUrl?: string,
     reviewNotes?: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     return this.sendCertificateEmail(
       email,
       certificate,
@@ -3082,13 +3084,13 @@ export class GraduationCertificatesService {
 
     for (const recipient of recipients) {
       try {
-        await this.notifyCertificateDelivery(
+        const enviado = await this.notifyCertificateDelivery(
           recipient,
           certificate,
           frontendBaseUrl,
           reviewNotes,
         );
-        deliveredRecipients.push(recipient);
+        if (enviado) deliveredRecipients.push(recipient);
       } catch (error) {
         firstError ??= error;
         this.logger.warn(
@@ -3259,14 +3261,14 @@ export class GraduationCertificatesService {
     certificate: GraduationCertificate,
     frontendBaseUrl?: string,
     reviewNotes?: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     this.logger.log(
       `Preparando reenvio del certificado ${certificate.certificateNumber} a ${email}`,
     );
 
     if (!email) {
       this.logger.warn('No se pudo enviar el certificado: email vacío');
-      return;
+      return false;
     }
 
     const baseUrl = this.resolveNotificationsBaseUrl();
@@ -3356,6 +3358,9 @@ export class GraduationCertificatesService {
       attachmentName: attachment.filename,
       attachmentBase64: attachment.content.toString('base64'),
       attachmentContentType: 'application/pdf',
+      // Con módulo y evento el correo pasa por la configuración de notificaciones (EFDS-2406).
+      modulo: 'graduates-certificates',
+      evento: 'titulos_certificado_emitido',
     };
 
     const response = await fetch(url, {
@@ -3374,7 +3379,16 @@ export class GraduationCertificatesService {
       );
     }
 
+    // 202: el módulo o el aviso están apagados en la configuración de notificaciones.
+    if (response.status === 202) {
+      this.logger.log(
+        `Certificado NO enviado a ${email}: la configuración de notificaciones lo omitió`,
+      );
+      return false;
+    }
+
     this.logger.log(`Certificado enviado a ${email}`);
+    return true;
   }
 
   private async sendGraduateCompanyNotificationEmail(data: {

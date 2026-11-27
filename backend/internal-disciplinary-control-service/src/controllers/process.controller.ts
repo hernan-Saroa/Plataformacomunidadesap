@@ -1294,6 +1294,8 @@ export class ProcessController {
 
     const emailPayload = {
       modulo: MODULO_NOTIFICACIONES,
+      // Con evento el correo pasa por la configuración de notificaciones (EFDS-2406).
+      evento: 'FUID_COMPARTIDO',
       to: email,
       subject,
       text: `Se remite adjunto el FUID (EI-FO-003) de: ${listaRadicados}.${mensaje ? ` Mensaje: ${mensaje}` : ''}`,
@@ -1307,15 +1309,24 @@ export class ProcessController {
 
     let lastError = '';
     for (const base of uniqueBases) {
+      let respuesta: { status: number };
       try {
-        await firstValueFrom(
+        respuesta = await firstValueFrom(
           this.httpService.post(`${base}/api/v1/emails/send`, emailPayload, { timeout: 15000 }),
         );
-        return { success: true, message: `FUID enviado a ${email}`, filename };
       } catch (err: any) {
         lastError = err?.message || String(err);
         console.warn(`⚠️ [CompartirFUID] Intento vía ${base} no completado: ${lastError}`);
+        continue;
       }
+      // 202: el módulo o el aviso están apagados; el usuario pidió el envío y debe saberlo.
+      if (respuesta.status === 202) {
+        throw new HttpException(
+          `El FUID no se envió a ${email}: las notificaciones de Control Disciplinario están apagadas en la configuración.`,
+          HttpStatus.CONFLICT,
+        );
+      }
+      return { success: true, message: `FUID enviado a ${email}`, filename };
     }
 
     throw new HttpException(
@@ -2078,6 +2089,8 @@ export class ProcessController {
         try {
           const emailPayload: any = {
             modulo: MODULO_NOTIFICACIONES,
+            // Con evento el correo pasa por la configuración de notificaciones (EFDS-2406).
+            evento: 'REMISION_POR_COMPETENCIA',
             to: dto.emailDestinatario,
             subject: subjectFinal,
             text: `Se remite el expediente ${radicadoIdentificador} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
@@ -2087,6 +2100,10 @@ export class ProcessController {
           const response = await firstValueFrom(
             this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send`, emailPayload, { timeout: 15000 }),
           );
+          if (response?.status === 202) {
+            emailErrorMsg = 'la configuración de notificaciones omitió el correo (módulo o aviso apagado)';
+            break;
+          }
           console.log(`📧 [RemitirCompetencia] Correo con ${emailAttachments.length} adjunto(s) enviado vía ${remindersBaseUrl}:`, response?.data);
           emailEnviado = true;
           break;
@@ -2339,6 +2356,8 @@ export class ProcessController {
 
        const emailPayload = {
          modulo: MODULO_NOTIFICACIONES,
+         // Con evento el correo pasa por la configuración de notificaciones (EFDS-2406).
+         evento: 'CORREO_DESDE_EL_PROCESO',
          to: emailData.to,
          subject: emailData.subject,
          text: emailData.body,
@@ -2350,6 +2369,13 @@ export class ProcessController {
        const response = await firstValueFrom(
          this.httpService.post(`${notificationsServiceUrl}/api/v1/emails/send`, emailPayload),
        );
+
+       if (response.status === 202) {
+         return {
+           success: false,
+           message: 'El correo no se envió: las notificaciones de Control Disciplinario están apagadas en la configuración.',
+         };
+       }
 
        console.log('📧 [ProcessController] Correo enviado exitosamente:', response.data);
 

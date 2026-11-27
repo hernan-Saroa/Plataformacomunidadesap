@@ -6,6 +6,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  MaxLength,
   ValidateNested,
 } from 'class-validator';
 import { EmailAttachmentDto } from './send-email.dto';
@@ -44,4 +45,19 @@ export class SendEmailAttachmentDto {
   @Type(() => EmailAttachmentDto)
   @IsOptional()
   additionalAttachments?: EmailAttachmentDto[];
+
+  /**
+   * Evento y módulo en la configuración de notificaciones (EFDS-2406). Con
+   * `evento`, el correo con adjunto pasa por la compuerta igual que los demás;
+   * sin él sale siempre.
+   */
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  evento?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(60)
+  modulo?: string;
 }

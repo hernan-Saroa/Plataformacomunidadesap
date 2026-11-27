@@ -144,6 +144,54 @@ export class EmailsService {
   }
 
   /**
+   * Correo con adjunto de un evento (EFDS-2406): por aquí salen el certificado
+   * laboral y el de verificación de títulos. Con `evento` pasa por la misma
+   * compuerta que los demás correos (apagado, desvío al buzón con el adjunto y
+   * copias); sin él sale siempre, como antes.
+   */
+  async enviarAdjuntoSiPermitido(data: SendEmailAttachmentDto): Promise<ResultadoCorreo> {
+    if (!data.evento) {
+      await this.sendEmailWithAttachment(data);
+      return { sent: true, message: 'Correo con adjunto enviado' };
+    }
+    const resultado = await this.enviarSiPermitido({
+      to: data.to,
+      subject: data.subject,
+      text: data.text || 'Se adjunta el archivo solicitado.',
+      html: data.html || this.buildAttachmentTemplate(data),
+      attachments: [
+        { filename: data.attachmentName, contentBase64: data.attachmentBase64, contentType: data.attachmentContentType },
+        ...(data.additionalAttachments ?? []),
+      ],
+      evento: data.evento,
+      modulo: data.modulo,
+    });
+    return resultado.sent ? { sent: true, message: 'Correo con adjunto enviado' } : resultado;
+  }
+
+  /**
+   * Código de validación de un módulo (EFDS-2406). El aviso nace obligatorio en
+   * el catálogo, así que sale aunque el módulo esté apagado. Si alguien lo
+   * dejara apagable no se desvía: un código no puede llegar al buzón de otro.
+   */
+  async enviarCodigoSiPermitido(data: SendValidationCodeDto): Promise<ResultadoCorreo> {
+    if (data.evento && this.compuerta) {
+      const decision = await this.compuerta.evaluar({
+        clave: data.evento,
+        canal: 'correo',
+        modulo: data.modulo,
+        destinatario: data.to,
+        titulo: data.subject ?? 'Código de validación',
+      });
+      if (!decision.permitido) {
+        return { sent: false, omitida: true, motivo: decision.motivo || 'omitida', modulo: decision.modulo, evento: data.evento };
+      }
+    }
+    await this.sendValidationCode(data);
+    return { sent: true, message: 'Código de validación enviado' };
+  }
+
+  /**
    * Copia del correo para los destinatarios adicionales que el administrador
    * sumó al aviso (EFDS-2406, función 4). Nunca tumba el correo original: todo
    * fallo se registra y se sigue. Cada adicional recibe una sola copia por día

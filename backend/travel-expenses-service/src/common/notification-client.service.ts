@@ -502,6 +502,10 @@ export class NotificationClientService {
           subject,
           html: emailDto.html,
           text: emailDto.text ?? dto.mensaje,
+          // El correo lleva la misma clave que su campana: la configuración de
+          // notificaciones apaga los dos con el mismo aviso (EFDS-2406).
+          evento: dto.tipo_notificacion,
+          modulo: dto.modulo,
         });
       }
     }
@@ -533,6 +537,10 @@ export class NotificationClientService {
           subject,
           html: emailDto.html,
           text: emailDto.text ?? dto.mensaje,
+          // El correo lleva la misma clave que su campana: la configuración de
+          // notificaciones apaga los dos con el mismo aviso (EFDS-2406).
+          evento: dto.tipo_notificacion,
+          modulo: dto.modulo,
         });
       } else {
         this.logger.warn(
@@ -1101,6 +1109,7 @@ export class NotificationClientService {
           subject,
           html: emailHtml,
           text: `Ajuste en Viáticos - ${params.tipoConfiguracion}: ${params.descripcionAjuste}. Modificado por: ${params.usuarioModificador || 'Administrador'}.`,
+          evento: 'PARAMETRIZACION_ACTUALIZADA',
         });
       }
     } catch (err: any) {
@@ -1393,6 +1402,7 @@ export class NotificationClientService {
             subject: subjectJefeGerente,
             html: emailHtml,
             text: `Solicitud pendiente de revisión y firma de aprobación - ${consecutivo}. Comisionado: ${comisionadoNombre}. Destino: ${destino}.`,
+            evento: 'SOLICITUD_PENDIENTE_FIRMAS',
           });
         }
       }
@@ -1461,6 +1471,7 @@ export class NotificationClientService {
           subject: subjectComisionado,
           html: emailHtmlComisionado,
           text: `Proceso de solicitud viáticos según formato 023 generado (${consecutivo}). En la plataforma puede consultar su estado.`,
+          evento: 'SOLICITUD_GENERADA_COMISIONADO',
         });
       }
 

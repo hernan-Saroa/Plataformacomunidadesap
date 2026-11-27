@@ -224,4 +224,104 @@ describe('EmailsService decision attachments', () => {
       expect(envio).toHaveBeenCalledTimes(1);
     });
   });
+  describe('certificado con adjunto y código de validación por la compuerta (EFDS-2406)', () => {
+    const decision = (extra: any = {}) => ({
+      permitido: false, motivo: 'modulo_inactivo', modulo: 'certificados-laborales', modulo_nombre: 'Certificados Laborales',
+      clave: 'certificados_certificado_emitido', prioridad: 'Media', canal: 'ambos', evento: null, ...extra,
+    });
+    const montar = (d: any) => {
+      const compuerta = {
+        evaluar: jest.fn().mockResolvedValue(d),
+        destinatariosAdicionales: jest.fn().mockResolvedValue([]),
+        reservarCopiaCorreo: jest.fn().mockResolvedValue(true),
+      };
+      const s = new EmailsService(compuerta as any);
+      const envio = jest.spyOn(s as any, 'sendMail').mockResolvedValue({ sent: true });
+      return { s, envio, compuerta };
+    };
+    const certificado = {
+      to: 'persona@esap.edu.co',
+      subject: 'Certificado Laboral ESAP - CL-1',
+      html: '<p>Adjuntamos tu certificado</p>',
+      attachmentName: 'certificado.pdf',
+      attachmentBase64: Buffer.from('pdf').toString('base64'),
+      attachmentContentType: 'application/pdf',
+      additionalAttachments: [{ filename: 'evidencia.png', contentBase64: Buffer.from('img').toString('base64'), contentType: 'image/png' }],
+      modulo: 'certificados-laborales',
+      evento: 'certificados_certificado_emitido',
+    };
+
+    it('con el módulo apagado el certificado no sale', async () => {
+      const { s, envio, compuerta } = montar(decision());
+      const r = await s.enviarAdjuntoSiPermitido(certificado);
+      expect(r).toMatchObject({ sent: false, omitida: true, motivo: 'modulo_inactivo', modulo: 'certificados-laborales' });
+      expect(envio).not.toHaveBeenCalled();
+      expect(compuerta.evaluar).toHaveBeenCalledWith(expect.objectContaining({
+        clave: 'certificados_certificado_emitido', modulo: 'certificados-laborales', canal: 'correo', destinatario: 'persona@esap.edu.co',
+      }));
+    });
+
+    it('con el aviso apagado tampoco sale', async () => {
+      const { s, envio } = montar(decision({ motivo: 'evento_inactivo' }));
+      const r = await s.enviarAdjuntoSiPermitido(certificado);
+      expect(r).toMatchObject({ sent: false, omitida: true, motivo: 'evento_inactivo' });
+      expect(envio).not.toHaveBeenCalled();
+    });
+
+    it('encendido sale al solicitante con el PDF y las evidencias', async () => {
+      const { s, envio } = montar(decision({ permitido: true, motivo: undefined }));
+      const r = await s.enviarAdjuntoSiPermitido(certificado);
+      expect(r).toEqual({ sent: true, message: 'Correo con adjunto enviado' });
+      const payload = envio.mock.calls[0][0] as any;
+      expect(payload.to).toBe('persona@esap.edu.co');
+      expect(payload.html).toBe('<p>Adjuntamos tu certificado</p>');
+      expect(payload.attachments.map((a: any) => a.filename)).toEqual(['certificado.pdf', 'evidencia.png']);
+      expect(payload.attachments[0].content).toEqual(Buffer.from('pdf'));
+      expect(payload.attachments[0].contentType).toBe('application/pdf');
+    });
+
+    it('apagado y con buzón, el certificado va al buzón con su PDF', async () => {
+      const { s, envio } = montar(decision({ desvio: 'buzon@esap.edu.co' }));
+      const r = await s.enviarAdjuntoSiPermitido(certificado);
+      expect(r).toMatchObject({ sent: false, omitida: true, motivo: 'desviado', desviado_a: 'buzon@esap.edu.co' });
+      expect(envio).toHaveBeenCalledTimes(1);
+      const payload = envio.mock.calls[0][0] as any;
+      expect(payload.to).toBe('buzon@esap.edu.co');
+      expect(payload.attachments[0].filename).toBe('certificado.pdf');
+    });
+
+    it('sin evento el adjunto sale como antes, sin consultar la configuración', async () => {
+      const { s, envio, compuerta } = montar(decision());
+      const { evento, modulo, ...sinEvento } = certificado;
+      const r = await s.enviarAdjuntoSiPermitido(sinEvento);
+      expect(r).toMatchObject({ sent: true });
+      expect(compuerta.evaluar).not.toHaveBeenCalled();
+      expect(envio).toHaveBeenCalledTimes(1);
+    });
+
+    const codigo = { to: 'persona@esap.edu.co', code: '123456', modulo: 'certificados-laborales', evento: 'certificados_codigo_validacion' };
+
+    it('el código de validación (obligatorio) sale aunque el módulo esté apagado', async () => {
+      const { s, envio, compuerta } = montar(decision({ permitido: true, motivo: undefined, clave: 'certificados_codigo_validacion' }));
+      const r = await s.enviarCodigoSiPermitido(codigo);
+      expect(r).toEqual({ sent: true, message: 'Código de validación enviado' });
+      expect(compuerta.evaluar).toHaveBeenCalledWith(expect.objectContaining({ clave: 'certificados_codigo_validacion', modulo: 'certificados-laborales', canal: 'correo' }));
+      expect((envio.mock.calls[0][0] as any).text).toContain('123456');
+    });
+
+    it('si la configuración omite el código, no sale ni se desvía al buzón', async () => {
+      const { s, envio } = montar(decision({ desvio: 'buzon@esap.edu.co', clave: 'certificados_codigo_validacion' }));
+      const r = await s.enviarCodigoSiPermitido(codigo);
+      expect(r).toMatchObject({ sent: false, omitida: true, motivo: 'modulo_inactivo' });
+      expect(envio).not.toHaveBeenCalled();
+    });
+
+    it('sin evento el código sale como antes', async () => {
+      const { s, envio, compuerta } = montar(decision());
+      const r = await s.enviarCodigoSiPermitido({ to: 'persona@esap.edu.co', code: '123456' });
+      expect(r).toMatchObject({ sent: true });
+      expect(compuerta.evaluar).not.toHaveBeenCalled();
+      expect(envio).toHaveBeenCalledTimes(1);
+    });
+  });
 });
