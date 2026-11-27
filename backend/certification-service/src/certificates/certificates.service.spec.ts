@@ -552,6 +552,8 @@ describe('CertificatesService', () => {
       expect(payload).toEqual({
         to: 'pruebasesap@gmail.com',
         code: '123456',
+        modulo: 'certificados-laborales',
+        evento: 'certificados_codigo_validacion',
       });
       expect(JSON.stringify(payload)).not.toContain(
         'docente.real@esap.edu.co',
@@ -611,6 +613,64 @@ describe('CertificatesService', () => {
         process.env.CERTIFICATION_EMAIL_SAFE_MODE = originalSafeMode;
       }
     }
+  });
+
+  describe('configuración de notificaciones (EFDS-2406)', () => {
+    const originalFetch = global.fetch;
+    const certificado = {
+      full_name: 'Persona de Prueba',
+      certificate_number: 'CERT-PRUEBA',
+      include_salary: true,
+      include_technical_bonus: false,
+      request: { email: 'persona@esap.edu.co' },
+    } as any;
+
+    beforeEach(() => {
+      (service as any).logger = { debug: jest.fn(), log: jest.fn(), warn: jest.fn() };
+      (service as any).laborPdfService = {
+        generateCertificatePdf: jest.fn().mockResolvedValue({ filename: 'certificado.pdf', buffer: Buffer.from('pdf') }),
+      };
+    });
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    it('el certificado sale identificado con su módulo y su aviso', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 201 });
+      global.fetch = fetchMock as any;
+
+      const result = await service['enviarCertificadoLaboralPorEmail'](certificado);
+
+      const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(payload.modulo).toBe('certificados-laborales');
+      expect(payload.evento).toBe('certificados_certificado_emitido');
+      expect(result.omitido).toBe(false);
+    });
+
+    it('el certificado corregido usa el aviso de corrección aprobada', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 201 });
+      global.fetch = fetchMock as any;
+
+      await service['enviarCertificadoLaboralPorEmail'](certificado, { correctionRequestNumber: 'COR-1' });
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).evento).toBe('certificados_correccion_aprobada');
+    });
+
+    it('si la configuración lo omite (202) no se reporta como enviado', async () => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 202 }) as any;
+
+      const result = await service['enviarCertificadoLaboralPorEmail'](certificado);
+
+      expect(result.omitido).toBe(true);
+    });
+
+    it('un código de validación omitido (202) es un error: el portal no puede anunciarlo', async () => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 202 }) as any;
+
+      await expect(service['enviarCodigoPorEmail']('persona@esap.edu.co', '123456')).rejects.toThrow(
+        'omitió el código de validación',
+      );
+    });
   });
 
   it('envia codigos, certificados y respuestas de correccion a sus destinatarios reales en produccion', async () => {
