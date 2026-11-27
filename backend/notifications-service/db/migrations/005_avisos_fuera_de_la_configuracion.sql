@@ -1,12 +1,15 @@
 SET client_encoding = 'UTF8';
 
 -- ============================================================================
--- 005: Avisos de Certificados Laborales y Verificación de Títulos (EFDS-2406)
+-- 005: Avisos que salían sin pasar por la configuración (EFDS-2406)
 -- ============================================================================
--- El correo que entrega el certificado (con el PDF adjunto) y el código de
--- validación salían por rutas que no pasaban por la configuración de
--- notificaciones: apagar el módulo no los detenía y la consola los mostraba
--- "aún sin avisos". Ahora pasan por la compuerta con estas claves.
+-- Certificados Laborales y Verificación de Títulos: el correo que entrega el
+-- certificado (con el PDF adjunto) y el código de validación salían por rutas
+-- que no pasaban por la configuración de notificaciones: apagar el módulo no
+-- los detenía y la consola los mostraba "aún sin avisos".
+-- Control Disciplinario: cuatro correos que un usuario envía desde la pantalla
+-- (FUID, expediente compartido, remisión por competencia y correo del proceso)
+-- salían sin clave de aviso. Ahora todos pasan por la compuerta con estas claves.
 --
 -- Se registran antes de que lleguen para que:
 --   1. el código de validación nazca obligatorio (sin él nadie puede pedir un
@@ -52,5 +55,13 @@ VALUES
   ('titulos_solicitud_en_revision', 'graduates-certificates', 'Solicitud en revisión',
    'Correo que le avisa al solicitante que su solicitud entró en revisión.', false, true),
   ('titulos_solicitud_rechazada', 'graduates-certificates', 'Solicitud rechazada',
-   'Correo que le informa al solicitante que su solicitud fue rechazada y por qué.', false, true)
+   'Correo que le informa al solicitante que su solicitud fue rechazada y por qué.', false, true),
+  ('FUID_COMPARTIDO', 'control-disciplinario', 'FUID enviado por correo',
+   'Correo con el FUID (EI-FO-003) adjunto que un usuario envía desde el proceso.', false, true),
+  ('EXPEDIENTE_COMPARTIDO', 'control-disciplinario', 'Expediente compartido por correo',
+   'Correo con el enlace de acceso a un expediente que un usuario comparte.', false, true),
+  ('REMISION_POR_COMPETENCIA', 'control-disciplinario', 'Remisión por competencia',
+   'Correo con el expediente que se remite por competencia a otra entidad.', false, true),
+  ('CORREO_DESDE_EL_PROCESO', 'control-disciplinario', 'Correo enviado desde el proceso',
+   'Correo que un usuario redacta y envía desde la pantalla del proceso.', false, true)
 ON CONFLICT (codigo_modulo, clave) DO NOTHING;

@@ -101,6 +101,8 @@ export class CompartirExpedienteController {
 
         const emailPayload = {
           modulo: MODULO_NOTIFICACIONES,
+          // Con evento el correo pasa por la configuración de notificaciones (EFDS-2406).
+          evento: 'EXPEDIENTE_COMPARTIDO',
           to: dto.emailDestinatario,
           subject: `📋 Expediente Compartido - ESAP Control Disciplinario`,
           text: `Se ha compartido un expediente disciplinario con usted.\n\nEnlace: ${urlExpediente}${dto.requiereClave && dto.clave ? `\nClave: ${dto.clave}` : ''}`,
@@ -113,7 +115,11 @@ export class CompartirExpedienteController {
           this.httpService.post(`${notificationsServiceUrl}/api/v1/emails/send`, emailPayload),
         );
 
-        console.log('📧 [CompartirExpediente] Correo enviado exitosamente:', response.data);
+        if (response.status === 202) {
+          console.warn('📧 [CompartirExpediente] Correo NO enviado: la configuración de notificaciones lo omitió');
+        } else {
+          console.log('📧 [CompartirExpediente] Correo enviado exitosamente:', response.data);
+        }
       } catch (error) {
         console.error('❌ [CompartirExpediente] Error al enviar correo:', error);
         // No fallamos la operación si el correo falla, pero registramos el error
