@@ -269,23 +269,42 @@ function limpiarNombrePersona(texto?: string | null): string {
 function nuevoItemRemision(args: {
   usuarioId?: string;
   usuarioEmail?: string;
+  usuarioNombre?: string;
   origenArea: 'UMI' | 'FORMULARIO' | 'TI' | 'PENDIENTE_CLASIFICACION';
   destinoArea: 'UMI' | 'TI';
   motivo: string;
   canalRemision?: string;
+  destinatarioEmail?: string;
+  eventoNotificacion?: string;
   consecutivoCruzadoTi?: string;
   estadoRemision?: string;
 }): Record<string, any> {
+  const ahora = new Date().toISOString();
   return {
-    fecha: new Date().toISOString(),
+    fecha: ahora,
+    fechaRemision: ahora,
+    fecha_remision: ahora,
     usuario_id: args.usuarioId ?? null,
+    usuarioId: args.usuarioId ?? null,
     usuario_email: args.usuarioEmail ?? null,
+    usuarioEmail: args.usuarioEmail ?? null,
+    usuario_nombre: args.usuarioNombre ?? null,
+    usuarioNombre: args.usuarioNombre ?? null,
     origen_area: args.origenArea,
+    origenArea: args.origenArea,
     destino_area: args.destinoArea,
+    destinoArea: args.destinoArea,
     motivo: args.motivo,
-    canal_remision: args.canalRemision ?? 'EMAIL_SIN_INTEGRAR',
+    canal_remision: args.canalRemision ?? 'CORREO_ELECTRONICO_OTIC',
+    canalRemision: args.canalRemision ?? 'CORREO_ELECTRONICO_OTIC',
+    destinatario_email: args.destinatarioEmail ?? null,
+    destinatarioEmail: args.destinatarioEmail ?? null,
+    evento_notificacion: args.eventoNotificacion ?? null,
+    eventoNotificacion: args.eventoNotificacion ?? null,
     consecutivo_cruzado_ti: args.consecutivoCruzadoTi ?? null,
+    consecutivoCruzadoTi: args.consecutivoCruzadoTi ?? null,
     estado_remision: args.estadoRemision ?? 'PENDIENTE_CONFIRMACION_TI',
+    estadoRemision: args.estadoRemision ?? 'PENDIENTE_CONFIRMACION_TI',
   };
 }
 
@@ -1301,16 +1320,20 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    let solicitanteEmailResuelto = user.email || (user.username ? `${user.username}@esap.edu.co` : undefined);
     const remisionesIniciales: Record<string, any>[] = [];
     if (dto.tipoAtencion === 'TECNOLOGICA') {
       remisionesIniciales.push(
         nuevoItemRemision({
           usuarioId: userIdUuidOrNull(user.userId) ?? undefined,
-          usuarioEmail: user.email,
+          usuarioEmail: solicitanteEmailResuelto,
+          usuarioNombre: solicitanteNombreResuelto,
           origenArea: 'FORMULARIO',
           destinoArea: 'TI',
           motivo: 'Clasificación TECNOLÓGICA seleccionada por el solicitante en el formulario de radicación (EFDS-1731)',
-          canalRemision: 'EMAIL_SIN_INTEGRAR',
+          canalRemision: 'CORREO_ELECTRONICO_OTIC',
+          destinatarioEmail: this.CORREO_OTIC_DESTINO,
+          eventoNotificacion: 'UMI OTIC SOLICITUD RADICADA',
           estadoRemision: 'PENDIENTE_CONFIRMACION_TI',
         }),
       );
@@ -1359,9 +1382,10 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       }),
       alerta70Emitida: false,
       fechaAlerta70: null,
+      // EFDS-2437 / RF-INF-012 / RF-INF-014: Prioridad Urgente / Emergencia activa automáticamente alarma crítica
       esEmergenciaCritica: Boolean(
         dto.esEmergenciaCritica ||
-        String(dto.prioridad || '').toUpperCase() === 'EMERGENCIA',
+        ['EMERGENCIA', 'URGENTE'].includes(String(dto.prioridad || '').toUpperCase()),
       ),
       emergenciaConfirmada: false,
       emergenciaConfirmadaPor: null,
@@ -1392,37 +1416,41 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       saved.evidencias = [];
     }
 
-    if (saved.tipoAtencion === 'TECNOLOGICA' || saved.areaResponsableActual === 'TI') {
-      await this.notificarOTIC(saved, { evento: 'RADICACIÓN DE SOLICITUD TECNOLÓGICA', clave: 'UMI_OTIC_SOLICITUD_RADICADA' });
-    }
-    await this.notificarAlSolicitante(saved, {
-      tipo: 'SOLICITUD_RADICADA',
-      titulo: `Solicitud #${saved.consecutivo} radicada`,
-      mensaje: `Tu solicitud de mantenimiento ha sido radicada correctamente con tipo de atención ${saved.tipoAtencion}.`,
-      icono: 'Inbox',
-      color: '#2563eb',
-      prioridad: 'Media',
-      textoAccion: 'Ver solicitud',
-      emailSubject: `[UMI] Solicitud #${saved.consecutivo} radicada exitosamente`,
-      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+    // EFDS-1731 / Rendimiento Radicación: Despacho asíncrono en segundo plano
+    // para evitar que reintentos de red o envíos de correo bloqueen la respuesta HTTP (TTFB < 250ms).
+    setImmediate(async () => {
+      try {
+        if (saved.tipoAtencion === 'TECNOLOGICA' || saved.areaResponsableActual === 'TI') {
+          await this.notificarOTIC(saved, { evento: 'RADICACIÓN DE SOLICITUD TECNOLÓGICA', clave: 'UMI_OTIC_SOLICITUD_RADICADA' });
+        }
+        await this.notificarAlSolicitante(saved, {
+          tipo: 'SOLICITUD_RADICADA',
+          titulo: `Solicitud #${saved.consecutivo} radicada`,
+          mensaje: `Tu solicitud de mantenimiento ha sido radicada correctamente con tipo de atención ${saved.tipoAtencion}.`,
+          icono: 'Inbox',
+          color: '#2563eb',
+          prioridad: 'Media',
+          textoAccion: 'Ver solicitud',
+          emailSubject: `[UMI] Solicitud #${saved.consecutivo} radicada exitosamente`,
+          emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
 <h3 style="margin:0 0 8px;color:#1e40af">Solicitud Radicada con Éxito</h3>
 <p style="margin:0 0 8px">Tu solicitud <strong>#${saved.consecutivo}</strong> ha sido radicada en el sistema.</p>
 <p style="margin:0 0 8px"><strong>Tipo de atención:</strong> ${saved.tipoAtencion}</p>
 <p style="margin:0 0 8px"><strong>Descripción:</strong> ${saved.descripcion}</p>
 <p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud</a></p>
 </div>`,
-    });
+        });
 
-    await this.notificarEncargadosUMI(saved, {
-      tipo: 'SOLICITUD_RADICADA_ENCARGADO',
-      titulo: `Nueva solicitud #${saved.consecutivo} pendiente por asignar`,
-      mensaje: `Se ha radicado una nueva solicitud de mantenimiento en ${saved.sede?.nombre ?? saved.idSede ?? 'la sede'}. Tipo: ${saved.tipoAtencion}.`,
-      icono: 'Inbox',
-      color: '#2563eb',
-      prioridad: 'Media',
-      textoAccion: 'Clasificar y Asignar',
-      emailSubject: `[UMI] Nueva solicitud #${saved.consecutivo} para asignar - ${saved.sede?.nombre ?? ''}`,
-      emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+        await this.notificarEncargadosUMI(saved, {
+          tipo: 'SOLICITUD_RADICADA_ENCARGADO',
+          titulo: `Nueva solicitud #${saved.consecutivo} pendiente por asignar`,
+          mensaje: `Se ha radicado una nueva solicitud de mantenimiento en ${saved.sede?.nombre ?? saved.idSede ?? 'la sede'}. Tipo: ${saved.tipoAtencion}.`,
+          icono: 'Inbox',
+          color: '#2563eb',
+          prioridad: 'Media',
+          textoAccion: 'Clasificar y Asignar',
+          emailSubject: `[UMI] Nueva solicitud #${saved.consecutivo} para asignar - ${saved.sede?.nombre ?? ''}`,
+          emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
 <h3 style="margin:0 0 8px;color:#1e40af">Nueva Solicitud Pendiente de Asignación</h3>
 <p style="margin:0 0 8px">Se ha radicado la solicitud <strong>#${saved.consecutivo}</strong> en estado <strong>RECIBIDA</strong>.</p>
 <p style="margin:0 0 8px"><strong>Solicitante:</strong> ${saved.solicitanteNombre ?? 'N/A'}</p>
@@ -1430,15 +1458,21 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 <p style="margin:0 0 8px"><strong>Descripción:</strong> ${saved.descripcion}</p>
 <p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none">Clasificar y Asignar Técnico</a></p>
 </div>`,
-    });
+        });
 
-    if (saved.esEmergenciaCritica) {
-      try {
-        await this.notificarEmergenciaCritica(saved);
-      } catch (errCritica: any) {
-        this.notifLogger.warn(`[EmergenciaCritica] Error enviando notificaciones para #${saved.consecutivo}: ${errCritica?.message || errCritica}`);
+        if (saved.esEmergenciaCritica) {
+          try {
+            await this.notificarEmergenciaCritica(saved);
+          } catch (errCritica: any) {
+            this.notifLogger.warn(`[EmergenciaCritica] Error enviando notificaciones para #${saved.consecutivo}: ${errCritica?.message || errCritica}`);
+          }
+        }
+      } catch (errNotifs: any) {
+        this.notifLogger.warn(
+          `[Radicación Background] Error despachando notificaciones para #${saved.consecutivo}: ${errNotifs?.message || errNotifs}`,
+        );
       }
-    }
+    });
 
     const [enriquecida] = await this.enriquecerSolicitudesConTerritoriales([saved]);
     return enriquecida || saved;
@@ -1489,11 +1523,14 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 
     const item = nuevoItemRemision({
       usuarioId: user.userId,
-      usuarioEmail: user.email,
+      usuarioEmail: user.email || (user.username ? `${user.username}@esap.edu.co` : undefined),
+      usuarioNombre: user.name || (user as any).nombreCompleto || user.username || undefined,
       origenArea: 'UMI',
       destinoArea: 'TI',
       motivo: dto.motivo,
-      canalRemision: dto.canalRemision,
+      canalRemision: dto.canalRemision || 'CORREO_ELECTRONICO_OTIC',
+      destinatarioEmail: this.CORREO_OTIC_DESTINO,
+      eventoNotificacion: 'UMI_OTIC_REMITIDA_TI',
       consecutivoCruzadoTi: dto.consecutivoCruzadoTi,
       estadoRemision: 'PENDIENTE_CONFIRMACION_TI',
     });
@@ -1529,13 +1566,105 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     const lista = Array.isArray(solicitud.remisiones) ? solicitud.remisiones : [];
     return lista
       .slice()
-      .sort((a, b) => new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime());
+      .sort(
+        (a, b) =>
+          new Date(b.fecha || b.fechaRemision || b.fecha_remision || 0).getTime() -
+          new Date(a.fecha || a.fechaRemision || a.fecha_remision || 0).getTime(),
+      )
+      .map((item) => {
+        const fecha =
+          item.fechaRemision ||
+          item.fecha ||
+          item.fecha_remision ||
+          solicitud.fechaRadicacion ||
+          solicitud.creadoEn ||
+          new Date().toISOString();
+        const esOrigenFormulario =
+          (item.origenArea || item.origen_area) === 'FORMULARIO' ||
+          (!item.origenArea && !item.origen_area && solicitud.tipoAtencion === 'TECNOLOGICA');
+        const usuarioNombre =
+          item.usuarioNombre ||
+          item.usuario_nombre ||
+          (esOrigenFormulario ? (solicitud.solicitanteNombre || 'Solicitante') : null);
+        const usuarioEmail =
+          item.usuarioEmail ||
+          item.usuario_email ||
+          (esOrigenFormulario ? (solicitud.usuarioSolicitanteEmail || solicitud.solicitanteEmail) : null);
+        const usuarioId =
+          item.usuarioId ||
+          item.usuario_id ||
+          (esOrigenFormulario ? (solicitud.idUsuarioSolicitante || (solicitud as any).solicitanteId) : null);
+        const origenArea =
+          item.origenArea || item.origen_area || (solicitud.tipoAtencion === 'TECNOLOGICA' ? 'FORMULARIO' : 'UMI');
+        const destinoArea = item.destinoArea || item.destino_area || 'TI';
+        const canalRemision = item.canalRemision || item.canal_remision || 'CORREO_ELECTRONICO_OTIC';
+        const destinatarioEmail =
+          item.destinatarioEmail || item.destinatario_email || (item as any).correoDestinatario || this.CORREO_OTIC_DESTINO;
+        const eventoNotificacion =
+          item.eventoNotificacion || item.evento_notificacion || 'UMI OTIC SOLICITUD RADICADA';
+        const consecutivoCruzadoTi = item.consecutivoCruzadoTi || item.consecutivo_cruzado_ti || null;
+        const estadoRemision = item.estadoRemision || item.estado_remision || 'PENDIENTE_CONFIRMACION_TI';
+
+        return {
+          ...item,
+          fecha,
+          fechaRemision: fecha,
+          fecha_remision: fecha,
+          usuarioId,
+          usuario_id: usuarioId,
+          usuarioEmail,
+          usuario_email: usuarioEmail,
+          usuarioNombre,
+          usuario_nombre: usuarioNombre,
+          origenArea,
+          origen_area: origenArea,
+          destinoArea,
+          destino_area: destinoArea,
+          motivo: item.motivo,
+          canalRemision,
+          canal_remision: canalRemision,
+          destinatarioEmail,
+          destinatario_email: destinatarioEmail,
+          eventoNotificacion,
+          evento_notificacion: eventoNotificacion,
+          consecutivoCruzadoTi,
+          consecutivo_cruzado_ti: consecutivoCruzadoTi,
+          estadoRemision,
+          estado_remision: estadoRemision,
+        };
+      });
   }
 
   // ---------------------------------------------------------------------------
   // Catálogos
   // ---------------------------------------------------------------------------
   async getCatalogo(catalogo: string, soloActivos = true): Promise<CatalogoItem[]> {
+    if (catalogo === 'ESTADO_SOLICITUD') {
+      try {
+        const existeEscalada = await this.catalogoRepo.findOne({
+          where: { catalogo: 'ESTADO_SOLICITUD', codigo: 'ESCALADA_GIM' },
+        });
+        if (!existeEscalada) {
+          const itemEscalada = this.catalogoRepo.create({
+            catalogo: 'ESTADO_SOLICITUD',
+            codigo: 'ESCALADA_GIM',
+            nombre: 'Escalada Coordinación GIM',
+            descripcion: 'Requerimiento de gran envergadura escalado al Coordinador GIM para diagnóstico y trámite (RF-INF-012).',
+            orden: 17,
+            isActivo: true,
+            metadata: {
+              icon: 'siren',
+              color: 'bg-purple-100 text-purple-900 border border-purple-300',
+              grupo: 'ESCALAMIENTO',
+              permiteRevisionGIM: true,
+            },
+          });
+          await this.catalogoRepo.save(itemEscalada as any);
+        }
+      } catch (e: any) {
+        // En tests o mocks sin save no bloquea la consulta
+      }
+    }
     const where: any = { catalogo };
     if (soloActivos) where.isActivo = true;
     return this.catalogoRepo.find({ where, order: { orden: 'ASC', idCatalogo: 'ASC' } });
@@ -3025,6 +3154,7 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
     args: {
       accion:
         | 'APROBADA_Y_ASIGNADA'
+        | 'ESCALAMIENTO_GRAN_ENVERGADURA_GIM'
         | 'APROBADA_REMISION_TI'
         | 'RECHAZADA'
         | 'REDISTRIBUIDA'
@@ -3286,6 +3416,17 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       solicitud.requiereVoBo = true;
     }
 
+    // EFDS-2437 / RF-INF-012: Si es Gran Envergadura (MAYOR), se escala al Coordinador GIM
+    const esEscalamientoMayor = solicitud.clasificacionMantenimiento === 'MAYOR';
+    // RF-INF-012 Criterio 3: Gran envergadura con riesgo (o prioridad URGENTE/EMERGENCIA) = emergencia con alarma crítica
+    const implicaRiesgoEmergencia =
+      Boolean(solicitud.esEmergenciaCritica) ||
+      ['EMERGENCIA', 'URGENTE', 'ALTA'].includes(String(solicitud.prioridad || '').toUpperCase());
+
+    if (esEscalamientoMayor && implicaRiesgoEmergencia) {
+      solicitud.esEmergenciaCritica = true;
+    }
+
     // EFDS-1734: Validar estado permitido para primera aprobación (no permite N veces sobre ASIGNADA).
     // Si la solicitud ya fue aprobada y asignada, para cambiar técnico usar REDISTRIBUIR.
     const ESTADOS_PERMITIDOS_APROBAR = esTI
@@ -3352,7 +3493,8 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       });
     } else {
       tec = await this.resolverTecnicoActivo(idTecnicoIdent);
-      solicitud.estado = 'ASIGNADA';
+      // EFDS-2437 Criterio 4: El escalamiento al Coordinador GIM queda registrado como estado del flujo (ESCALADA_GIM)
+      solicitud.estado = esEscalamientoMayor ? 'ESCALADA_GIM' : 'ASIGNADA';
       solicitud.responsableAsignado = `${tec.codigo} · ${tec.nombre}`;
       if (tec.idTecnicoAsignado) solicitud.idTecnicoAsignado = tec.idTecnicoAsignado;
       solicitud.motivoRechazo = undefined;
@@ -3383,11 +3525,13 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
       }
 
       this.pushAsignacion(solicitud, {
-        accion: 'APROBADA_Y_ASIGNADA',
+        accion: esEscalamientoMayor ? 'ESCALAMIENTO_GRAN_ENVERGADURA_GIM' : 'APROBADA_Y_ASIGNADA',
         tecnicoCodigo: tec.codigo,
         tecnicoNombreDisplay: tec.nombre,
         idTecnicoAsignado: tec.idTecnicoAsignado ?? null,
-        motivo: null,
+        motivo: esEscalamientoMayor
+          ? `Requerimiento clasificado como Gran Envergadura (Mantenimiento Mayor). Escalado a Coordinación GIM y asignado técnico para diagnóstico previo.`
+          : null,
         observaciones: args.observaciones ?? null,
         clasificacionMantenimiento: solicitud.clasificacionMantenimiento,
         requiereContratacion: solicitud.requiereContratacion,
@@ -3483,6 +3627,13 @@ export class MantenimientoService implements OnModuleInit, OnModuleDestroy {
 <p style="margin:0 0 16px"><a href="${this.solicitudAccionUrl(saved)}" style="display:inline-block;padding:6px 14px;background:${esMayor ? '#7c3aed' : '#4338ca'};color:#fff;border-radius:6px;text-decoration:none">${esMayor ? 'Abrir para diagnóstico técnico' : 'Abrir para valoración'}</a></p>
 </div>`,
       });
+    }
+    if (saved.esEmergenciaCritica && !saved.emergenciaConfirmada) {
+      try {
+        await this.notificarEmergenciaCritica(saved);
+      } catch (errCritica: any) {
+        this.notifLogger.warn(`[EmergenciaCritica] Error enviando notificaciones para #${saved.consecutivo}: ${errCritica?.message || errCritica}`);
+      }
     }
     if (warning) (saved as any).__meta = { warning };
     return saved as any;
@@ -3957,9 +4108,9 @@ ${observacionesFinal ? `<p><strong>Observaciones:</strong> ${observacionesFinal}
       throw new ForbiddenException('No está autorizado para registrar la valoración de esta solicitud.');
     }
     await this.validarEspecializacionCS002(solicitud, per, user);
-    if (!['ASIGNADA', 'EN_CAMPO_VALORACION'].includes(solicitud.estado || '')) {
+    if (!['ASIGNADA', 'ESCALADA_GIM', 'EN_CAMPO_VALORACION'].includes(solicitud.estado || '')) {
       throw new ConflictException(
-        `La solicitud debe estar ASIGNADA o EN_CAMPO_VALORACION para registrar valoración. Estado actual: ${solicitud.estado}`,
+        `La solicitud debe estar ASIGNADA, ESCALADA_GIM o EN_CAMPO_VALORACION para registrar valoración. Estado actual: ${solicitud.estado}`,
       );
     }
 

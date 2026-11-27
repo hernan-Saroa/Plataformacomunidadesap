@@ -33,6 +33,7 @@ export default defineConfig({
   server: {
     port: 3107,
   },
+  worker: { format: 'es' },
   build: {
     modulePreload: false,
     target: 'esnext',

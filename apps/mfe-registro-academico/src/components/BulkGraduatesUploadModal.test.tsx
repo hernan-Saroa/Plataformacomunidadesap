@@ -1,10 +1,15 @@
 import React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
+import { toast } from 'sonner';
 import graduadosService from '../../services/api/graduados.service';
-import { BulkGraduatesUploadModal, buildCatalogs, buildParsedRow } from './BulkGraduatesUploadModal';
+import type { GraduadoData } from '../../services/api/graduados.service';
+import { BulkGraduatesUploadModal } from './BulkGraduatesUploadModal';
+import { buildCatalogs, buildParsedRow, getGraduateColumns } from '../utils/graduateBulkValidation';
+import { createGraduateImportHandler } from '../utils/graduateBulkWorkbook';
+import type { GraduateImportRequest, GraduateImportResponse } from '../utils/graduateBulkWorkbook';
 
 vi.mock('../../services/api/graduados.service',()=>({default:{graduados:{crearMasivo:vi.fn()}}}));
 vi.mock('motion/react',async()=>{
@@ -12,10 +17,37 @@ vi.mock('motion/react',async()=>{
   const component=React.forwardRef(({children,initial,animate,exit,transition,layout,...props}:any,ref:any)=>React.createElement('div',{...props,ref},children));
   return {motion:{div:component},AnimatePresence:({children}:any)=>children};
 });
+class WorkbookWorker {
+  onmessage?: (event: { data: GraduateImportResponse }) => void;
+  private handleRequest = createGraduateImportHandler((data) => this.onmessage?.({ data }));
+
+  postMessage(request: GraduateImportRequest) {
+    void this.handleRequest(request);
+  }
+
+  terminate() {
+    this.onmessage = undefined;
+  }
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.stubGlobal('Worker', WorkbookWorker);
+});
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
 
 const valid={IDENTIFICACION:'123456789',ESTUDIANTE:'LAURA ANDRADE RIVERA',TITULO:'Administración Pública',REGISTRO:'123',ACTA:'28',LIBRO:'3',FECHAREGISTRO:'15-07-2022',ANIOGRADO:'2022',CORREO:'laura@example.com',TELEFONO:'3004567890',TERRITORIAL:'Territorial histórica',SEDE:'Sede del graduado'};
-const parse=(changes={})=>buildParsedRow({...valid,...changes},2,new Set(),buildCatalogs([valid.TITULO]));
+const columns = getGraduateColumns(Object.fromEntries(Object.keys(valid).map((key) => [key, key])));
+const parse=(changes={})=>buildParsedRow({...valid,...changes},2,new Set(),buildCatalogs([valid.TITULO]),columns);
+
+const graduateFile = (worksheet: XLSX.WorkSheet, sheetName = 'GRADUADOS') => {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+  const file = new File([bytes], 'graduados.xlsx');
+  Object.defineProperty(file, 'arrayBuffer', { value: async () => bytes });
+  return file;
+};
 
 describe('Carga masiva de Graduados independiente de PTA',()=>{
   it('acepta territorial y sede del graduado sin consultar ni exigir relaciones de otro módulo',()=>{
@@ -31,8 +63,8 @@ describe('Carga masiva de Graduados independiente de PTA',()=>{
   });
   it('conserva la detección de identificación y título repetidos en el mismo archivo',()=>{
     const duplicates=new Set<string>(),catalogs=buildCatalogs([valid.TITULO]);
-    expect(buildParsedRow(valid,2,duplicates,catalogs).errors).toEqual([]);
-    expect(buildParsedRow(valid,3,duplicates,catalogs).errors.join(' ')).toContain('repetido');
+    expect(buildParsedRow(valid,2,duplicates,catalogs,columns).errors).toEqual([]);
+    expect(buildParsedRow(valid,3,duplicates,catalogs,columns).errors.join(' ')).toContain('repetido');
   });
   it('habilita plantilla y selección de archivo sin recibir ningún catálogo territorial',()=>{
     render(<BulkGraduatesUploadModal open onOpenChange={()=>{}} onImported={()=>{}} programOptions={[valid.TITULO]}/>);
@@ -40,11 +72,7 @@ describe('Carga masiva de Graduados independiente de PTA',()=>{
     expect((screen.getByRole('button',{name:'Seleccionar archivo XLSX'}) as HTMLButtonElement).disabled).toBe(false);
   });
   it('lee un Excel real y envía el graduado con su sede y territorial libres a la carga masiva',async()=>{
-    const workbook=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook,XLSX.utils.json_to_sheet([valid]),'GRADUADOS');
-    const buffer=XLSX.write(workbook,{type:'array',bookType:'xlsx'});
-    const file=new File([buffer],'graduados.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    Object.defineProperty(file,'arrayBuffer',{value:async()=>buffer});
+    const file = graduateFile(XLSX.utils.json_to_sheet([valid]));
     const created={id:'new-graduate',...parse().payload};
     vi.mocked(graduadosService.graduados.crearMasivo).mockResolvedValue({total:1,createdCount:1,failedCount:0,created:[created as any],errors:[]});
     const imported=vi.fn();
@@ -52,10 +80,417 @@ describe('Carga masiva de Graduados independiente de PTA',()=>{
     fireEvent.change(document.querySelector('input[type="file"]')!,{target:{files:[file]}});
     const submit=await screen.findByRole('button',{name:/Crear 1 graduado/});
     fireEvent.click(submit);
-    await waitFor(()=>expect(graduadosService.graduados.crearMasivo).toHaveBeenCalledWith([expect.objectContaining({campus:valid.SEDE,seccionalName:valid.TERRITORIAL})],'bulk_upload'));
+    await waitFor(() =>
+      expect(graduadosService.graduados.crearMasivo).toHaveBeenCalledWith([
+        expect.objectContaining({
+          campus: valid.SEDE,
+          seccionalName: valid.TERRITORIAL,
+          graduationDate: '2022-07-15',
+        }),
+      ], 'bulk_upload'),
+    );
     await waitFor(()=>expect(imported).toHaveBeenCalledWith([created]));
   });
-  it('genera un XLSX real sin listas territoriales restrictivas y conserva controles numéricos y títulos',async()=>{
+  it('envía todas las filas válidas por lotes y conserva la fila de Excel en los errores del servidor', async () => {
+    const data = Array.from({ length: 102 }, (_, index) => ({
+      ...valid,
+      IDENTIFICACION: String(123450000 + index),
+    }));
+    const sheet = XLSX.utils.aoa_to_sheet([
+      Object.keys(valid),
+      [],
+      ...data.map((row) => Object.values(row)),
+      Object.values(data[0]),
+    ]);
+    const file = graduateFile(sheet, ' Graduados ');
+    const postMessage = WorkbookWorker.prototype.postMessage;
+    let finishPreview!: () => void;
+    const workerRequests = vi.spyOn(WorkbookWorker.prototype, 'postMessage')
+      .mockImplementation(function (this: WorkbookWorker, request) {
+        if (request.type === 'preview') finishPreview = () => postMessage.call(this, request);
+        else postMessage.call(this, request);
+      });
+    const upload = vi.mocked(graduadosService.graduados.crearMasivo);
+    let finishSecondBatch!: (result: Awaited<ReturnType<typeof upload>>) => void;
+    upload
+      .mockResolvedValueOnce({ total: 100, createdCount: 100, failedCount: 0, created: [], errors: [] })
+      .mockImplementationOnce(() => new Promise((resolve) => { finishSecondBatch = resolve; }));
+
+    const onOpenChange = vi.fn();
+    render(<BulkGraduatesUploadModal open onOpenChange={onOpenChange} onImported={() => {}} programOptions={[valid.TITULO]} />);
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    const submit = await screen.findByRole('button', { name: 'Crear 102 graduados' });
+    expect(screen.getAllByRole('row')).toHaveLength(101);
+    expect(upload).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Página siguiente' }));
+    expect(await screen.findByText('Cargando página 2…')).toBeTruthy();
+    fireEvent.click(submit);
+
+    expect(await screen.findByText('0 de 102 registros procesados')).toBeTruthy();
+    expect(workerRequests.mock.calls.map(([request]) => request.type)).toEqual(['validate', 'preview']);
+    await act(async () => finishPreview());
+
+    expect(await screen.findByText('Registros 101 a 103 de 103')).toBeTruthy();
+    expect(screen.getAllByRole('row')).toHaveLength(4);
+    expect(await screen.findByText('100 de 102 registros procesados')).toBeTruthy();
+    expect(screen.getByRole('progressbar', { name: 'Creando graduados' }).getAttribute('aria-valuenow')).toBe('98');
+    expect((screen.getByRole('button', { name: 'Cerrar' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Descargar plantilla XLSX' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'graduados.xlsx' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Importando…' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Página anterior' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cancelar validación' })).toBeNull();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    finishSecondBatch({
+      total: 2,
+      createdCount: 1,
+      failedCount: 1,
+      created: [],
+      errors: [{ rowNumber: 3, message: 'Registro duplicado en el servidor' }],
+    });
+    expect(await screen.findByText('Fila 104: Registro duplicado en el servidor')).toBeTruthy();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Cerrar' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(upload.mock.calls.map(([payload]) => payload.length)).toEqual([100, 2]);
+    expect(upload.mock.calls[1][0][1].idNumber).toBe(data[101].IDENTIFICACION);
+  });
+
+  it('muestra el progreso, bloquea el cierre accidental y permite cancelar y elegir otro archivo', async () => {
+    const terminate = vi.spyOn(WorkbookWorker.prototype, 'terminate');
+    let publish!: (data: GraduateImportResponse) => void;
+    const postMessage = WorkbookWorker.prototype.postMessage;
+    vi.spyOn(WorkbookWorker.prototype, 'postMessage').mockImplementationOnce(function (this: WorkbookWorker, request) {
+      const receive = this.onmessage;
+      publish = (data) => receive?.({ data });
+      postMessage.call(this, request);
+    });
+    const pendingFile = new File([], 'pendiente.xlsx');
+    const read = vi.fn(() => new Promise<ArrayBuffer>(() => {}));
+    Object.defineProperty(pendingFile, 'arrayBuffer', { value: read });
+    const props = { onOpenChange: vi.fn(), onImported: vi.fn(), programOptions: [valid.TITULO] };
+    render(<BulkGraduatesUploadModal open {...props} />);
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [pendingFile] } });
+    const reading = await screen.findByRole('progressbar', { name: 'Leyendo archivo de Excel…' });
+    expect(reading.hasAttribute('aria-valuenow')).toBe(false);
+    expect(read).toHaveBeenCalledOnce();
+    expect((screen.getByRole('button', { name: 'Descargar plantilla XLSX' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'pendiente.xlsx' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Crear graduados' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(props.onOpenChange).not.toHaveBeenCalled();
+
+    act(() => publish({
+      type: 'progress',
+      progress: { reviewedRows: 23, scannedRows: 25, totalSheetRows: 100 },
+    }));
+    expect(screen.getByRole('progressbar', { name: 'Validando registros' }).getAttribute('aria-valuenow')).toBe('25');
+    expect(screen.getByText('23 registros revisados')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar validación' }));
+    expect(terminate).toHaveBeenCalledOnce();
+    expect(props.onOpenChange).not.toHaveBeenCalled();
+    act(() => publish({
+      type: 'validated',
+      summary: {
+        totalRows: 23,
+        validCount: 23,
+        page: { filter: 'all', number: 1, startIndex: 0, totalRows: 23, totalPages: 1, rows: [] },
+      },
+    }));
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Seleccionar archivo XLSX' }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [graduateFile(XLSX.utils.json_to_sheet([valid]))] },
+    });
+    expect(await screen.findByRole('button', { name: 'Crear 1 graduados' })).toBeTruthy();
+    expect(graduadosService.graduados.crearMasivo).not.toHaveBeenCalled();
+  });
+
+  it('reporta el avance hasta el final de la hoja y cuenta únicamente los registros revisados', async () => {
+    const sheet = XLSX.utils.aoa_to_sheet([Object.keys(valid), [], Object.values(valid)]);
+    const send = vi.fn();
+    await createGraduateImportHandler(send)({
+      type: 'validate',
+      file: graduateFile(sheet),
+      programOptions: [valid.TITULO],
+    });
+
+    const messages = send.mock.calls.map(([message]) => message);
+    expect(messages).toMatchObject([
+      { type: 'progress', progress: { reviewedRows: 0, scannedRows: 0, totalSheetRows: 2 } },
+      { type: 'progress', progress: { reviewedRows: 1, scannedRows: 2, totalSheetRows: 2 } },
+      { type: 'validated', summary: { totalRows: 1, validCount: 1 } },
+    ]);
+  });
+
+  it('sincroniza el control superior de columnas con la tabla y lo oculta si caben todas', async () => {
+    render(<BulkGraduatesUploadModal open onOpenChange={() => {}} onImported={() => {}} programOptions={[valid.TITULO]} />);
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [graduateFile(XLSX.utils.json_to_sheet([valid]))] },
+    });
+    const viewport = await screen.findByRole('region', { name: 'Vista previa de graduados' });
+    expect(screen.queryByRole('group', { name: 'Desplazar columnas' })).toBeNull();
+
+    let width = 400;
+    Object.defineProperties(viewport, {
+      clientWidth: { get: () => width },
+      scrollWidth: { value: 1000 },
+    });
+    fireEvent.scroll(viewport);
+
+    expect(screen.getByText('Desliza la tabla o usa las flechas para ver más columnas.')).toBeTruthy();
+    const previous = screen.getByRole('button', { name: 'Ver columnas anteriores' }) as HTMLButtonElement;
+    const next = screen.getByRole('button', { name: 'Ver más columnas' }) as HTMLButtonElement;
+    expect(previous.disabled).toBe(true);
+    fireEvent.click(next);
+    expect(viewport.scrollLeft).toBe(320);
+    expect(previous.disabled).toBe(false);
+
+    fireEvent.click(next);
+    expect(viewport.scrollLeft).toBe(600);
+    expect(next.disabled).toBe(true);
+
+    viewport.scrollLeft = 150;
+    fireEvent.scroll(viewport);
+    expect(next.disabled).toBe(false);
+    fireEvent.click(previous);
+    expect(viewport.scrollLeft).toBe(0);
+    expect(previous.disabled).toBe(true);
+
+    width = 1000;
+    fireEvent(window, new Event('resize'));
+    expect(screen.queryByRole('group', { name: 'Desplazar columnas' })).toBeNull();
+    expect(graduadosService.graduados.crearMasivo).not.toHaveBeenCalled();
+  });
+
+  it('consulta todas las páginas de un archivo con errores y renderiza hasta cien filas', async () => {
+    const file = graduateFile(XLSX.utils.json_to_sheet(Array.from({ length: 203 }, (_, index) => ({
+      ...valid,
+      IDENTIFICACION: String(123450000 + index),
+      TITULO: 'Título fuera del catálogo',
+    }))));
+
+    render(<BulkGraduatesUploadModal open onOpenChange={() => {}} onImported={() => {}} programOptions={[valid.TITULO]} />);
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    expect(await screen.findByText('Registros 1 a 100 de 203')).toBeTruthy();
+    expect(screen.getAllByRole('row')).toHaveLength(101);
+    const table = screen.getByRole('table');
+    const pagination = screen.getByRole('navigation', { name: 'Paginación de la vista previa' });
+    expect(table.compareDocumentPosition(pagination) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const pageInput = screen.getByRole('spinbutton', { name: 'Número de página' });
+    const jump = screen.getByRole('button', { name: 'Ir a la página' }) as HTMLButtonElement;
+
+    fireEvent.change(pageInput, { target: { value: '4' } });
+    expect(jump.disabled).toBe(true);
+    fireEvent.change(pageInput, { target: { value: '3' } });
+    fireEvent.click(jump);
+
+    expect(await screen.findByText('Registros 201 a 203 de 203')).toBeTruthy();
+    expect(screen.getAllByRole('row')).toHaveLength(4);
+    expect(screen.getByText('123450202')).toBeTruthy();
+    expect(screen.getAllByText('No se crea')).toHaveLength(3);
+    expect(screen.queryByText('123450000')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Página siguiente' }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Página anterior' }));
+    expect(await screen.findByText('Registros 101 a 200 de 203')).toBeTruthy();
+    expect(screen.getAllByRole('row')).toHaveLength(101);
+    expect((screen.getByRole('button', { name: 'Crear 0 graduados' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Listos para crear' }));
+    expect(await screen.findByText('No hay registros listos para crear.')).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+    expect(await screen.findByText('Registros 1 a 100 de 203')).toBeTruthy();
+    expect(graduadosService.graduados.crearMasivo).not.toHaveBeenCalled();
+  });
+
+  it('filtra todo el archivo, conserva el orden original y reinicia la paginación al quitar el filtro', async () => {
+    const invalid = new Set([104, 154, 205]);
+    const rows = Array.from({ length: 206 }, (_, index) => ({
+      ...valid,
+      IDENTIFICACION: String(123450000 + index),
+      CORREO: invalid.has(index) ? 'inválido' : valid.CORREO,
+    }));
+    const file = graduateFile(XLSX.utils.json_to_sheet(rows));
+    render(<BulkGraduatesUploadModal open onOpenChange={() => {}} onImported={() => {}} programOptions={[valid.TITULO]} />);
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Página siguiente' }));
+    expect(await screen.findByText('Registros 101 a 200 de 206')).toBeTruthy();
+    const errorsFilter = screen.getByRole('button', { name: 'Con errores' });
+    fireEvent.click(errorsFilter);
+    await waitFor(() => expect(errorsFilter.getAttribute('aria-pressed')).toBe('true'));
+    expect(screen.getAllByRole('row').slice(1).map((row) => row.firstElementChild?.textContent))
+      .toEqual(['106', '156', '207']);
+    expect(screen.getAllByText('No se crea')).toHaveLength(3);
+    expect(screen.queryByRole('navigation', { name: 'Paginación de la vista previa' })).toBeNull();
+    expect((screen.getByRole('button', { name: 'Crear 203 graduados' }) as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Listos para crear' }));
+    expect(await screen.findByText('Registros 1 a 100 de 203')).toBeTruthy();
+    expect(screen.getAllByRole('row')).toHaveLength(101);
+    fireEvent.click(screen.getByRole('button', { name: 'Página siguiente' }));
+    expect(await screen.findByText('Registros 101 a 200 de 203')).toBeTruthy();
+    expect(screen.queryByText('No se crea')).toBeNull();
+    const pageInput = screen.getByRole('spinbutton', { name: 'Número de página' });
+    fireEvent.change(pageInput, { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ir a la página' }));
+    expect(await screen.findByText('Registros 201 a 203 de 203')).toBeTruthy();
+    expect(screen.getAllByRole('row').slice(1).map((row) => row.firstElementChild?.textContent))
+      .toEqual(['204', '205', '206']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+    expect(await screen.findByText('Registros 1 a 100 de 206')).toBeTruthy();
+    expect(screen.getAllByRole('row')).toHaveLength(101);
+    expect(graduadosService.graduados.crearMasivo).not.toHaveBeenCalled();
+  });
+
+  it('descarga una sola hoja de validación con estados, colores y todas las filas en orden', async () => {
+    const rows = Array.from({ length: 205 }, (_, index) => ({
+      ...valid,
+      IDENTIFICACION: `00${123450000 + index}`,
+      REGISTRO: '00000000000000000042',
+      FECHAREGISTRO: index % 2 ? '30/02/2022' : '15/07/2022',
+      CORREO: index % 2 ? 'sin-arroba' : valid.CORREO,
+      TERRITORIAL: '=1+1',
+    }));
+    const file = graduateFile(XLSX.utils.aoa_to_sheet([
+      Object.keys(valid),
+      [],
+      ...rows.map((row) => Object.values(row)),
+    ]));
+    let finishExport!: () => void;
+    let reportProgress!: (data: GraduateImportResponse) => void;
+    const postMessage = WorkbookWorker.prototype.postMessage;
+    const workerRequests = vi.spyOn(WorkbookWorker.prototype, 'postMessage')
+      .mockImplementation(function (this: WorkbookWorker, request) {
+        if (request.type !== 'export') {
+          postMessage.call(this, request);
+          return;
+        }
+        const receive = this.onmessage;
+        reportProgress = (data) => receive?.({ data });
+        finishExport = () => postMessage.call(this, request);
+      });
+    let downloaded: Blob | undefined;
+    let downloadName = '';
+    const exportError = vi.spyOn(toast, 'error');
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL(blob: Blob) {
+        downloaded = blob;
+        return 'blob:export-results';
+      }
+      static revokeObjectURL() {}
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloadName = this.download;
+    });
+
+    render(<BulkGraduatesUploadModal open onOpenChange={() => {}} onImported={() => {}} programOptions={[valid.TITULO]} />);
+    expect(screen.queryByRole('button', { name: 'Descargar resultados XLSX' })).toBeNull();
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+
+    const download = await screen.findByRole('button', { name: 'Descargar resultados XLSX' });
+    const table = screen.getByRole('table');
+    const pagination = screen.getByRole('navigation', { name: 'Paginación de la vista previa' });
+    const report = screen.getByRole('region', { name: 'Reporte de validación' });
+    expect(table.compareDocumentPosition(download) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(pagination.compareDocumentPosition(report) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(report.contains(download)).toBe(true);
+    expect(screen.getAllByRole('row')).toHaveLength(101);
+    fireEvent.click(screen.getByRole('button', { name: 'Con errores' }));
+    expect(await screen.findByText('Registros 1 a 100 de 102')).toBeTruthy();
+    fireEvent.click(download);
+
+    const exporting = await screen.findByRole('button', { name: 'Generando Excel…' }) as HTMLButtonElement;
+    expect(exporting.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Crear 103 graduados' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Página siguiente' }) as HTMLButtonElement).disabled).toBe(true);
+    act(() => reportProgress({ type: 'exportProgress', progress: { preparedRows: 100, totalRows: 205 } }));
+    expect(screen.getByText('100 de 205 registros preparados')).toBeTruthy();
+    await act(async () => finishExport());
+
+    await waitFor(() => {
+      expect(exportError).not.toHaveBeenCalled();
+      expect(downloaded).toBeDefined();
+    }, { timeout: 15_000 });
+    expect(downloadName).toBe('Resultado_Validacion_Graduados_ESAP.xlsx');
+    const bytes = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(downloaded!);
+    });
+    const workbook = XLSX.read(bytes, { type: 'array', cellStyles: true });
+    expect(workbook.SheetNames).toEqual(['VALIDACION']);
+    const sheet = workbook.Sheets.VALIDACION;
+    const reportRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { range: 2 });
+    expect(reportRows).toHaveLength(205);
+    expect(reportRows.map((row) => row['Fila de Excel'])).toEqual(rows.map((_, index) => index + 3));
+    expect(reportRows.filter((row) => row.Estado === 'Válido')).toHaveLength(103);
+    expect(reportRows.filter((row) => row.Estado === 'Con errores')).toHaveLength(102);
+    expect(sheet.A2.v).toBe('Registros: 205');
+    expect(sheet.C2.v).toBe('Válidos: 103');
+    expect(sheet.E2.v).toBe('Con errores: 102');
+    expect(reportRows.at(-1)).toMatchObject({
+      'Fila de Excel': 207,
+      'Identificación': '00123450204',
+      Registro: '00000000000000000042',
+      'Fecha de registro': '15/07/2022',
+      Territorial: '=1+1',
+    });
+    expect(sheet.M208.f).toBeUndefined();
+    expect(reportRows.at(-2)).toMatchObject({
+      'Fila de Excel': 206,
+      'Fecha de registro': '30/02/2022',
+      Observaciones: expect.stringMatching(/FECHAREGISTRO:[\s\S]*CORREO:/),
+    });
+    expect(sheet.B4.s.fgColor.rgb).toBe('DCFCE7');
+    expect(sheet.B5.s.fgColor.rgb).toBe('FEE2E2');
+    expect(sheet.I5.s.fgColor.rgb).toBe('FFF1F2');
+    expect(sheet.O5.s.fgColor.rgb).toBe('FFF1F2');
+    const zip = await JSZip.loadAsync(bytes);
+    const xml = await zip.file('xl/worksheets/sheet1.xml')!.async('string');
+    const sheetDocument = new DOMParser().parseFromString(xml, 'application/xml');
+    expect(sheetDocument.querySelector('autoFilter')?.getAttribute('ref')).toBe('A3:O208');
+    expect(sheetDocument.querySelector('pane')?.getAttribute('ySplit')).toBe('3');
+    expect(workerRequests.mock.calls.map(([request]) => request.type)).toEqual(['validate', 'preview', 'export']);
+    expect(screen.getAllByRole('row')).toHaveLength(101);
+    expect((screen.getByRole('button', { name: 'Crear 103 graduados' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(graduadosService.graduados.crearMasivo).not.toHaveBeenCalled();
+  }, 20_000);
+
+  it('conserva el resultado confirmado cuando una petición posterior se interrumpe', async () => {
+    const file = graduateFile(XLSX.utils.json_to_sheet(Array.from({ length: 201 }, (_, index) => ({
+      ...valid,
+      IDENTIFICACION: String(123450000 + index),
+    }))));
+    const upload = vi.mocked(graduadosService.graduados.crearMasivo);
+    upload
+      .mockImplementationOnce(async (batch) => ({
+        total: batch.length,
+        createdCount: batch.length,
+        failedCount: 0,
+        created: batch.map((row) => ({ ...row, id: row.idNumber } as GraduadoData)),
+        errors: [],
+      }))
+      .mockRejectedValueOnce(new Error('Conexión interrumpida'));
+    const onImported = vi.fn();
+
+    render(<BulkGraduatesUploadModal open onOpenChange={() => {}} onImported={onImported} programOptions={[valid.TITULO]} />);
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear 201 graduados' }));
+
+    expect(await screen.findByText('100 graduados creados de 100 enviados.')).toBeTruthy();
+    expect(upload).toHaveBeenCalledTimes(2);
+    expect(onImported).toHaveBeenCalledOnce();
+    expect(onImported.mock.calls[0][0]).toHaveLength(100);
+  });
+  it('genera un XLSX con ejemplos importables en dd/mm/yyyy y conserva las validaciones de la plantilla',async()=>{
     let downloaded:Blob|undefined;
     vi.stubGlobal('URL',class extends URL{static createObjectURL=(blob:Blob)=>{downloaded=blob;return 'blob:test';};static revokeObjectURL=()=>{};});
     vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
@@ -71,5 +506,28 @@ describe('Carga masiva de Graduados independiente de PTA',()=>{
     expect(validations.some(rule=>rule.getAttribute('type')==='custom'&&rule.getAttribute('sqref')?.includes('D2:'))).toBe(true);
     expect(validations.some(rule=>/\b[KL]\d/.test(rule.getAttribute('sqref')||''))).toBe(false);
     expect(await zip.file('xl/workbook.xml')!.async('string')).toContain('PARAMETROS');
+
+    const graduatesSheet = XLSX.read(bytes, { type: 'array' }).Sheets.GRADUADOS;
+    expect(graduatesSheet.G2).toMatchObject({ t: 'n', w: '15/07/2022' });
+    expect(graduatesSheet.G3).toMatchObject({ t: 'n', w: '22/10/2021' });
+
+    const file = new File([bytes], 'plantilla.xlsx');
+    Object.defineProperty(file, 'arrayBuffer', { value: async () => bytes });
+    vi.mocked(graduadosService.graduados.crearMasivo).mockResolvedValueOnce({
+      total: 2,
+      createdCount: 2,
+      failedCount: 0,
+      created: [],
+      errors: [],
+    });
+    fireEvent.change(window.document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear 2 graduados' }));
+
+    await waitFor(() =>
+      expect(graduadosService.graduados.crearMasivo).toHaveBeenLastCalledWith([
+        expect.objectContaining({ idNumber: '900100001', graduationDate: '2022-07-15' }),
+        expect.objectContaining({ idNumber: '900100002', graduationDate: '2021-10-22' }),
+      ], 'bulk_upload'),
+    );
   },20000);
 });

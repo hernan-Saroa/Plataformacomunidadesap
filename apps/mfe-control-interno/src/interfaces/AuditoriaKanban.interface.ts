@@ -104,4 +104,10 @@ export interface AuditoriaKanban {
   planAnualId?: string;
   programaAnualMetadata?: any;
   vinculadaPlanAnual?: boolean;
+  // Lo que el editar vuelve a mostrar: sin estos campos abría con las dependencias sin marcar
+  procesoAuditado?: string;
+  unidadesAuditables?: string[];
+  dependenciasAuditadas?: string[];
+  metodologia?: string;
+  calificacionRiesgo?: string;
 }

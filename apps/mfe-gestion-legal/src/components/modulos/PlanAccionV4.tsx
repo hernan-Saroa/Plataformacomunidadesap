@@ -6,13 +6,14 @@
  * ✅ INTEGRACIÓN API REAL - Backend Node.js
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
+import { useConfiguracionesSIGLOpcional } from '../config/ConfiguracionesSIGLContext';
 import { Input } from '@esap-mfe/shared-ui/input';
 import { Progress } from '@esap-mfe/shared-ui/progress';
 import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
@@ -46,10 +47,10 @@ import { ResponsableOpcion, estadoResponsable, requiereReasignacion } from './re
 import { ModalCargarAvance } from './ModalCargarAvance';
 import { ModalDetalleIndicador } from './ModalDetalleIndicador';
 import {
-  Indicador, EjeEstrategico, EstadoIndicador, FiltrosPlanAccion, FILTROS_VACIOS, EJES, ESTADOS,
-  EJE_NOMBRES, ESTADO_NOMBRES, filtrarIndicadores, agruparPorEje, calcularMetricas,
+  Indicador, EjeEstrategico, EjeVisual, EstadoIndicador, FiltrosPlanAccion, FILTROS_VACIOS, ESTADOS,
+  ESTADO_NOMBRES, filtrarIndicadores, agruparPorEje, calcularMetricas,
   calcularAvanceConsolidado, hayFiltrosActivos, getFechaCorte, getNivelSemaforo, getSemaforoConfig,
-  MENSAJE_SIN_RESULTADOS,
+  MENSAJE_SIN_RESULTADOS, mapEjeFromBackend, mapEjeToBackend, obtenerEjesOrdenados, resolverEjeVisual,
 } from './planAccionUtils';
 import { exportarPlanAccionExcel, exportarPlanAccionPDF } from './planAccionExport';
 import { Popover, PopoverContent, PopoverTrigger } from '@esap-mfe/shared-ui/popover';
@@ -61,27 +62,6 @@ import { Checkbox } from '@esap-mfe/shared-ui/checkbox';
 type VistaModulo = 'dashboard' | 'lista' | 'timeline' | 'matriz' | 'archivados';
 
 // ==================== HELPERS MAPPING ====================
-const mapEjeFromBackend = (eje: string) => {
-  switch (eje) {
-    case 'GESTION': return 'GESTION_INSTITUCIONAL';
-    case 'TALENTO': return 'TALENTO_HUMANO';
-    case 'TRANSPARENCIA': return 'TRANSPARENCIA';
-    case 'TECNOLOGIA': return 'TECNOLOGIA';
-    default: return 'GESTION_INSTITUCIONAL';
-  }
-};
-
-
-const mapEjeToBackend = (eje: string) => {
-  switch (eje) {
-    case 'GESTION_INSTITUCIONAL': return 'GESTION';
-    case 'TALENTO_HUMANO': return 'TALENTO';
-    case 'TRANSPARENCIA': return 'TRANSPARENCIA';
-    case 'TECNOLOGIA': return 'TECNOLOGIA';
-    default: return 'GESTION';
-  }
-};
-
 const mapEstadoFromBackend = (estado: string, avance: number, fechaFin: Date): any => {
   if (avance >= 100) return 'COMPLETADO';
 
@@ -99,36 +79,6 @@ const mapEstadoFromBackend = (estado: string, avance: number, fechaFin: Date): a
 };
 
 // ==================== HELPERS UI ====================
-const getEjeConfig = (eje: string) => {
-  const configs: Record<string, any> = {
-    GESTION_INSTITUCIONAL: {
-      nombre: 'Gestión Institucional',
-      color: '#2962FF',
-      bgColor: '#E3F2FD',
-      icon: '🏛️'
-    },
-    TALENTO_HUMANO: {
-      nombre: 'Talento Humano',
-      color: '#F57C00',
-      bgColor: '#FFF3E0',
-      icon: '👥'
-    },
-    TRANSPARENCIA: {
-      nombre: 'Transparencia',
-      color: '#00C853',
-      bgColor: '#E8F5E9',
-      icon: '🔍'
-    },
-    TECNOLOGIA: {
-      nombre: 'Tecnología',
-      color: '#9C27B0',
-      bgColor: '#F3E5F5',
-      icon: '💻'
-    }
-  };
-  return configs[eje] || configs.GESTION_INSTITUCIONAL;
-};
-
 const getEstadoConfig = (estado: string) => {
   const configs: Record<string, any> = {
     EN_TIEMPO: {
@@ -202,12 +152,20 @@ export function ModuloPlanAccionV4() {
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
   const canMutatePlanAccion = authService.hasPermission(Permissions.GESTION_LEGAL_PLAN_ACCION_CREATE);
+  const configSIGL = useConfiguracionesSIGLOpcional();
+  const ejesConfigurados = configSIGL?.ejesEstrategicos;
+  const ejesActivos = useMemo(() => obtenerEjesOrdenados(ejesConfigurados, true), [ejesConfigurados]);
+  const ejesActivosIds = useMemo(() => ejesActivos.map(e => e.id), [ejesActivos]);
+  const getEjeConfig = useCallback(
+    (eje: string): EjeVisual => resolverEjeVisual(eje, ejesConfigurados),
+    [ejesConfigurados],
+  );
 
   const [tipoVista, setTipoVista] = useState<VistaModulo>('lista');
   const [filtros, setFiltros] = useState<FiltrosPlanAccion>(FILTROS_VACIOS);
   const updateFiltros = (patch: Partial<FiltrosPlanAccion>) => setFiltros(prev => ({ ...prev, ...patch }));
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['GESTION_INSTITUCIONAL', 'TALENTO_HUMANO', 'TRANSPARENCIA', 'TECNOLOGIA']));
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   // Data state
   const [indicadores, setIndicadores] = useState<Indicador[]>([]);
@@ -494,8 +452,8 @@ export function ModuloPlanAccionV4() {
     }
     const toastId = toast.loading(`Generando ${tipo === 'excel' ? 'Excel' : 'PDF'}...`);
     try {
-      if (tipo === 'excel') await exportarPlanAccionExcel(indicadoresFiltrados, filtros);
-      else await exportarPlanAccionPDF(indicadoresFiltrados, filtros);
+      if (tipo === 'excel') await exportarPlanAccionExcel(indicadoresFiltrados, filtros, ejesConfigurados);
+      else await exportarPlanAccionPDF(indicadoresFiltrados, filtros, ejesConfigurados);
       toast.success('Reporte descargado exitosamente', { id: toastId });
     } catch (error) {
       console.error('Error exporting report:', error);
@@ -533,8 +491,11 @@ export function ModuloPlanAccionV4() {
 
   const filtrosActivos = hayFiltrosActivos(filtros);
 
-  // Agrupar por eje estratégico
-  const indicadoresAgrupados = useMemo(() => agruparPorEje(indicadoresFiltrados), [indicadoresFiltrados]);
+  // Agrupar por eje estratégico respetando los ejes activos configurados + ejes históricos con indicadores
+  const indicadoresAgrupados = useMemo(
+    () => agruparPorEje(indicadoresFiltrados, ejesActivosIds),
+    [indicadoresFiltrados, ejesActivosIds],
+  );
 
   // Con filtros activos solo se muestran los ejes que tienen indicadores coincidentes
   const ejesVisibles = useMemo(
@@ -544,17 +505,35 @@ export function ModuloPlanAccionV4() {
     [indicadoresAgrupados, filtrosActivos]
   );
 
+  // Opciones del filtro de ejes: ejes activos configurados + cualquier eje histórico presente en los indicadores
+  const opcionesFiltroEjes = useMemo(() => {
+    const ids = new Set<string>(ejesActivosIds);
+    indicadores.forEach(i => ids.add(i.ejeEstrategico));
+    return Array.from(ids).map(id => {
+      const visual = getEjeConfig(id);
+      return { value: id, label: `${visual.icon} ${visual.nombre}` };
+    });
+  }, [ejesActivosIds, indicadores, getEjeConfig]);
+
+  // Resumen dinámico para el tooltip de ayuda
+  const resumenEjesTooltip = useMemo(
+    () => ejesActivos.map((e, idx) => `${idx + 1}. ${e.icono} ${e.nombre}${e.descripcion ? `: ${e.descripcion}` : ''}`).join(' | '),
+    [ejesActivos],
+  );
+
   // Métricas recalculadas según los filtros aplicados
   const metricas = useMemo(() => calcularMetricas(indicadoresFiltrados), [indicadoresFiltrados]);
 
   const toggleGroup = (eje: string) => {
-    const newExpanded = new Set(expandedGroups);
-    if (newExpanded.has(eje)) {
-      newExpanded.delete(eje);
-    } else {
-      newExpanded.add(eje);
-    }
-    setExpandedGroups(newExpanded);
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(eje)) {
+        next.delete(eje);
+      } else {
+        next.add(eje);
+      }
+      return next;
+    });
   };
 
   const addBtnsPermission = () => {
@@ -627,7 +606,7 @@ export function ModuloPlanAccionV4() {
               },
               {
                 label: "🗂️ Ejes Estratégicos",
-                content: "1️⃣ Gestión Institucional: Eficiencia en procesos | 2️⃣ Talento Humano: Capacitación y competencias | 3️⃣ Transparencia: Rendición de cuentas | 4️⃣ Tecnología: Transformación digital",
+                content: resumenEjesTooltip || "Configure los ejes estratégicos en Configuraciones del Sistema",
                 type: "info"
               },
               {
@@ -683,7 +662,7 @@ export function ModuloPlanAccionV4() {
             <MultiSelectFiltro
               label="Ejes"
               todosLabel="Todos los Ejes"
-              opciones={EJES.map(e => ({ value: e, label: `${getEjeConfig(e).icon} ${EJE_NOMBRES[e]}` }))}
+              opciones={opcionesFiltroEjes}
               seleccion={filtros.ejes}
               onChange={(ejes) => updateFiltros({ ejes: ejes as EjeEstrategico[] })}
             />
@@ -764,12 +743,20 @@ export function ModuloPlanAccionV4() {
               )}
             </div>
           ) : (<>
-          {tipoVista === 'dashboard' && <VistaDashboard indicadores={indicadoresFiltrados} onVerDetalles={handleVerDetalles} />}
+          {tipoVista === 'dashboard' && (
+            <VistaDashboard
+              indicadores={indicadoresFiltrados}
+              ejesOrden={ejesActivosIds}
+              getEjeConfig={getEjeConfig}
+              onVerDetalles={handleVerDetalles}
+            />
+          )}
           {tipoVista === 'lista' && (
             <VistaLista
               indicadoresAgrupados={ejesVisibles}
-              expandedGroups={expandedGroups}
+              collapsedGroups={collapsedGroups}
               toggleGroup={toggleGroup}
+              getEjeConfig={getEjeConfig}
               responsablesActivos={responsablesActivos}
               onVerDetalles={handleVerDetalles}
               onEditarIndicador={canMutatePlanAccion ? handleEditarIndicador : undefined}
@@ -778,8 +765,8 @@ export function ModuloPlanAccionV4() {
               onEliminar={canMutatePlanAccion ? handleEliminar : undefined}
             />
           )}
-          {tipoVista === 'timeline' && <VistaTimeline indicadores={indicadoresFiltrados} />}
-          {tipoVista === 'matriz' && <VistaMatriz indicadores={indicadoresFiltrados} />}
+          {tipoVista === 'timeline' && <VistaTimeline indicadores={indicadoresFiltrados} getEjeConfig={getEjeConfig} />}
+          {tipoVista === 'matriz' && <VistaMatriz indicadores={indicadoresFiltrados} ejesOrden={ejesActivosIds} getEjeConfig={getEjeConfig} />}
           </>)}
           {tipoVista === 'archivados' && (
             <VistaArchivados
@@ -843,8 +830,9 @@ export function ModuloPlanAccionV4() {
 // ==================== VISTA LISTA (Por defecto) ====================
 interface VistaListaProps {
   indicadoresAgrupados: Record<string, Indicador[]>;
-  expandedGroups: Set<string>;
+  collapsedGroups: Set<string>;
   toggleGroup: (eje: string) => void;
+  getEjeConfig: (eje: string) => EjeVisual;
   /** null mientras carga: no se marca ningún indicador para reasignar. */
   responsablesActivos: ResponsableOpcion[] | null;
   onVerDetalles: (indicador: Indicador) => void;
@@ -856,8 +844,9 @@ interface VistaListaProps {
 
 function VistaLista({
   indicadoresAgrupados,
-  expandedGroups,
+  collapsedGroups,
   toggleGroup,
+  getEjeConfig,
   responsablesActivos,
   onVerDetalles,
   onEditarIndicador,
@@ -869,26 +858,33 @@ function VistaLista({
     <div className="space-y-3">
       {Object.entries(indicadoresAgrupados).map(([eje, indicadores]: [string, Indicador[]]) => {
         const ejeConfig = getEjeConfig(eje);
-        const isExpanded = expandedGroups.has(eje);
+        const isExpanded = !collapsedGroups.has(eje);
         const avanceEje = calcularAvanceConsolidado(indicadores);
 
         return (
-          <Card key={eje} className="border-2 border-gray-200 bg-white overflow-hidden">
+          <Card key={eje} className="border-2 border-gray-200 bg-white overflow-hidden" data-testid={`eje-lista-${eje}`}>
             <div
               className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
               style={{ borderLeft: `4px solid ${ejeConfig.color}` }}
               onClick={() => toggleGroup(eje)}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-3 min-w-0">
                   {isExpanded ? (
-                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                    <ChevronDown className="w-5 h-5 text-gray-600 flex-shrink-0" />
                   ) : (
-                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                    <ChevronRight className="w-5 h-5 text-gray-600 flex-shrink-0" />
                   )}
-                  <span className="text-2xl">{ejeConfig.icon}</span>
-                  <div>
-                    <h3 className="font-bold text-gray-900">{ejeConfig.nombre}</h3>
+                  <span className="text-2xl flex-shrink-0">{ejeConfig.icon}</span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-bold text-gray-900 truncate">{ejeConfig.nombre}</h3>
+                      {!ejeConfig.activo && (
+                        <Badge className="text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-300">
+                          Inactivo
+                        </Badge>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-600">{indicadores.length} indicadores</p>
                   </div>
                 </div>
@@ -1141,20 +1137,32 @@ export function MultiSelectFiltro({ label, todosLabel, opciones, seleccion, onCh
 }
 
 // ==================== VISTA DASHBOARD ====================
-function VistaDashboard({ indicadores, onVerDetalles }: { indicadores: Indicador[]; onVerDetalles?: (i: Indicador) => void }) {
+function VistaDashboard({
+  indicadores,
+  ejesOrden,
+  getEjeConfig,
+  onVerDetalles,
+}: {
+  indicadores: Indicador[];
+  ejesOrden: string[];
+  getEjeConfig: (eje: string) => EjeVisual;
+  onVerDetalles?: (i: Indicador) => void;
+}) {
   const [ejesAbiertos, setEjesAbiertos] = useState<Set<string>>(new Set());
 
   // Solo ejes con indicadores (tras filtros), con su avance consolidado
   const estadisticasPorEje = useMemo(() => {
-    const grupos = agruparPorEje(indicadores);
-    return EJES.filter(eje => grupos[eje].length > 0).map(eje => ({
-      eje,
-      indicadores: grupos[eje],
-      total: grupos[eje].length,
-      avancePromedio: calcularAvanceConsolidado(grupos[eje]),
-      config: getEjeConfig(eje),
-    }));
-  }, [indicadores]);
+    const grupos = agruparPorEje(indicadores, ejesOrden);
+    return Object.entries(grupos)
+      .filter(([, inds]) => inds.length > 0)
+      .map(([eje, inds]) => ({
+        eje,
+        indicadores: inds,
+        total: inds.length,
+        avancePromedio: calcularAvanceConsolidado(inds),
+        config: getEjeConfig(eje),
+      }));
+  }, [indicadores, ejesOrden, getEjeConfig]);
 
   const toggleEje = (eje: string) =>
     setEjesAbiertos(prev => {
@@ -1266,7 +1274,13 @@ function VistaDashboard({ indicadores, onVerDetalles }: { indicadores: Indicador
 }
 
 // ==================== VISTA TIMELINE ====================
-function VistaTimeline({ indicadores }: { indicadores: Indicador[] }) {
+function VistaTimeline({
+  indicadores,
+  getEjeConfig,
+}: {
+  indicadores: Indicador[];
+  getEjeConfig: (eje: string) => EjeVisual;
+}) {
   const indicadoresOrdenados = [...indicadores].sort((a, b) => a.fechaFin.getTime() - b.fechaFin.getTime());
   return (
     <Card className="border-2 border-gray-200 bg-white p-6">
@@ -1319,9 +1333,18 @@ function VistaTimeline({ indicadores }: { indicadores: Indicador[] }) {
 }
 
 // ==================== VISTA MATRIZ ====================
-function VistaMatriz({ indicadores }: { indicadores: Indicador[] }) {
+function VistaMatriz({
+  indicadores,
+  ejesOrden,
+  getEjeConfig,
+}: {
+  indicadores: Indicador[];
+  ejesOrden: string[];
+  getEjeConfig: (eje: string) => EjeVisual;
+}) {
   const matriz = useMemo(() => {
-    const ejes = ['GESTION_INSTITUCIONAL', 'TALENTO_HUMANO', 'TRANSPARENCIA', 'TECNOLOGIA'];
+    const grupos = agruparPorEje(indicadores, ejesOrden);
+    const ejes = Object.keys(grupos);
     const estados = ['EN_TIEMPO', 'EN_RIESGO', 'VENCIDO'];
     return ejes.map(eje => {
       const ejeConfig = getEjeConfig(eje);
@@ -1332,7 +1355,7 @@ function VistaMatriz({ indicadores }: { indicadores: Indicador[] }) {
         }))
       };
     });
-  }, [indicadores]);
+  }, [indicadores, ejesOrden, getEjeConfig]);
 
   return (
     <div className="space-y-4">

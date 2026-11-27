@@ -268,7 +268,11 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   }, [catalogoCS]);
 
   const claseEstado = (estado: string): string => {
-    const it = mapEstado.get((estado || '').toUpperCase());
+    const est = (estado || '').toUpperCase();
+    if (est === 'ESCALADA_GIM') {
+      return 'bg-purple-100 text-purple-900 border border-purple-300';
+    }
+    const it = mapEstado.get(est);
     return it?.metadata?.color || FALLBACK_CLASE_ESTADO;
   };
 
@@ -328,7 +332,12 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
       const responsable = String(m.responsableAsignado || '').trim();
       let asignacionOk = true;
       if (filtroResponsable === 'SIN_ASIGNAR') {
-        asignacionOk = !responsable;
+        const esTI =
+          vista === 'remitidasTI' ||
+          (m.areaResponsableActual || '').toUpperCase() === 'TI' ||
+          (m.tipoAtencion || '').toUpperCase() === 'TECNOLOGICA' ||
+          String(m.estado || '').toUpperCase() === 'REMITIDA_TI';
+        asignacionOk = !responsable && !esTI;
       } else if (filtroResponsable !== 'TODOS') {
         const tecnico = opcionesResponsableMap.get(filtroResponsable);
         const responsableNorm = normalizarTextoFiltro(responsable);
@@ -1098,9 +1107,11 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                         </strong>
                       </span>
                     )}
-                    {m.responsableAsignado && (
+                    {m.responsableAsignado ? (
                       <span>Responsable: <strong className="text-slate-700">{m.responsableAsignado}</strong></span>
-                    )}
+                    ) : ((m.areaResponsableActual || '').toUpperCase() === 'TI' || (m.tipoAtencion || '').toUpperCase() === 'TECNOLOGICA' || vista === 'remitidasTI') ? (
+                      <span>Responsable: <strong className="text-sky-700">Oficina TI</strong></span>
+                    ) : null}
                     {(m.fechaProgramada || m.fechaRadicacion) && (
                       <span className="flex items-center gap-1 text-slate-600">
                         <Clock className="w-3.5 h-3.5" />
@@ -1140,6 +1151,23 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   })()}
                   {(() => {
                     const resp = m.responsableAsignado;
+                    const esTI =
+                      vista === 'remitidasTI' ||
+                      (m.areaResponsableActual || '').toUpperCase() === 'TI' ||
+                      (m.tipoAtencion || '').toUpperCase() === 'TECNOLOGICA' ||
+                      String(m.estado || '').toUpperCase() === 'REMITIDA_TI';
+
+                    if (esTI) {
+                      return (
+                        <span
+                          title={resp ? `Responsable TI: ${resp}` : 'Solicitud canalizada y remitida a la Oficina de Tecnologías (TI)'}
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border bg-sky-50 text-sky-700 border-sky-200 max-w-[200px]"
+                        >
+                          <Monitor className="w-2.5 h-2.5 flex-shrink-0" />
+                          <span className="truncate">{resp || 'Remitida a TI'}</span>
+                        </span>
+                      );
+                    }
                     if (!resp) {
                       return (
                         <span
@@ -1176,6 +1204,14 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                     >
                       <Clock className="w-3.5 h-3.5 text-slate-500" />
                       Cerrada – Sin respuesta
+                    </span>
+                  ) : String(m.estado || '').toUpperCase() === 'ESCALADA_GIM' ? (
+                    <span
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-purple-100 text-purple-900 border-purple-300 shadow-sm"
+                      title="Requerimiento de gran envergadura escalado formalmente al Coordinador GIM (RF-INF-012)"
+                    >
+                      <Siren className="w-3.5 h-3.5 text-purple-700" />
+                      Escalada Coordinación GIM
                     </span>
                   ) : (
                     <span

@@ -9,6 +9,8 @@ import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Progress } from '@esap-mfe/shared-ui/progress';
 import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { useConfiguracionesSIGLOpcional } from '../config/ConfiguracionesSIGLContext';
+import { resolverEjeVisual } from './planAccionUtils';
 
 interface RegistroAvance {
   id: number | string;
@@ -52,39 +54,10 @@ interface ModalDetalleIndicadorProps {
 }
 
 export function ModalDetalleIndicador({ isOpen, onClose, indicador, onEditar, onCargarAvance, onArchivar }: ModalDetalleIndicadorProps) {
+  const configSIGL = useConfiguracionesSIGLOpcional();
   if (!isOpen || !indicador) return null;
 
-  const ejeConfig = {
-    GESTION_INSTITUCIONAL: {
-      nombre: 'Gestión Institucional',
-      color: '#2962FF',
-      bgColor: '#E3F2FD',
-      icon: '🏛️'
-    },
-    TALENTO_HUMANO: {
-      nombre: 'Talento Humano',
-      color: '#F57C00',
-      bgColor: '#FFF3E0',
-      icon: '👥'
-    },
-    TRANSPARENCIA: {
-      nombre: 'Transparencia',
-      color: '#00C853',
-      bgColor: '#E8F5E9',
-      icon: '🔍'
-    },
-    TECNOLOGIA: {
-      nombre: 'Tecnología',
-      color: '#9C27B0',
-      bgColor: '#F3E5F5',
-      icon: '💻'
-    }
-  }[indicador.ejeEstrategico] || {
-    nombre: 'Gestión Institucional',
-    color: '#2962FF',
-    bgColor: '#E3F2FD',
-    icon: '🏛️'
-  };
+  const ejeConfig = resolverEjeVisual(indicador.ejeEstrategico, configSIGL?.ejesEstrategicos);
 
   const estadoConfig = {
     EN_TIEMPO: {

@@ -17,7 +17,8 @@ import {
   FileText, AlertTriangle, Target, Calendar, Eye, Plus, Search, Filter,
   Download, MoreVertical, Edit, Trash2, CheckCircle, AlertCircle, Clock,
   TrendingUp, BarChart3, FileCheck, Building2, User, ChevronDown, ChevronRight,
-  List, LayoutGrid, Activity, Flag, Circle, XCircle, Upload, File, X, Archive
+  List, LayoutGrid, Activity, Flag, Circle, XCircle, Upload, File, X, Archive,
+  FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
@@ -47,6 +48,17 @@ import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
 import { resolverEnteControl, colorFondoSuave, agruparPlanesPorEnte } from '../config/entesControlPM';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
+import {
+  AccionPlanMejoramiento,
+  PHVA_CONFIG,
+  formatearPorcentaje,
+  mapearAccionBackend,
+  normalizarEstadoPlanUI,
+} from '../../utils/planesMejoramientoPhva';
+import {
+  exportarPlanIndividualExcel,
+  exportarPlanIndividualPDF,
+} from '../../utils/exportPlanMejoramiento';
 
 // ==================== TIPOS ====================
 type EstadoPlan = 'FORMULACION' | 'EN_EJECUCION' | 'COMPLETADO' | 'SUSPENDIDO';
@@ -78,10 +90,19 @@ interface Hallazgo {
   acciones: AccionMejora[];
 }
 
+interface SeguimientoTimelinePlan {
+  id: string;
+  descripcionAvance: string;
+  porcentajeReportado: number;
+  createdAt: string;
+}
+
 interface PlanMejoramiento {
   id: string;
   codigo: string;
   nombre: string;
+  descripcion?: string;
+  severidad: string;
   enteControl: EnteControl;
   documentoOrigen: string; // Informe de auditoría, auto, etc.
   area: string;
@@ -90,8 +111,10 @@ interface PlanMejoramiento {
   fechaRespuesta: Date;
   fechaInicio: Date;
   fechaFin: Date;
+  fechaCierreReal?: Date | null;
   estado: EstadoPlan;
-  hallazgos: Hallazgo[];
+  hallazgos: AccionPlanMejoramiento[];
+  seguimientos: SeguimientoTimelinePlan[];
   totalAcciones: number;
   accionesCompletadas: number;
   avanceGeneral: number; // % de cumplimiento
@@ -224,11 +247,12 @@ export function ModuloPlanesMejoramientoV4() {
     documentoOrigen: '',
     areaResponsable: '',
     responsablePlan: '',
+    severidad: 'MEDIO',
     fechaRecepcion: '',
     fechaRespuesta: '',
     fechaInicio: '',
     fechaFin: '',
-    estado: 'FORMULACION',
+    estado: 'EN_EJECUCION',
     descripcion: ''
   };
 
@@ -240,37 +264,46 @@ export function ModuloPlanesMejoramientoV4() {
       setLoading(true);
       const res = await legalService.getPlanesMejoramiento();
       // Map backend response to interface
-      const mappedPlanes: PlanMejoramiento[] = res.map((p: any) => ({
-        id: p.id,
-        codigo: p.codigo,
-        nombre: p.titulo,
-        enteControl: p.origen || 'OTRO',
-        documentoOrigen: p.documentoOrigen || 'N/A',
-        area: p.areaResponsable || 'N/A',
-        responsablePlan: p.responsableNombre || 'Sin Asignar',
-        fechaRecepcion: p.fechaRecepcion ? new Date(p.fechaRecepcion) : new Date(),
-        fechaRespuesta: p.fechaRespuesta ? new Date(p.fechaRespuesta) : new Date(),
-        fechaInicio: p.fechaInicio ? new Date(p.fechaInicio) : new Date(),
-        fechaFin: p.fechaFinEstimada ? new Date(p.fechaFinEstimada) : new Date(),
-        estado: p.estado === 'ABIERTO' ? 'EN_EJECUCION' : p.estado === 'CERRADO' ? 'COMPLETADO' : 'FORMULACION',
-        hallazgos: p.hallazgos ? p.hallazgos.map((h: any) => ({
-          id: h.id,
-          codigo: h.id.substring(0, 8),
-          nombre: h.nombre,
-          descripcion: h.descripcion || '',
-          severidad: 'MEDIA' as SeveridadHallazgo,
-          porcentajeAvance: Number(h.porcentajeAvance || 0),
-          archivoUrl: h.archivoUrl,
-          archivoNombre: h.archivoNombre,
-          acciones: []
-        })) : [],
-        totalAcciones: 0,
-        accionesCompletadas: 0,
-        avanceGeneral: Number(p.avancePorcentaje) || 0,
-        alertas: 0,
-        diasRestantes: calcularDiasRestantes(p.fechaFinEstimada),
-        ultimaActualizacion: p.updatedAt ? new Date(p.updatedAt) : new Date()
-      }));
+      const mappedPlanes: PlanMejoramiento[] = res.map((p: any) => {
+        const accionesMapeadas: AccionPlanMejoramiento[] = Array.isArray(p.hallazgos)
+          ? p.hallazgos.map((h: Record<string, unknown>) => mapearAccionBackend(h))
+          : [];
+        const accionesCompletadas = accionesMapeadas.filter((a) => a.estado === 'EJECUTADA').length;
+        const seguimientosMapeados: SeguimientoTimelinePlan[] = Array.isArray(p.seguimientos)
+          ? p.seguimientos.map((s: any) => ({
+              id: String(s.id ?? ''),
+              descripcionAvance: String(s.descripcionAvance ?? ''),
+              porcentajeReportado: Number(s.porcentajeReportado ?? 0),
+              createdAt: String(s.createdAt || s.fechaReporte || ''),
+            }))
+          : [];
+
+        return {
+          id: p.id,
+          codigo: p.codigo,
+          nombre: p.titulo,
+          descripcion: p.descripcion || '',
+          severidad: p.severidad || 'MEDIO',
+          enteControl: p.origen || 'OTRO',
+          documentoOrigen: p.documentoOrigen || 'N/A',
+          area: p.areaResponsable || 'N/A',
+          responsablePlan: p.responsableNombre || 'Sin Asignar',
+          fechaRecepcion: p.fechaRecepcion ? new Date(p.fechaRecepcion) : new Date(),
+          fechaRespuesta: p.fechaRespuesta ? new Date(p.fechaRespuesta) : new Date(),
+          fechaInicio: p.fechaInicio ? new Date(p.fechaInicio) : new Date(),
+          fechaFin: p.fechaFinEstimada ? new Date(p.fechaFinEstimada) : new Date(),
+          fechaCierreReal: p.fechaCierreReal ? new Date(p.fechaCierreReal) : null,
+          estado: normalizarEstadoPlanUI(p.estado),
+          hallazgos: accionesMapeadas,
+          seguimientos: seguimientosMapeados,
+          totalAcciones: accionesMapeadas.length,
+          accionesCompletadas,
+          avanceGeneral: Number(p.avancePorcentaje) || 0,
+          alertas: 0,
+          diasRestantes: calcularDiasRestantes(p.fechaFinEstimada),
+          ultimaActualizacion: p.updatedAt ? new Date(p.updatedAt) : new Date()
+        };
+      });
       setPlanes(mappedPlanes);
     } catch (error) {
       console.error("Error loading plans", error);
@@ -294,7 +327,9 @@ export function ModuloPlanesMejoramientoV4() {
         origen: formData.enteControl,
         documentoOrigen: formData.documentoOrigen,
         areaResponsable: formData.areaResponsable,
-        responsableNombre: formData.responsablePlan, // Save text name directly
+        responsableNombre: formData.responsablePlan,
+        severidad: formData.severidad,
+        estado: formData.estado,
         fechaInicio: formData.fechaInicio,
         fechaFinEstimada: formData.fechaFin,
         fechaRecepcion: formData.fechaRecepcion,
@@ -431,6 +466,42 @@ export function ModuloPlanesMejoramientoV4() {
   const handleVerDetalle = (planId: string) => {
     setPlanSeleccionadoId(planId);
     setModalDetalleAbierto(true);
+  };
+
+  // Exportar un plan individual en PDF o Excel
+  const handleExportarPlanIndividual = async (plan: PlanMejoramiento, formato: 'pdf' | 'excel') => {
+    const enteInfo = getEnteConfig(plan.enteControl);
+    const estadoInfo = getEstadoConfig(plan.estado);
+    const datos = {
+      codigo: plan.codigo,
+      titulo: plan.nombre,
+      enteControlNombre: enteInfo.nombre,
+      hallazgo: plan.descripcion,
+      documentoOrigen: plan.documentoOrigen,
+      severidad: plan.severidad || 'MEDIO',
+      responsable: plan.responsablePlan,
+      areaResponsable: plan.area,
+      estadoNombre: estadoInfo.nombre,
+      avancePorcentaje: plan.avanceGeneral,
+      fechaRecepcion: plan.fechaRecepcion,
+      fechaRespuesta: plan.fechaRespuesta,
+      fechaInicio: plan.fechaInicio,
+      fechaFinEstimada: plan.fechaFin,
+      fechaCierreReal: plan.fechaCierreReal,
+      acciones: plan.hallazgos,
+    };
+    try {
+      if (formato === 'pdf') {
+        const filename = exportarPlanIndividualPDF(datos);
+        toast.success('Plan exportado en PDF', { description: filename });
+      } else {
+        const filename = await exportarPlanIndividualExcel(datos);
+        toast.success('Plan exportado en Excel', { description: filename });
+      }
+    } catch (err) {
+      console.error('Error exportando plan individual:', err);
+      toast.error(`Error al exportar en ${formato.toUpperCase()}`);
+    }
   };
 
   // Export all plans to PDF ZIP
@@ -685,6 +756,8 @@ export function ModuloPlanesMejoramientoV4() {
                 onTogglePlan={togglePlan}
                 onVerDetalle={handleVerDetalle}
                 onArchivar={canMutatePlanesMejoramiento ? handleArchivar : undefined}
+                onExportarPdf={(plan) => handleExportarPlanIndividual(plan, 'pdf')}
+                onExportarExcel={(plan) => handleExportarPlanIndividual(plan, 'excel')}
               />
             )}
             {tipoVista === 'timeline' && (
@@ -897,16 +970,31 @@ export function ModuloPlanesMejoramientoV4() {
                     <label className="block text-sm font-semibold text-gray-700 mb-1">
                       Estado Inicial <span className="text-red-500">*</span>
                     </label>
-                    <Select required defaultValue="FORMULACION"
-                      value={formData.estado} onValueChange={val => setFormData({ ...formData, estado: val })}>
+                    <Select required value={formData.estado} onValueChange={val => setFormData({ ...formData, estado: val })}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="z-[9999]">
-                        <SelectItem value="FORMULACION">📝 En Formulación</SelectItem>
                         <SelectItem value="EN_EJECUCION">⚡ En Ejecución</SelectItem>
+                        <SelectItem value="FORMULACION">📝 En Formulación</SelectItem>
                         <SelectItem value="COMPLETADO">✅ Completado</SelectItem>
                         <SelectItem value="SUSPENDIDO">⏸️ Suspendido</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Severidad del Hallazgo
+                    </label>
+                    <Select value={formData.severidad} onValueChange={val => setFormData({ ...formData, severidad: val })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="z-[9999]">
+                        <SelectItem value="CRITICO">🔴 Crítica</SelectItem>
+                        <SelectItem value="ALTO">🟠 Alta</SelectItem>
+                        <SelectItem value="MEDIO">🟡 Media</SelectItem>
+                        <SelectItem value="BAJO">🟢 Baja</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1202,15 +1290,18 @@ function VistaLista({
   planes,
   expandedPlans,
   onTogglePlan,
-
   onVerDetalle,
-  onArchivar
+  onArchivar,
+  onExportarPdf,
+  onExportarExcel,
 }: {
   planes: PlanMejoramiento[];
   expandedPlans: Set<string>;
   onTogglePlan: (id: string) => void;
   onVerDetalle?: (id: string) => void;
   onArchivar?: (id: string) => void;
+  onExportarPdf?: (plan: PlanMejoramiento) => void;
+  onExportarExcel?: (plan: PlanMejoramiento) => void;
 }) {
   const getEnteConfig = useEnteConfig();
   return (
@@ -1275,10 +1366,10 @@ function VistaLista({
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <div className="text-center hidden sm:block">
                     <div className="text-2xl font-black" style={{ color: enteConfig.color }}>
-                      {plan.avanceGeneral}%
+                      {formatearPorcentaje(plan.avanceGeneral)}
                     </div>
                     <div className="text-xs text-gray-500">
-                      {plan.accionesCompletadas}/{plan.totalAcciones}
+                      {plan.accionesCompletadas}/{plan.totalAcciones} acciones
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
@@ -1293,6 +1384,16 @@ function VistaLista({
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onVerDetalle?.(plan.id); }}>
                             <Eye className="w-4 h-4 mr-2" /> Ver Detalle
                           </DropdownMenuItem>
+                          {onExportarPdf && (
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onExportarPdf(plan); }}>
+                              <Download className="w-4 h-4 mr-2 text-red-600" /> Exportar PDF
+                            </DropdownMenuItem>
+                          )}
+                          {onExportarExcel && (
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onExportarExcel(plan); }}>
+                              <FileSpreadsheet className="w-4 h-4 mr-2 text-emerald-600" /> Exportar Excel
+                            </DropdownMenuItem>
+                          )}
                           {onArchivar && (
                             <>
                               <DropdownMenuSeparator />
@@ -1319,57 +1420,92 @@ function VistaLista({
               </div>
             </div>
 
-            {/* Detalles Expandidos: Hallazgos y Acciones */}
+            {/* Detalles Expandidos: Acciones PHVA */}
             {isExpanded && (
               <div className="border-t bg-gray-50 p-4">
-                <h4 className="text-sm font-black text-gray-900 mb-3">
-                  📋 Hallazgos y Acciones de Mejora ({plan.hallazgos.length})
-                </h4>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <h4 className="text-sm font-black text-gray-900">
+                    📋 Acciones de Mejora PHVA ({plan.accionesCompletadas}/{plan.hallazgos.length} ejecutadas)
+                  </h4>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={(e) => { e.stopPropagation(); onVerDetalle?.(plan.id); }}
+                  >
+                    <Eye className="w-3.5 h-3.5 mr-1" /> Gestionar acciones
+                  </Button>
+                </div>
                 {plan.hallazgos.length === 0 ? (
                   <div className="text-center p-4">
-                    <p className="text-sm text-gray-500">No hay hallazgos registrados para este plan.</p>
+                    <p className="text-sm text-gray-500">No hay acciones registradas para este plan.</p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {plan.hallazgos.map(h => (
-                      <div key={h.id} className="bg-white border rounded-lg p-3">
-                        <div className="flex items-start gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <p className="font-bold text-sm text-gray-900 truncate">{h.nombre}</p>
-                              <Badge
-                                className={`font-bold text-xs flex-shrink-0 ${
-                                  h.porcentajeAvance >= 100 ? 'bg-green-100 text-green-700' :
-                                  h.porcentajeAvance >= 70 ? 'bg-blue-100 text-blue-700' :
-                                  h.porcentajeAvance >= 30 ? 'bg-amber-100 text-amber-700' :
-                                  'bg-red-100 text-red-700'
-                                }`}
-                              >
-                                {h.porcentajeAvance}%
-                              </Badge>
-                            </div>
-                            {h.descripcion && (
-                              <p className="text-xs text-gray-600 mb-2">{h.descripcion}</p>
-                            )}
-                            <Progress value={h.porcentajeAvance} className="h-1.5" />
-                            {h.archivoUrl && (
-                              <div className="mt-2">
-                                <a
-                                  href={legalService.getPlanFileViewUrl(h.archivoUrl.replace(/^files\//, ''))}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                                  onClick={(e) => e.stopPropagation()}
+                  <div className="space-y-2.5">
+                    {plan.hallazgos.map(h => {
+                      const faseCfg = PHVA_CONFIG[h.fasePhva];
+                      const ejecutada = h.estado === 'EJECUTADA';
+                      return (
+                        <div key={h.id} className="bg-white border rounded-lg p-3">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <Badge
+                                    style={{
+                                      backgroundColor: faseCfg.bgColor,
+                                      color: faseCfg.color,
+                                      borderColor: faseCfg.borderColor,
+                                    }}
+                                    className="text-[11px] font-bold border"
+                                  >
+                                    {faseCfg.etiqueta}
+                                  </Badge>
+                                  <Badge className="text-[11px] font-bold bg-slate-100 text-slate-700">
+                                    Peso: {formatearPorcentaje(h.pesoPorcentual)}
+                                  </Badge>
+                                  <p className="font-bold text-sm text-gray-900 break-words">{h.nombre}</p>
+                                </div>
+                                <Badge
+                                  className={`font-bold text-xs flex-shrink-0 ${
+                                    ejecutada ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                  }`}
                                 >
-                                  <FileText className="w-3 h-3" />
-                                  {h.archivoNombre || 'Ver documento adjunto'}
-                                </a>
+                                  {ejecutada ? 'Ejecutada' : 'Pendiente'}
+                                </Badge>
                               </div>
-                            )}
+                              {h.descripcion && (
+                                <p className="text-xs text-gray-600 mb-1.5">{h.descripcion}</p>
+                              )}
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                                {h.responsable && <span>👤 {h.responsable}</span>}
+                                {h.fechaLimite && <span>📅 Límite: {formatearFecha(h.fechaLimite)}</span>}
+                                {ejecutada && h.fechaEjecucion && (
+                                  <span className="text-emerald-700 font-medium">
+                                    ✅ Ejecutada: {formatearFecha(h.fechaEjecucion)}
+                                  </span>
+                                )}
+                              </div>
+                              {h.archivoUrl && (
+                                <div className="mt-1.5">
+                                  <a
+                                    href={legalService.getPlanFileViewUrl(h.archivoUrl.replace(/^files\//, ''))}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <FileText className="w-3 h-3" />
+                                    {h.archivoNombre || 'Ver documento adjunto'}
+                                  </a>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1453,11 +1589,28 @@ function VistaTimeline({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; o
                     <div className="flex items-center gap-4 text-xs text-gray-600 flex-wrap">
                       <div>📅 Vence: {formatearFecha(plan.fechaFin)}</div>
                       <div>👤 {plan.responsablePlan}</div>
-                      <div>✅ {plan.avanceGeneral}%</div>
+                      <div>✅ {formatearPorcentaje(plan.avanceGeneral)} ({plan.accionesCompletadas}/{plan.totalAcciones} acciones)</div>
                       <div style={{ color: colorSemaforo, fontWeight: 600 }}>
                         {diasRestantes > 0 ? `${diasRestantes} días restantes` : `Vencido hace ${Math.abs(diasRestantes)} días`}
                       </div>
                     </div>
+                    {plan.seguimientos.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-200 space-y-1">
+                        {plan.seguimientos.slice(0, 3).map((seg) => (
+                          <div key={seg.id} className="text-xs text-gray-600 flex items-start gap-2">
+                            <span className="font-semibold text-[#003DA5] flex-shrink-0">
+                              [{formatearPorcentaje(seg.porcentajeReportado)}]
+                            </span>
+                            <span className="break-words flex-1">{seg.descripcionAvance}</span>
+                            {seg.createdAt && (
+                              <span className="text-[11px] text-gray-400 flex-shrink-0">
+                                {formatearFecha(seg.createdAt)}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Acciones */}

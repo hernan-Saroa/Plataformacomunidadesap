@@ -2,6 +2,7 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ChatbotModule } from './ChatbotModule';
+import { chatbotProcesses } from './chatbotProcesses';
 import { getTransientChat } from '../state/transientChat';
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -17,7 +18,7 @@ afterEach(() => { cleanup();vi.unstubAllGlobals();vi.restoreAllMocks(); });
 
 it.each(['authenticated', 'public'] as const)('abre en modo %s sin pedir historial, permisos ni autenticación', async mode => {
   render(component({mode,userId:'alice',initialConversationId:'old-conversation',onLogin:vi.fn()}));
-  expect(screen.getByText('¿En qué puedo orientarte hoy?')).toBeTruthy();
+  expect(screen.getByRole('heading', { name: /Hola.*asistente virtual de la ESAP/ })).toBeTruthy();
   expect(screen.queryByRole('button',{name:'Historial'})).toBeNull();
   expect(screen.queryByRole('button',{name:'Iniciar sesión'})).toBeNull();
   expect(fetchMock).not.toHaveBeenCalled();
@@ -91,8 +92,111 @@ it('nueva conversación limpia las vistas compartidas y enfoca la entrada', asyn
 
 it('las sugerencias llenan el campo y no envían consultas automáticamente', () => {
   render(component({isWidget:true}));
-  fireEvent.click(screen.getByRole('button',{name:/^Viáticos/}));
+  fireEvent.click(screen.getByRole('button',{name:'Gestión Financiera'}));
+  fireEvent.click(screen.getByRole('button',{name:/legalizo viáticos/}));
   expect(input().value).toContain('legalizo viáticos');expect(document.activeElement).toBe(input());
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it('saluda y permite consultar las preguntas frecuentes de los 17 procesos sin llamadas al servidor', () => {
+  render(component());
+  expect(screen.getByRole('heading', { name: /Hola.*asistente virtual de la ESAP/ })).toBeTruthy();
+  const menu = () => within(screen.getByRole('navigation', { name: 'Procesos institucionales' }));
+  expect(menu().getAllByRole('button')).toHaveLength(17);
+  for (const { name, questions } of chatbotProcesses) {
+    fireEvent.click(menu().getByRole('button', { name }));
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name }));
+    const suggestions = within(screen.getByRole('list', { name: 'Preguntas frecuentes' }));
+    expect(suggestions.getAllByRole('button').map((button) => button.textContent)).toEqual([...questions]);
+    expect(input().disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Volver al menú' }));
+  }
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it('permite editar una FAQ antes de enviarla y volver al menú con el borrador y la conversación en memoria', async () => {
+  render(component());
+  fireEvent.click(screen.getByRole('button', { name: 'Gestión del Talento Humano' }));
+  fireEvent.click(screen.getByRole('button', { name: '¿Cómo solicito un certificado laboral?' }));
+  const question = '¿Cómo solicito un certificado laboral como exfuncionario?';
+  send(question);
+  await screen.findByText(/Respuesta del servicio/);
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ contenido: question });
+  fireEvent.change(input(), { target: { value: 'Borrador conservado' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Volver al menú' }));
+  expect(screen.getByRole('navigation', { name: 'Procesos institucionales' })).toBeTruthy();
+  expect(input().value).toBe('Borrador conservado');
+  fireEvent.click(screen.getByRole('button', { name: 'Ver conversación' }));
+  expect(screen.getByText(/Respuesta del servicio/)).toBeTruthy();
+  expect(document.activeElement).toBe(screen.getByRole('region', { name: 'Conversación' }));
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it('ampliar deja el seguimiento editable y usa el mismo envío con el contexto anterior', async () => {
+  render(component());
+  const question = '¿Cómo solicito un certificado laboral?';
+  send(question);
+  await screen.findByText(/Respuesta del servicio/);
+  fireEvent.click(screen.getByRole('button', { name: 'Ampliar información' }));
+  expect(input().value).toBe('Requisitos');
+  expect(document.activeElement).toBe(input());
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ respuesta: 'Detalle documental de requisitos' }) });
+  fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+  expect(fetchMock.mock.calls[1][1]).toMatchObject({
+    credentials: 'omit',
+    body: JSON.stringify({ contenido: 'Requisitos', historial: [{ pregunta: question, respuesta: 'Respuesta del servicio' }] }),
+  });
+  await screen.findByText('Detalle documental de requisitos');
+  fireEvent.click(screen.getByRole('button', { name: 'Ampliar información' }));
+  expect(input().value).toBe('Soportes');
+});
+
+it('mantiene el tema al ampliar varias veces y avisa cuando el servidor repite la guía o pide el tema', async () => {
+  render(component());
+  const question = '¿Cómo solicito un certificado laboral?';
+  send(question);
+  await screen.findByText(/Respuesta del servicio/);
+  const clarification = 'Puedo orientarte sobre la plataforma y los documentos de ESAP. Indícame el módulo, el trámite o el código del documento que necesitas consultar.';
+  for (const [index, aspect] of ['Requisitos', 'Soportes', 'Plazos'].entries()) {
+    fetchMock.mockResolvedValueOnce({ ok:true, json:async () => ({ respuesta:index === 0 ? 'Respuesta del servicio' : clarification }) });
+    fireEvent.click(screen.getByRole('button', { name: 'Ampliar información' }));
+    expect(input().value).toBe(aspect);
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+    await waitFor(() => expect(screen.getAllByText(/No tengo detalles adicionales/)).toHaveLength(index + 1));
+    expect(JSON.parse(fetchMock.mock.calls[index + 1][1].body)).toEqual({
+      contenido: aspect,
+      historial: [{ pregunta: question, respuesta: 'Respuesta del servicio' }],
+    });
+  }
+  expect(screen.getAllByText(/Respuesta del servicio/)).toHaveLength(1);
+});
+
+it('ampliar conserva un borrador escrito y respeta la edición antes del envío', async () => {
+  render(component());
+  send('¿Cómo solicito un certificado laboral?');
+  await screen.findByText(/Respuesta del servicio/);
+  const draft = '¿Qué ocurre si falla la verificación por correo?';
+  fireEvent.change(input(), { target: { value: draft } });
+  fireEvent.click(screen.getByRole('button', { name: 'Ampliar información' }));
+  expect(input().value).toBe(draft);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body).contenido).toBe(draft);
+  await screen.findByText(draft);
+});
+
+it('conserva el proceso seleccionado al abrir la otra vista y lo limpia con una nueva conversación', () => {
+  const view = render(component({isWidget:true}));
+  fireEvent.click(screen.getByRole('button', { name: 'Transformación Digital' }));
+  fireEvent.click(screen.getByRole('button', { name: /soporte tecnológico/ }));
+  view.unmount();
+  render(component());
+  expect(screen.getByRole('heading', { name: 'Transformación Digital' })).toBeTruthy();
+  expect(input().value).toContain('soporte tecnológico');
+  fireEvent.click(screen.getByRole('button', { name: 'Nueva conversación' }));
+  expect(screen.getByRole('navigation', { name: 'Procesos institucionales' })).toBeTruthy();
+  expect(input().value).toBe('');
   expect(fetchMock).not.toHaveBeenCalled();
 });
 

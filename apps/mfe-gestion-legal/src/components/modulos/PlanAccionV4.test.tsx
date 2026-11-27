@@ -26,6 +26,11 @@ vi.mock('../config/PermisosContext', () => ({
   usePermisos: () => ({ usuario: null }),
   PERMISOS: {},
 }));
+let mockEjesConfigurados: any[] | undefined = undefined;
+vi.mock('../config/ConfiguracionesSIGLContext', () => ({
+  useConfiguracionesSIGLOpcional: () =>
+    mockEjesConfigurados ? { ejesEstrategicos: mockEjesConfigurados } : undefined,
+}));
 // Los modales de CRUD requieren providers ajenos a lo que se prueba aquí.
 vi.mock('./ModalNuevoIndicador', () => ({ ModalNuevoIndicador: () => null }));
 vi.mock('./ModalEditarIndicador', () => ({ ModalEditarIndicador: () => null }));
@@ -77,6 +82,7 @@ const metrica = (label: string) => screen.getByText(label).parentElement!.textCo
 describe('ModuloPlanAccionV4 · filtros Eje / Estado', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockEjesConfigurados = undefined;
     vi.mocked(legalService.getPeiDashboard).mockResolvedValue({ indicadores: backend } as any);
   });
 
@@ -196,5 +202,65 @@ describe('ModuloPlanAccionV4 · filtros Eje / Estado', () => {
     await seleccionarOpcion(user, /Filtro Ejes/, /Talento Humano/);
     expect(screen.getByText('Capacitación Docente')).toBeInTheDocument();
     expect(screen.queryByText('Eficiencia Procesal')).not.toBeInTheDocument();
+  });
+});
+
+describe('ModuloPlanAccionV4 · Ejes Estratégicos configurados (Bug 2414)', () => {
+  const ejesPersonalizados = [
+    { id: 'GESTION_INSTITUCIONAL', nombre: 'Gestión Administrativa e institucional', icono: '🏛️', descripcion: 'Admin', color: '#003DA5', activo: true, orden: 1 },
+    { id: 'TALENTO_HUMANO', nombre: 'Gestión Humana', icono: '👥', descripcion: 'GH', color: '#F57C00', activo: true, orden: 2 },
+    { id: 'TRANSPARENCIA', nombre: 'Transparencia', icono: '🔍', descripcion: 'T', color: '#10B981', activo: false, orden: 3 },
+    { id: 'TECNOLOGIA', nombre: 'OTIC', icono: '💻', descripcion: 'Tech', color: '#7C3AED', activo: true, orden: 4 },
+    { id: 'eje-custom-1', nombre: 'Innovación Pública', icono: '🚀', descripcion: 'Nuevo', color: '#E11D48', activo: true, orden: 5 },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockEjesConfigurados = ejesPersonalizados;
+    vi.mocked(legalService.getPeiDashboard).mockResolvedValue({
+      indicadores: [
+        ind(1, 'Eficiencia Procesal', 'GESTION', 80),
+        ind(2, 'Bienestar Laboral', 'TALENTO', 90),
+        ind(3, 'Transformación Digital', 'TECNOLOGIA', 100),
+        ind(4, 'Laboratorio GovTech', 'eje-custom-1', 60),
+      ],
+    } as any);
+  });
+
+  it('muestra los nombres actualizados y ejes nuevos en la pantalla inicial (Vista Lista) y en el filtro', async () => {
+    const user = userEvent.setup();
+    render(<ModuloPlanAccionV4 />);
+    expect(await screen.findByText('Gestión Administrativa e institucional')).toBeInTheDocument();
+    expect(screen.getByText('Gestión Humana')).toBeInTheDocument();
+    expect(screen.getByText('OTIC')).toBeInTheDocument();
+    expect(screen.getByText('Innovación Pública')).toBeInTheDocument();
+    expect(screen.getByText('Laboratorio GovTech')).toBeInTheDocument();
+    // Los nombres viejos no deben aparecer
+    expect(screen.queryByText('Gestión Institucional')).not.toBeInTheDocument();
+    expect(screen.queryByText('Talento Humano')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tecnología')).not.toBeInTheDocument();
+    // El eje inactivo sin indicadores no aparece en la vista inicial
+    expect(screen.queryByText('Transparencia')).not.toBeInTheDocument();
+
+    // El filtro de ejes refleja los nombres actualizados y el eje nuevo
+    await seleccionarOpcion(user, /Filtro Ejes/, /Innovación Pública/);
+    expect(screen.getByText('Laboratorio GovTech')).toBeInTheDocument();
+    expect(screen.queryByText('Eficiencia Procesal')).not.toBeInTheDocument();
+  });
+
+  it('refleja los ejes actualizados y personalizados en Dashboard y Matriz', async () => {
+    const user = userEvent.setup();
+    render(<ModuloPlanAccionV4 />);
+    await screen.findByText('Total Indicadores');
+
+    await user.click(screen.getByRole('button', { name: /Dashboard/ }));
+    expect(screen.getByTestId('eje-card-GESTION_INSTITUCIONAL')).toHaveTextContent('Gestión Administrativa e institucional');
+    expect(screen.getByTestId('eje-card-TECNOLOGIA')).toHaveTextContent('OTIC');
+    expect(screen.getByTestId('eje-card-eje-custom-1')).toHaveTextContent('Innovación Pública');
+
+    await user.click(screen.getByRole('button', { name: /Matriz/ }));
+    expect(screen.getByText('Gestión Administrativa e institucional')).toBeInTheDocument();
+    expect(screen.getByText('OTIC')).toBeInTheDocument();
+    expect(screen.getByText('Innovación Pública')).toBeInTheDocument();
   });
 });
