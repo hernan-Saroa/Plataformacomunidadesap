@@ -433,6 +433,12 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     programaAnualMetadata: auditoriaBackend.programaAnualMetadata,
     supervisorAsignadoId: auditoriaBackend.supervisorAsignadoId || '',
     vinculadaPlanAnual: auditoriaBackend.vinculadaPlanAnual || true,
+    // Sin estos campos el editar abría con las dependencias sin marcar y la metodología vacía,
+    // y al guardar otra vez se borraban
+    procesoAuditado: auditoriaBackend.procesoAuditado || '',
+    unidadesAuditables: Array.isArray(auditoriaBackend.unidadesAuditables) ? auditoriaBackend.unidadesAuditables : [],
+    dependenciasAuditadas: Array.isArray(auditoriaBackend.dependenciasAuditadas) ? auditoriaBackend.dependenciasAuditadas : [],
+    metodologia: auditoriaBackend.metodologia || '',
   };
 }
 

@@ -1527,15 +1527,9 @@ export class AuditoriasService {
     if (createDto.areaObjetivo) auditoriaData.areaObjetivo = createDto.areaObjetivo;
     if (createDto.procesoAuditado) auditoriaData.procesoAuditado = createDto.procesoAuditado;
     if (createDto.alcance) auditoriaData.alcance = createDto.alcance;
-    // Metodología se puede guardar en observaciones si no hay un campo específico
-    if (createDto.metodologia) {
-      // Si ya hay observaciones, concatenar metodología
-      if (createDto.observacionesAdicionales) {
-        auditoriaData.observacionesAdicionales = `${createDto.observacionesAdicionales}\n\nMetodología:\n${createDto.metodologia}`;
-      } else {
-        auditoriaData.observacionesAdicionales = `Metodología:\n${createDto.metodologia}`;
-      }
-    } else if (createDto.observacionesAdicionales) {
+    // La metodología tiene su columna: antes se pegaba a las observaciones y el editar no la encontraba
+    if (createDto.metodologia) auditoriaData.metodologia = createDto.metodologia;
+    if (createDto.observacionesAdicionales) {
       auditoriaData.observacionesAdicionales = createDto.observacionesAdicionales;
     }
     if (createDto.nivelRiesgo) auditoriaData.calificacionRiesgo = createDto.nivelRiesgo;
@@ -1888,6 +1882,9 @@ export class AuditoriasService {
     }
     if (updateDto.dependenciasAuditadas !== undefined) {
       auditoria.dependenciasAuditadas = updateDto.dependenciasAuditadas;
+    }
+    if (updateDto.metodologia !== undefined) {
+      auditoria.metodologia = updateDto.metodologia.trim() || null;
     }
     if (updateDto.periodoInicio !== undefined) {
       auditoria.periodoInicio = updateDto.periodoInicio
@@ -3036,6 +3033,7 @@ export class AuditoriasService {
               alcance: auditoria.alcance || '',
               unidadesAuditables: auditoria.unidadesAuditables || [],
               dependenciasAuditadas: auditoria.dependenciasAuditadas || [],
+              metodologia: auditoria.metodologia || '',
               observacionesAdicionales: auditoria.observacionesAdicionales || '', // ✅ CAMPO AGREGADO
               programaAnualMetadata: auditoria.programaAnualMetadata || undefined, // Incluir metadata del programa anual
               // ✅ RESPONSABLE DEL ÁREA AUDITADA — campos reales de la BD
