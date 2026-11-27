@@ -35,6 +35,7 @@ import { createGraduateImportSession } from '../utils/graduateBulkImportSession'
 import type {
   GraduateExportProgress,
   GraduateImportSummary,
+  GraduatePreviewFilter,
   GraduatePreviewPage,
   GraduatePreviewRow,
   GraduateValidationProgress,
@@ -64,6 +65,11 @@ const DISPLAYED_IMPORT_ERRORS = 8;
 type ImportResult = Omit<BulkCreateGraduadosResponse, 'created'>;
 type UploadOperation = 'validation' | 'import' | 'export';
 const rowCountFormat = new Intl.NumberFormat('es-CO');
+const PREVIEW_FILTERS = [
+  { value: 'all', label: 'Todos' },
+  { value: 'errors', label: 'Con errores' },
+  { value: 'ready', label: 'Listos para crear' },
+] as const;
 
 const PREVIEW_COLUMNS: Array<{
   key: FieldKey;
@@ -606,19 +612,21 @@ export function BulkGraduatesUploadModal({
     void parseFile(file);
   };
 
-  const handlePreviewPageChange = useCallback(async (pageNumber: number) => {
+  const handlePreviewPageChange = useCallback(async (pageNumber: number, filter: GraduatePreviewFilter) => {
     const session = sessionRef.current;
     const currentPage = importSummary?.page;
     if (!session || !currentPage || operationRef.current || loadingPageRef.current !== null) return;
+    const filterChanged = currentPage.filter !== filter;
+    const maximumPage = filterChanged ? 1 : currentPage.totalPages;
     if (
       !Number.isInteger(pageNumber) || pageNumber < 1 ||
-      pageNumber > currentPage.totalPages || pageNumber === currentPage.number
+      pageNumber > maximumPage || (!filterChanged && pageNumber === currentPage.number)
     ) return;
 
     loadingPageRef.current = pageNumber;
     setLoadingPage(pageNumber);
     try {
-      const page = await session.getPreviewPage(pageNumber);
+      const page = await session.getPreviewPage(pageNumber, filter);
       if (sessionRef.current !== session) return;
       setImportSummary((current) => current && { ...current, page });
     } catch (error) {
@@ -870,6 +878,7 @@ export function BulkGraduatesUploadModal({
             <GraduateImportPreview
               page={importSummary.page}
               totalRows={totalRows}
+              validCount={validCount}
               loadingPage={loadingPage}
               isBusy={isBusy}
               isExporting={isExporting}
@@ -975,6 +984,7 @@ export function BulkGraduatesUploadModal({
 const GraduateImportPreview = memo(function GraduateImportPreview({
   page,
   totalRows,
+  validCount,
   loadingPage,
   isBusy,
   isExporting,
@@ -982,22 +992,24 @@ const GraduateImportPreview = memo(function GraduateImportPreview({
   scrollContainerRef,
   onPageChange,
   onExport,
-}: Pick<GraduateImportSummary, 'page' | 'totalRows'> & {
+}: Pick<GraduateImportSummary, 'page' | 'totalRows' | 'validCount'> & {
   loadingPage: number | null;
   isBusy: boolean;
   isExporting: boolean;
   exportProgress: GraduateExportProgress | null;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
-  onPageChange: (pageNumber: number) => void;
+  onPageChange: (pageNumber: number, filter: GraduatePreviewFilter) => void;
   onExport: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const previousPage = useRef(page.number);
+  const previousPage = useRef({ number: page.number, filter: page.filter });
+  const previewDisabled = isBusy || loadingPage !== null;
+  const filterCounts = { all: totalRows, errors: totalRows - validCount, ready: validCount };
 
   useLayoutEffect(() => {
-    if (previousPage.current === page.number) return;
-    previousPage.current = page.number;
+    if (previousPage.current.number === page.number && previousPage.current.filter === page.filter) return;
+    previousPage.current = { number: page.number, filter: page.filter };
     const panel = panelRef.current;
     const container = scrollContainerRef.current;
     if (!panel || !container) return;
@@ -1005,7 +1017,7 @@ const GraduateImportPreview = memo(function GraduateImportPreview({
     if (Math.abs(offset) > 1) {
       container.scrollTo({ top: container.scrollTop + offset, behavior: 'instant' });
     }
-  }, [page.number, scrollContainerRef]);
+  }, [page.number, page.filter, scrollContainerRef]);
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}>
@@ -1015,7 +1027,22 @@ const GraduateImportPreview = memo(function GraduateImportPreview({
           <p className="mt-1 text-xs leading-5 text-slate-600">
             Revise cada columna antes de crear. Las celdas marcadas en rojo indican exactamente qué dato debe corregirse en el archivo.
           </p>
-          <GraduatePreviewColumnsNavigation viewportRef={viewportRef} />
+          <div role="group" aria-label="Filtrar registros por estado" className={styles.previewFilters}>
+            {PREVIEW_FILTERS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                data-filter={value}
+                aria-pressed={page.filter === value}
+                disabled={previewDisabled}
+                onClick={() => onPageChange(1, value)}
+              >
+                {label}
+                <span aria-hidden="true">{rowCountFormat.format(filterCounts[value])}</span>
+              </button>
+            ))}
+          </div>
+          {page.rows.length > 0 && <GraduatePreviewColumnsNavigation viewportRef={viewportRef} />}
         </div>
         <div
           ref={viewportRef}
@@ -1025,16 +1052,23 @@ const GraduateImportPreview = memo(function GraduateImportPreview({
           tabIndex={0}
           className={styles.previewViewport}
         >
-          <GraduatePreviewTable rows={page.rows} />
+          {page.rows.length ? (
+            <GraduatePreviewTable rows={page.rows} />
+          ) : (
+            <p role="status" className={styles.previewEmpty}>
+              {page.filter === 'errors'
+                ? 'No hay registros con errores.'
+                : 'No hay registros listos para crear.'}
+            </p>
+          )}
         </div>
         {page.totalPages > 1 && (
           <div className={styles.previewFooter}>
             <GraduatePreviewPagination
               page={page}
-              totalRows={totalRows}
               loadingPage={loadingPage}
-              disabled={isBusy || loadingPage !== null}
-              onPageChange={onPageChange}
+              disabled={previewDisabled}
+              onPageChange={(pageNumber) => onPageChange(pageNumber, page.filter)}
             />
           </div>
         )}
@@ -1159,13 +1193,11 @@ const GraduatePreviewTable = memo(function GraduatePreviewTable({ rows }: { rows
 
 function GraduatePreviewPagination({
   page,
-  totalRows,
   loadingPage,
   disabled,
   onPageChange,
 }: {
   page: GraduatePreviewPage;
-  totalRows: number;
   loadingPage: number | null;
   disabled: boolean;
   onPageChange: (pageNumber: number) => void;
@@ -1188,7 +1220,7 @@ function GraduatePreviewPagination({
         <p role="status" className={styles.columnNavigationLabel}>
           {loadingPage !== null
             ? `Cargando página ${rowCountFormat.format(loadingPage)}…`
-            : `Registros ${rowCountFormat.format(page.startIndex + 1)} a ${rowCountFormat.format(page.startIndex + page.rows.length)} de ${rowCountFormat.format(totalRows)}`}
+            : `Registros ${rowCountFormat.format(page.startIndex + 1)} a ${rowCountFormat.format(page.startIndex + page.rows.length)} de ${rowCountFormat.format(page.totalRows)}`}
         </p>
         <p className="mt-1 text-xs text-gray-600">La carga incluye todos los registros válidos del archivo.</p>
       </div>

@@ -3,6 +3,7 @@ import type {
   GraduateExportProgress,
   GraduateImportRequest,
   GraduateImportResponse,
+  GraduatePreviewFilter,
   GraduateValidationProgress,
 } from './graduateBulkWorkbook';
 
@@ -81,8 +82,8 @@ export const createGraduateImportSession = (
       if (result.type !== 'validated') throw new Error('No se pudo validar el archivo.');
       return result.summary;
     },
-    async getPreviewPage(pageNumber: number) {
-      const result = await request({ type: 'preview', pageNumber });
+    async getPreviewPage(pageNumber: number, filter: GraduatePreviewFilter) {
+      const result = await request({ type: 'preview', pageNumber, filter });
       if (result.type !== 'preview') throw new Error('No se pudo consultar la página.');
       return result.page;
     },

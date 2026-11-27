@@ -195,7 +195,11 @@ describe('Carga masiva de Graduados independiente de PTA',()=>{
     expect(props.onOpenChange).not.toHaveBeenCalled();
     act(() => publish({
       type: 'validated',
-      summary: { totalRows: 23, validCount: 23, page: { number: 1, startIndex: 0, totalPages: 1, rows: [] } },
+      summary: {
+        totalRows: 23,
+        validCount: 23,
+        page: { filter: 'all', number: 1, startIndex: 0, totalRows: 23, totalPages: 1, rows: [] },
+      },
     }));
     expect(screen.queryByRole('progressbar')).toBeNull();
     expect((screen.getByRole('button', { name: 'Seleccionar archivo XLSX' }) as HTMLButtonElement).disabled).toBe(false);
@@ -296,6 +300,52 @@ describe('Carga masiva de Graduados independiente de PTA',()=>{
     expect(await screen.findByText('Registros 101 a 200 de 203')).toBeTruthy();
     expect(screen.getAllByRole('row')).toHaveLength(101);
     expect((screen.getByRole('button', { name: 'Crear 0 graduados' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Listos para crear' }));
+    expect(await screen.findByText('No hay registros listos para crear.')).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+    expect(await screen.findByText('Registros 1 a 100 de 203')).toBeTruthy();
+    expect(graduadosService.graduados.crearMasivo).not.toHaveBeenCalled();
+  });
+
+  it('filtra todo el archivo, conserva el orden original y reinicia la paginación al quitar el filtro', async () => {
+    const invalid = new Set([104, 154, 205]);
+    const rows = Array.from({ length: 206 }, (_, index) => ({
+      ...valid,
+      IDENTIFICACION: String(123450000 + index),
+      CORREO: invalid.has(index) ? 'inválido' : valid.CORREO,
+    }));
+    const file = graduateFile(XLSX.utils.json_to_sheet(rows));
+    render(<BulkGraduatesUploadModal open onOpenChange={() => {}} onImported={() => {}} programOptions={[valid.TITULO]} />);
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Página siguiente' }));
+    expect(await screen.findByText('Registros 101 a 200 de 206')).toBeTruthy();
+    const errorsFilter = screen.getByRole('button', { name: 'Con errores' });
+    fireEvent.click(errorsFilter);
+    await waitFor(() => expect(errorsFilter.getAttribute('aria-pressed')).toBe('true'));
+    expect(screen.getAllByRole('row').slice(1).map((row) => row.firstElementChild?.textContent))
+      .toEqual(['106', '156', '207']);
+    expect(screen.getAllByText('No se crea')).toHaveLength(3);
+    expect(screen.queryByRole('navigation', { name: 'Paginación de la vista previa' })).toBeNull();
+    expect((screen.getByRole('button', { name: 'Crear 203 graduados' }) as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Listos para crear' }));
+    expect(await screen.findByText('Registros 1 a 100 de 203')).toBeTruthy();
+    expect(screen.getAllByRole('row')).toHaveLength(101);
+    fireEvent.click(screen.getByRole('button', { name: 'Página siguiente' }));
+    expect(await screen.findByText('Registros 101 a 200 de 203')).toBeTruthy();
+    expect(screen.queryByText('No se crea')).toBeNull();
+    const pageInput = screen.getByRole('spinbutton', { name: 'Número de página' });
+    fireEvent.change(pageInput, { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ir a la página' }));
+    expect(await screen.findByText('Registros 201 a 203 de 203')).toBeTruthy();
+    expect(screen.getAllByRole('row').slice(1).map((row) => row.firstElementChild?.textContent))
+      .toEqual(['204', '205', '206']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+    expect(await screen.findByText('Registros 1 a 100 de 206')).toBeTruthy();
+    expect(screen.getAllByRole('row')).toHaveLength(101);
     expect(graduadosService.graduados.crearMasivo).not.toHaveBeenCalled();
   });
 
@@ -352,6 +402,8 @@ describe('Carga masiva de Graduados independiente de PTA',()=>{
     expect(pagination.compareDocumentPosition(report) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(report.contains(download)).toBe(true);
     expect(screen.getAllByRole('row')).toHaveLength(101);
+    fireEvent.click(screen.getByRole('button', { name: 'Con errores' }));
+    expect(await screen.findByText('Registros 1 a 100 de 102')).toBeTruthy();
     fireEvent.click(download);
 
     const exporting = await screen.findByRole('button', { name: 'Generando Excel…' }) as HTMLButtonElement;
@@ -406,7 +458,7 @@ describe('Carga masiva de Graduados independiente de PTA',()=>{
     const sheetDocument = new DOMParser().parseFromString(xml, 'application/xml');
     expect(sheetDocument.querySelector('autoFilter')?.getAttribute('ref')).toBe('A3:O208');
     expect(sheetDocument.querySelector('pane')?.getAttribute('ySplit')).toBe('3');
-    expect(workerRequests.mock.calls.map(([request]) => request.type)).toEqual(['validate', 'export']);
+    expect(workerRequests.mock.calls.map(([request]) => request.type)).toEqual(['validate', 'preview', 'export']);
     expect(screen.getAllByRole('row')).toHaveLength(101);
     expect((screen.getByRole('button', { name: 'Crear 103 graduados' }) as HTMLButtonElement).disabled).toBe(false);
     expect(graduadosService.graduados.crearMasivo).not.toHaveBeenCalled();
