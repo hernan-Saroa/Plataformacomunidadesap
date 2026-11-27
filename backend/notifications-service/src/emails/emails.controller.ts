@@ -9,19 +9,21 @@ import { SendEmailDto } from './dto/send-email.dto';
 export class EmailsController {
   constructor(private readonly emailsService: EmailsService) {}
 
+  // En las tres rutas: 202 cuando la configuración de notificaciones omite el correo del evento.
   @Post('api/v1/emails/validation-code')
-  async sendValidationCode(@Body() payload: SendValidationCodeDto) {
-    await this.emailsService.sendValidationCode(payload);
-    return { message: 'Código de validación enviado' };
+  async sendValidationCode(@Body() payload: SendValidationCodeDto, @Res({ passthrough: true }) res: Response) {
+    const resultado = await this.emailsService.enviarCodigoSiPermitido(payload);
+    if (resultado.omitida) res.status(202);
+    return resultado;
   }
 
   @Post('api/v1/emails/send-with-attachment')
-  async sendEmailWithAttachment(@Body() payload: SendEmailAttachmentDto) {
-    await this.emailsService.sendEmailWithAttachment(payload);
-    return { message: 'Correo con adjunto enviado' };
+  async sendEmailWithAttachment(@Body() payload: SendEmailAttachmentDto, @Res({ passthrough: true }) res: Response) {
+    const resultado = await this.emailsService.enviarAdjuntoSiPermitido(payload);
+    if (resultado.omitida) res.status(202);
+    return resultado;
   }
 
-  // 202 cuando la configuración de notificaciones omite el correo del evento
   @Post(['api/v1/emails/send', 'emails/send'])
   async sendEmail(@Body() payload: SendEmailDto, @Res({ passthrough: true }) res: Response) {
     const resultado = await this.emailsService.enviarSiPermitido(payload);

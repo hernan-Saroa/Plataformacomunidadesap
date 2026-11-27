@@ -341,7 +341,7 @@ export class AutoService {
       jefes.map(async (jefe) => {
         try {
           if (jefe.email) {
-            await this.enviarEmailDirecto(jefe.email, asunto, html, mensaje);
+            await this.enviarEmailDirecto(jefe.email, asunto, html, mensaje, 'AUTO_EN_REVISION');
           }
         } catch (err) {
           console.error(`Error enviando correo a Jefe ${jefe.id}:`, err);
@@ -1088,7 +1088,7 @@ export class AutoService {
         })
         .catch(() => {});
 
-      this.enviarCorreoNotificacion(radicadorAnterior, asuntoReasig, mensajeReasig).catch(() => {});
+      this.enviarCorreoNotificacion(radicadorAnterior, asuntoReasig, mensajeReasig, 'RADICADOR_AUTO_REASIGNADO').catch(() => {});
     }
 
     await this.enviarNotificacionesAprobacion(savedAuto, 'Sistema');
@@ -1519,7 +1519,7 @@ export class AutoService {
           })
           .catch(() => {});
 
-        this.enviarCorreoNotificacion(proceso.abogadoAsignadoId, asuntoReverso, mensajeReverso).catch(() => {});
+        this.enviarCorreoNotificacion(proceso.abogadoAsignadoId, asuntoReverso, mensajeReverso, 'AUTO_APROBACION_REVERSADA').catch(() => {});
       }
 
       // Notificar a todos los Radicadores por plataforma y correo
@@ -1678,7 +1678,7 @@ export class AutoService {
         .catch(() => {});
 
       // Correo al profesional
-      this.enviarCorreoNotificacion(proceso.abogadoAsignadoId, asunto, mensajeBase).catch(() => {});
+      this.enviarCorreoNotificacion(proceso.abogadoAsignadoId, asunto, mensajeBase, 'AUTO_APROBADO_RADICADOR').catch(() => {});
     }
 
     // Notificación al rol Radicador asociado al proceso y radicadores activos
@@ -1723,7 +1723,7 @@ export class AutoService {
 
       await Promise.all(
         radicadoresFiltrados.map((radicadorId) =>
-          this.enviarCorreoNotificacion(radicadorId, asuntoRadicador, mensajeRadicador).catch(() => {}),
+          this.enviarCorreoNotificacion(radicadorId, asuntoRadicador, mensajeRadicador, 'NUEVO_AUTO_RADICADOR').catch(() => {}),
         ),
       );
     }
@@ -1787,7 +1787,7 @@ export class AutoService {
           try {
             const datos = await this.resolverDestinatario(radicadorId);
             if (datos.email) {
-              await this.enviarEmailDirecto(datos.email, asunto, html, mensaje);
+              await this.enviarEmailDirecto(datos.email, asunto, html, mensaje, tipoNotificacion);
             }
           } catch (err) {
             console.error(`Error enviando correo a radicador ${radicadorId}:`, err);
@@ -1853,6 +1853,7 @@ export class AutoService {
     userIdOrProfId: string,
     asunto: string,
     mensaje: string,
+    evento: string,
     urlAcceso?: string,
     textoBoton?: string,
   ): Promise<void> {
@@ -1862,7 +1863,7 @@ export class AutoService {
       if (!email) return;
 
       const html = this.buildEmailTemplateAvisoESAP(asunto, mensaje, urlAcceso, textoBoton);
-      await this.enviarEmailDirecto(email, asunto, html, mensaje);
+      await this.enviarEmailDirecto(email, asunto, html, mensaje, evento);
     } catch (error) {
       console.error('Error enviando correo de notificación de auto:', error);
     }
@@ -1995,11 +1996,16 @@ export class AutoService {
     };
   }
 
+  /**
+   * `evento` es la misma clave que la campana del aviso: así la configuración de
+   * notificaciones (EFDS-2406) apaga el correo y la campana con un solo interruptor.
+   */
   private async enviarEmailDirecto(
     to: string,
     subject: string,
     html: string,
-    text?: string,
+    text: string | undefined,
+    evento: string,
   ): Promise<boolean> {
     try {
       const notificationsUrl =
@@ -2010,6 +2016,7 @@ export class AutoService {
       await firstValueFrom(
         this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
           modulo: MODULO_NOTIFICACIONES,
+          evento,
           to,
           subject,
           html,
@@ -2270,6 +2277,7 @@ export class AutoService {
               html,
               `El ${tipoAutoFormateado} del proceso ${proceso.radicadoProceso} ha sido devuelto por el Jefe OCID. ` +
                 `Motivo: ${motivoTexto}. Requiere las acciones correspondientes por parte del Profesional.`,
+              'AUTO_DEVUELTO',
             );
           }
         } catch (itemErr) {

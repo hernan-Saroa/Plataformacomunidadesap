@@ -42,6 +42,23 @@ describe('NotificationClientService (Viáticos) - configuración de notificacion
     expect(posts[3].body).toEqual({ to: 'b@esap.edu.co', subject: 'S', html: '<p>x</p>' });
   });
 
+  it('notifyUser y notifyByPermission mandan el correo con la misma clave que la campana', async () => {
+    const { service, posts } = armar();
+    const aviso = { tipo_notificacion: 'VIATICOS_RADICADA', titulo: 'Radicada', mensaje: 'M' };
+    const correo = { subject: 'Solicitud radicada', html: '<p>x</p>' } as any;
+    jest.spyOn(service, 'getRecipientByUserId').mockResolvedValue({ id: 'u1', email: 'persona@esap.edu.co' } as any);
+    jest.spyOn(service, 'getRecipientsByPermission').mockResolvedValue([{ id: 'u2', email: 'jefe@esap.edu.co' }] as any);
+
+    await service.notifyUser('u1', aviso, correo);
+    await service.notifyByPermission('viaticos.aprobar', aviso, correo);
+
+    const correos = posts.filter((p) => p.url.includes('/emails/send')).map((p) => p.body);
+    expect(correos).toEqual([
+      expect.objectContaining({ to: 'persona@esap.edu.co', evento: 'VIATICOS_RADICADA', modulo: 'viaticos' }),
+      expect.objectContaining({ to: 'jefe@esap.edu.co', evento: 'VIATICOS_RADICADA', modulo: 'viaticos' }),
+    ]);
+  });
+
   it('respaldo directo (send y sendMany): sin configuración inserta; módulo apagado registra la omisión', async () => {
     const libre = armar({ http: false });
     await libre.service.send(dto);

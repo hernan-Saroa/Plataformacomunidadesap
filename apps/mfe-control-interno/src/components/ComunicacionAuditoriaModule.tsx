@@ -319,6 +319,15 @@ interface DocExpedienteSimple {
   fase?: string;
 }
 
+
+/**
+ * El paso automático a Seguimiento se dispara desde un efecto. Al terminar se avisa al tablero, que
+ * vuelve a montar este módulo con el estado anterior y lo repetía (varias llamadas y avisos). Se
+ * recuerda aquí, fuera del componente, qué auditorías ya pasaron y cuáles están pasando.
+ */
+const comunicacionesFinalizadas = new Set<string>();
+const finalizacionesEnCurso = new Set<string>();
+
 export const ComunicacionAuditoriaModule: React.FC<{
   auditoriaId?: string;
   auditoriaInfo?: { codigo?: string; nombre?: string };
@@ -350,6 +359,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
     informePreliminarGenerado: boolean;
     hayControversiasPendientes: boolean;
     puedeGenerarInformeFinal: boolean;
+    /** Hallazgos vigentes (sin los retirados); 0 = no se exige plan de mejoramiento */
+    totalHallazgos?: number;
     conteo: { pendiente: number; aceptado: number; enControversia: number };
   } | null>(null);
   const [loading, setLoading] = useState(useAPI);
@@ -1011,22 +1022,26 @@ export const ComunicacionAuditoriaModule: React.FC<{
   // Estados que BLOQUEAN: borrador | revision | rechazado | vencido | null
   const ESTADOS_PLAN_APROBADOS = ['aprobado', 'en_ejecucion', 'completado'];
   const planAprobado = planCreado && planEstado !== null && ESTADOS_PLAN_APROBADOS.includes(planEstado);
+  // Sin hallazgos no hay plan de mejoramiento que crear (EFDS-2503): no se exige para finalizar.
+  // Si el servidor no manda el conteo, se sigue exigiendo el plan.
+  const sinHallazgos = estadoComunicacion?.totalHallazgos === 0;
+  const planListo = planAprobado || sinHallazgos;
 
   const progreso = useMemo(() => {
     let c = 0;
     if (estadoComunicacion?.informePreliminarGenerado) c++;
     if (!estadoComunicacion?.hayControversiasPendientes) c++;
     if (informeFinal.generado) c++;
-    if (planAprobado) c++;  // ← ahora exige aprobación
+    if (planListo) c++;  // ← exige aprobación, salvo que no haya hallazgos
     return Math.round((c / 4) * 100);
-  }, [estadoComunicacion, informeFinal.generado, planAprobado]);
+  }, [estadoComunicacion, informeFinal.generado, planListo]);
 
   const puedeAvanzar = useMemo(() => {
     return (estadoComunicacion?.informePreliminarGenerado ?? false) &&
            !estadoComunicacion?.hayControversiasPendientes &&
            informeFinal.generado &&
-           planAprobado;  // ← bloquea si el plan está en borrador/revisión
-  }, [estadoComunicacion, informeFinal.generado, planAprobado]);
+           planListo;  // ← bloquea si el plan está en borrador/revisión (sin hallazgos no se exige)
+  }, [estadoComunicacion, informeFinal.generado, planListo]);
 
   // Texto de estado del plan para mostrar en UI
   const planEstadoTexto: Record<string, { label: string; color: string; descripcion: string }> = {
@@ -1172,15 +1187,21 @@ export const ComunicacionAuditoriaModule: React.FC<{
       return;
     }
 
+    if (finalizacionesEnCurso.has(id)) return;
+    finalizacionesEnCurso.add(id);
+
     if (useAPI) {
       try {
         await controlInternoService.updateEstadoKanbanAuditoria(id, 'Seguimiento');
+        comunicacionesFinalizadas.add(id);
         toast.success('Fase de Comunicación completada. Continúe con Verificación de Cumplimiento e Informe de Cierre.');
         setPasamosASeguimiento(true);
         setSeccionActual(5);
         onComunicacionCompletada?.();
       } catch (err: any) {
         toast.error(err?.message || 'Error al finalizar la comunicación');
+      } finally {
+        finalizacionesEnCurso.delete(id);
       }
     } else {
       toast.success('Fase de Comunicación completada. Continúe con Verificación e Informe de Cierre.');
@@ -1193,10 +1214,11 @@ export const ComunicacionAuditoriaModule: React.FC<{
   // Autoguardar el avance a Seguimiento cuando se cumplan las condiciones (Plan creado y finalizado)
   useEffect(() => {
     if (auditoriaFinalizada) return;
+    if (comunicacionesFinalizadas.has(id)) return;
     if (puedeAvanzar && !enSeguimiento && !pasamosASeguimiento) {
       handleFinalizarComunicacion();
     }
-  }, [auditoriaFinalizada, puedeAvanzar, enSeguimiento, pasamosASeguimiento, handleFinalizarComunicacion]);
+  }, [auditoriaFinalizada, puedeAvanzar, enSeguimiento, pasamosASeguimiento, handleFinalizarComunicacion, id]);
 
   // ====================================
   // RENDER
@@ -1313,7 +1335,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 { id: 1, nombre: 'Informe Preliminar', icono: FileText, completado: informePreliminar.generado },
                 { id: 2, nombre: 'Respuesta y Análisis', icono: MessageSquare, completado: !estadoComunicacion?.hayControversiasPendientes },
                 { id: 3, nombre: 'Informe Final', icono: FileCheck, completado: informeFinal.generado },
-                { id: 4, nombre: 'Plan de Mejoramiento', icono: ClipboardCheck, completado: planCompleto },
+                { id: 4, nombre: 'Plan de Mejoramiento', icono: ClipboardCheck, completado: planCompleto || (sinHallazgos && !planCreado) },
               ].map((seccion, index) => {
                 const seccion1Completa = informePreliminar.generado;
                 const seccion2Completa = !estadoComunicacion?.hayControversiasPendientes;
@@ -1413,6 +1435,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 planAprobado={planAprobado}
                 onCrearPlanMejoramiento={handleCrearPlanMejoramiento}
                 hallazgosCount={hallazgos.filter(h => h.estado !== 'retirado').length}
+                sinHallazgos={sinHallazgos}
                 onIrAPlan={handleIrAVerPlan}
               />
             )}
@@ -1605,8 +1628,12 @@ export const ComunicacionAuditoriaModule: React.FC<{
               <h3 className="font-semibold text-gray-900 mb-1">¿Listo para finalizar la comunicación?</h3>
               <p className="text-sm text-gray-600">
                 {puedeAvanzar 
-                  ? 'Todas las secciones completadas. Puede avanzar a Seguimiento (el plan de mejoramiento ya fue creado con las acciones correctivas).'
-                  : 'Complete: Informe Preliminar, Gestión Hallazgos, Informe Final y Plan de Mejoramiento para poder finalizar.'}
+                  ? sinHallazgos && !planCreado
+                    ? 'Todas las secciones completadas. Puede avanzar a Seguimiento (sin hallazgos no se requiere plan de mejoramiento).'
+                    : 'Todas las secciones completadas. Puede avanzar a Seguimiento (el plan de mejoramiento ya fue creado con las acciones correctivas).'
+                  : sinHallazgos
+                    ? 'Complete: Informe Preliminar, Gestión Hallazgos e Informe Final para poder finalizar. Sin hallazgos no se requiere Plan de Mejoramiento.'
+                    : 'Complete: Informe Preliminar, Gestión Hallazgos, Informe Final y Plan de Mejoramiento para poder finalizar.'}
               </p>
             </div>
             <Button
@@ -2590,8 +2617,10 @@ const SeccionPlanMejoramiento: React.FC<{
   planAprobado: boolean;
   onCrearPlanMejoramiento: () => void;
   hallazgosCount: number;
+  /** La auditoría no tiene hallazgos vigentes: no se requiere plan (EFDS-2503) */
+  sinHallazgos?: boolean;
   onIrAPlan: () => void;
-}> = ({ planCreado, planEstado, planEstadisticas, planAprobado, onCrearPlanMejoramiento, hallazgosCount, onIrAPlan }) => {
+}> = ({ planCreado, planEstado, planEstadisticas, planAprobado, onCrearPlanMejoramiento, hallazgosCount, sinHallazgos = false, onIrAPlan }) => {
 
   // Badge de estado del plan
   const estadoBadge: Record<string, { label: string; bg: string; text: string; icon: string }> = {
@@ -2671,6 +2700,18 @@ const SeccionPlanMejoramiento: React.FC<{
             </div>
           </div>
         </div>
+      ) : sinHallazgos ? (
+        <CardSIGL>
+          <div className="p-6" data-testid="plan-mejoramiento-no-requerido">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-green-600" />
+              No se requiere Plan de Mejoramiento
+            </h3>
+            <p className="text-gray-600">
+              La auditoría no tiene hallazgos, así que no hay acciones correctivas que formular. Con el Informe Final generado puede finalizar la comunicación y pasar a Seguimiento.
+            </p>
+          </div>
+        </CardSIGL>
       ) : (
         <CardSIGL>
           <div className="p-6">

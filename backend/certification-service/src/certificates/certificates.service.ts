@@ -1874,7 +1874,12 @@ export class CertificatesService {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: destinatarioSeguro, code: codigo }),
+      body: JSON.stringify({
+        to: destinatarioSeguro,
+        code: codigo,
+        modulo: MODULO_NOTIFICACIONES,
+        evento: 'certificados_codigo_validacion',
+      }),
     });
 
     if (!response.ok) {
@@ -1882,6 +1887,12 @@ export class CertificatesService {
       throw new Error(
         `Notifications service error (${response.status}): ${errorBody || 'sin detalle'}`,
       );
+    }
+    // 202: la configuración de notificaciones no dejó salir el código (EFDS-2406).
+    // El aviso es obligatorio, así que no debería pasar; si pasa, el portal no
+    // puede decir que lo envió.
+    if (response.status === 202) {
+      throw new Error('La configuración de notificaciones omitió el código de validación');
     }
 
     this.logger.log(
@@ -1999,7 +2010,7 @@ export class CertificatesService {
   private async enviarCertificadoLaboralPorEmail(
     certificate: Certificate,
     options: SendLaborCertificateOptions = {},
-  ): Promise<{ to: string }> {
+  ): Promise<{ to: string; omitido: boolean }> {
     const destinatarioSolicitado = (
       options.to ||
       certificate.request?.email ||
@@ -2091,6 +2102,11 @@ export class CertificatesService {
       attachmentBase64: attachment.buffer.toString('base64'),
       attachmentContentType: 'application/pdf',
       additionalAttachments: options.additionalAttachments || [],
+      // Con módulo y evento el correo pasa por la configuración de notificaciones (EFDS-2406).
+      modulo: MODULO_NOTIFICACIONES,
+      evento: options.correctionRequestNumber
+        ? 'certificados_correccion_aprobada'
+        : 'certificados_certificado_emitido',
     };
 
     const response = await fetch(url, {
@@ -2106,8 +2122,14 @@ export class CertificatesService {
       );
     }
 
-    this.logger.log(`Certificado laboral enviado a ${destinatario}`);
-    return { to: destinatario };
+    // 202: el módulo o el aviso están apagados en la configuración de notificaciones.
+    const omitido = response.status === 202;
+    this.logger.log(
+      omitido
+        ? `Certificado laboral NO enviado a ${destinatario}: la configuración de notificaciones lo omitió`
+        : `Certificado laboral enviado a ${destinatario}`,
+    );
+    return { to: destinatario, omitido };
   }
 
   async generateCertificadoPdfBufferById(
@@ -2192,7 +2214,9 @@ export class CertificatesService {
     );
 
     return {
-      mensaje: `Certificado reenviado a ${result.to}`,
+      mensaje: result.omitido
+        ? 'El certificado no se envió: las notificaciones de Certificados Laborales están apagadas.'
+        : `Certificado reenviado a ${result.to}`,
       email: result.to,
     };
   }
@@ -3233,7 +3257,7 @@ export class CertificatesService {
           certificate_number: request.certificate.certificate_number,
           requested_recipient: request.requester_email,
           recipient: sent.to,
-          delivery_status: 'SENT',
+          delivery_status: sent.omitido ? 'SKIPPED' : 'SENT',
            evidence_count: request.resolution_evidence.length,
            changes: appliedChanges,
         },
@@ -3254,7 +3278,7 @@ export class CertificatesService {
       ...this.correctionResponse(request),
       message: 'El certificado corregido fue enviado exitosamente.',
       email: sent.to,
-      email_sent: true,
+      email_sent: !sent.omitido,
     };
   }
 
@@ -3337,7 +3361,7 @@ export class CertificatesService {
           certificate_number: approvedCertificate.certificate_number,
           requested_recipient: request.requester_email,
           recipient: sent.to,
-          delivery_status: 'SENT',
+          delivery_status: sent.omitido ? 'SKIPPED' : 'SENT',
           evidence_count: decisionEvidence.length,
           resend: true,
         },
@@ -3349,7 +3373,7 @@ export class CertificatesService {
       ...this.correctionResponse(request),
       message: 'El certificado corregido fue reenviado exitosamente.',
       email: sent.to,
-      email_sent: true,
+      email_sent: !sent.omitido,
     };
   }
 
@@ -6179,7 +6203,7 @@ export class CertificatesService {
           publicBaseUrl: options.publicBaseUrl,
         },
       );
-      emailSent = true;
+      emailSent = !delivery.omitido;
       email = delivery.to;
     } catch (error) {
       this.logger.warn(
