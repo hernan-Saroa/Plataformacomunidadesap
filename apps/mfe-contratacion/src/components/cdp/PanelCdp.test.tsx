@@ -320,6 +320,13 @@ describe('PanelCdp · uno o más CDP (152)', () => {
     expect(quitar.mock.calls[0][1]).toBe('cdp-2');
   });
 
+  it('retirada la 4.2, deja corregir lo de la 3.1 si el backend lo permite (QA 27/11)', async () => {
+    pintar(abierta([cdp({ origen: 'REGISTRADO_EN_ETAPA_3' })], { corregibles: ['cdp-1'] }));
+
+    expect(await screen.findByRole('button', { name: /^Corregir/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Quitar/ })).toBeInTheDocument();
+  });
+
   it('lo cargado desde el estudio previo no se corrige ni se quita aquí', async () => {
     pintar(abierta([cdp({ origen: 'REGISTRADO_EN_ETAPA_3' }), cdp({ id: 'cdp-2', numero: 'CDP-13' })]));
 

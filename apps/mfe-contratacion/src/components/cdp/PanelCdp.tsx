@@ -494,7 +494,11 @@ export function PanelCdp({ procesoId, valorEstimado, onCambio, recargarToken }: 
 
       <ul className="list-none m-0 p-0 space-y-2" aria-label="CDP del proceso">
         {expedidos.map((c) => {
-          const editable = !!respaldo.puedeCorregir && c.origen === 'ETAPA_4' && !corrigiendo;
+          // Lo decide el backend: también entran los de la 3.1 cuando allá ya no se pueden tocar.
+          const editable =
+            (respaldo.corregibles
+              ? respaldo.corregibles.includes(c.id)
+              : !!respaldo.puedeCorregir && c.origen === 'ETAPA_4') && !corrigiendo;
           return (
             <li key={c.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2 space-y-1.5">
               <div className="flex items-start justify-between gap-2 flex-wrap">
