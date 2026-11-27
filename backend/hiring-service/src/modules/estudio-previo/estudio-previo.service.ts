@@ -1081,10 +1081,10 @@ export class EstudioPrevioService implements OnModuleInit {
     return this.cdpDelEstudioPrevio(procesoId, acceso);
   }
 
-  async retirarCdp(procesoId: string, motivo: string | undefined, acceso: HiringAccess) {
+  async retirarCdp(procesoId: string, motivo: string | undefined, acceso: HiringAccess, cdpId?: string) {
     await this.dataSource.transaction(async (em) => {
       await this.exigirPaqueteEditable(em, procesoId, acceso);
-      await this.cdp.retirarDesdeElEstudioPrevio(em, procesoId, motivo, acceso);
+      await this.cdp.retirarDesdeElEstudioPrevio(em, procesoId, motivo, acceso, cdpId);
     });
     return this.cdpDelEstudioPrevio(procesoId, acceso);
   }

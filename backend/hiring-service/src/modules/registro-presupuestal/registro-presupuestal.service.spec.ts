@@ -113,4 +113,20 @@ describe('contradiceElCdp', () => {
   it('rechaza el RP contra otro rubro', () => {
     expect(contradiceElCdp({ valor: 37_248_000, rubro: 'Z-99' }, cdp)).toMatch(/certificó el A-02/);
   });
+
+  describe('con varios CDP (152)', () => {
+    const varios = { numero: 'CDP-1, CDP-2', valor: 60_000_000, rubro: null, rubros: ['A-01', 'A-02'] };
+
+    it('acepta el RP contra cualquiera de sus rubros, hasta la suma', () => {
+      expect(contradiceElCdp({ valor: 60_000_000, rubro: 'a-02' }, varios)).toBeNull();
+    });
+
+    it('rechaza el RP por encima de la suma', () => {
+      expect(contradiceElCdp({ valor: 60_000_001, rubro: null }, varios)).toMatch(/los CDP CDP-1, CDP-2/);
+    });
+
+    it('rechaza el RP contra un rubro que ninguno certificó', () => {
+      expect(contradiceElCdp({ valor: 1, rubro: 'Z-99' }, varios)).toMatch(/certificaron A-01, A-02/);
+    });
+  });
 });

@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager, IsNull, Not } from 'typeorm';
 
-import { Cdp } from '../../entities/cdp.entity';
+import { Cdp, respaldoDeLosCdp } from '../../entities/cdp.entity';
 
 import { ActoAdjudicacion } from '../../entities/acto-adjudicacion.entity';
 import { InformeDefinitivo } from '../../entities/informe-definitivo.entity';
@@ -134,6 +134,7 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
       // Donde la modalidad no lleva CDP (enajenación: la entidad recibe, no
       // gasta) no hay con qué comparar.
       const sinCdp = await this.excluida(em, proceso, NUMERAL_CDP);
+      // Desde la 152 el proceso puede llevar varios CDP: el tope es la suma.
       const cdp = sinCdp ? null : await this.cdpDelProceso(em, procesoId);
       if (!sinCdp && !cdp) {
         throw new ConflictException(
@@ -141,9 +142,10 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
         );
       }
       if (cdp && cdp.valor != null && Number(dto.valorAdjudicado) > Number(cdp.valor)) {
+        const quien = cdp.cantidad > 1 ? `los CDP ${cdp.numero ?? ''}` : `el CDP ${cdp.numero ?? ''}`;
         throw new BadRequestException(
           `El valor adjudicado ($ ${Number(dto.valorAdjudicado).toLocaleString('es-CO')}) supera ` +
-            `lo que certificó el CDP ${cdp.numero ?? ''} ($ ${Number(cdp.valor).toLocaleString('es-CO')})`,
+            `lo que certificó ${quien} ($ ${Number(cdp.valor).toLocaleString('es-CO')})`,
         );
       }
 
@@ -436,11 +438,15 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
     return !!(await this.excluida(em, proceso, NUMERAL_RECEPCION));
   }
 
-  /** El CDP expedido del proceso; el de una adición no respalda la adjudicación. */
-  private cdpDelProceso(em: EntityManager, procesoId: string) {
-    return em
+  /**
+   * Lo que suman los CDP expedidos del proceso (152), o null si no hay
+   * ninguno. Los de una adición no respaldan la adjudicación.
+   */
+  private async cdpDelProceso(em: EntityManager, procesoId: string) {
+    const cdps = await em
       .getRepository(Cdp)
-      .findOne({ where: { procesoId, estado: 'EXPEDIDO', modificacionId: IsNull() } });
+      .find({ where: { procesoId, estado: 'EXPEDIDO', modificacionId: IsNull() } });
+    return cdps.length > 0 ? respaldoDeLosCdp(cdps) : null;
   }
 
   private actoVigente(em: EntityManager, procesoId: string) {

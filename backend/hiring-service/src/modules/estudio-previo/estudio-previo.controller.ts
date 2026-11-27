@@ -138,7 +138,7 @@ export class EstudioPrevioController {
   @ApiOperation({
     summary: 'Cargar el CDP desde el estudio previo',
     description:
-      'Número, valor, rubro, fecha y soporte del CDP que la Dirección Financiera expidió por fuera. Queda expedido; al cerrarse la etapa 3, la 4.2 se da por atendida. Si ya hay uno cargado por el área, lo corrige (el soporte es opcional al corregir).',
+      'Número, valor, rubro, fecha y soporte de un CDP que la Dirección Financiera expidió por fuera. Queda expedido; al cerrarse la etapa 3, la 4.2 se da por atendida. El proceso puede llevar uno o más (152): sin cdpId se agrega otro, con cdpId se corrige ese (el soporte es opcional al corregir).',
   })
   async registrarCdp(
     @Param('id', ParseUUIDPipe) id: string,
@@ -158,7 +158,7 @@ export class EstudioPrevioController {
       'Anula el CDP que cargó el área, o una solicitud hecha desde el estudio previo antes de que el CDP se tramitara por fuera. Queda en la trazabilidad.',
   })
   retirarCdp(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RetirarCdpDto, @Req() req: any) {
-    return this.service.retirarCdp(id, dto?.motivo, getHiringAccess(req));
+    return this.service.retirarCdp(id, dto?.motivo, getHiringAccess(req), dto?.cdpId);
   }
 
   @Post(':id/estudio-previo/aprobar')

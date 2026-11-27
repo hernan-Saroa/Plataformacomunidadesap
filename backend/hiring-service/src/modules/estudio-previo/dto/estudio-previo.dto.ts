@@ -169,4 +169,9 @@ export class RetirarCdpDto {
   @IsString()
   @MaxLength(500)
   motivo?: string;
+
+  @ApiPropertyOptional({ description: 'El CDP que se retira; sin él, el primero (152)' })
+  @IsOptional()
+  @IsUUID()
+  cdpId?: string;
 }
