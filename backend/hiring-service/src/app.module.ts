@@ -7,6 +7,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { HealthController } from './health/health.controller';
 import { HiringModule } from './modules/hiring/hiring.module';
 import { EstudioPrevioModule } from './modules/estudio-previo/estudio-previo.module';
+import { ReaperturaModule } from './modules/reapertura/reapertura.module';
 import { SalarioMinimoModule } from './modules/salario-minimo/salario-minimo.module';
 import { CdpModule } from './modules/cdp/cdp.module';
 import { ConfiguracionModule } from './modules/configuracion/configuracion.module';
@@ -170,6 +171,8 @@ import {
     AlcanceModule,
     HiringModule,
     EstudioPrevioModule,
+    // Reabrir actividades ya cerradas (153).
+    ReaperturaModule,
     SalarioMinimoModule,
     CdpModule,
     ConfiguracionModule,

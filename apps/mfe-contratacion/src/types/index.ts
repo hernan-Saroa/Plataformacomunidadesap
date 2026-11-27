@@ -5034,3 +5034,12 @@ export interface EvidenciaSecop {
   secopUrl?: string;
   observaciones?: string;
 }
+
+/** Una actividad que se puede reabrir, o cuya reapertura se puede deshacer (153). */
+export interface ActividadReabrible {
+  numeral: string;
+  nombre: string;
+  etapa: number;
+  estado: string;
+  reapertura: { motivo: string; por: string; porId: string | null; at: string } | null;
+}

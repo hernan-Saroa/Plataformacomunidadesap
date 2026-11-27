@@ -24,6 +24,8 @@ export const PERMISOS = {
   procesoVerTodos: 'contratacion.proceso.view-all',
   procesoAsignar: 'contratacion.proceso.assign',
   plazoTerminar: 'contratacion.plazo.terminar',
+  /** Reabrir actividades ya cerradas para corregir un error (153). */
+  actividadReabrir: 'contratacion.actividad.reabrir',
 } as const;
 
 /** La sesión tal como la deja el shell; de ahí solo interesan dos campos. */

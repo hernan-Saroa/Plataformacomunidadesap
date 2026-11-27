@@ -195,6 +195,7 @@ import {
   SituacionTramiteLiquidacion,
   EvidenciaSecop,
   TramiteModificacionResumen,
+  ActividadReabrible,
 } from '../types';
 
 const SERVICE_PREFIX = '/hiring/api/v1';
@@ -2349,6 +2350,22 @@ export const contratacionService = {
       method: 'DELETE',
       body: JSON.stringify({ radicado, motivo }),
     }),
+
+  /** Reabrir actividades ya cerradas (153). */
+  reaperturas: (procesoId: string) =>
+    pedir<ActividadReabrible[]>(`/procesos/${procesoId}/reaperturas`),
+
+  reabrirActividades: (procesoId: string, numerales: string[], motivo: string) =>
+    pedir<{ reabiertas: string[] }>(`/procesos/${procesoId}/reaperturas`, {
+      method: 'POST',
+      body: JSON.stringify({ numerales, motivo }),
+    }),
+
+  deshacerReapertura: (procesoId: string, numeral: string) =>
+    pedir<{ numeral: string; estado: string }>(
+      `/procesos/${procesoId}/reaperturas/${encodeURIComponent(numeral)}`,
+      { method: 'DELETE' },
+    ),
 
   guardarBorrador: (procesoId: string, datos: Record<string, any>, version: number) =>
     pedir<{ estado: string; version: number; datos: Record<string, any> }>(
