@@ -36,7 +36,7 @@ describe('CdpDelEstudioPrevio', () => {
     expect(await screen.findByText('Opcional en esta etapa')).toBeTruthy();
     expect(screen.getByText('Cargar el CDP')).toBeTruthy();
     expect(screen.queryByText('Solicitar el CDP')).toBeNull();
-    expect(screen.getByText(/lo cargas en la etapa 4/)).toBeTruthy();
+    expect(screen.getByText(/los cargas en la etapa 4/)).toBeTruthy();
   });
 
   it('obligatorio: lo anuncia y le pasa al formulario que no se puede radicar', async () => {
@@ -85,6 +85,72 @@ describe('CdpDelEstudioPrevio', () => {
     fireEvent.change(screen.getByLabelText('Rubro presupuestal'), { target: { value: 'A-02' } });
     // Sin el certificado adjunto sigue apagado.
     expect(boton.disabled).toBe(true);
+  });
+
+  describe('con uno o más CDP (152)', () => {
+    const cargado = (id: string, numero: string, valor: number) => ({
+      id,
+      estado: 'EXPEDIDO',
+      origen: 'REGISTRADO_EN_ETAPA_3',
+      numero,
+      valor,
+      rubro: 'A-02',
+      fechaExpedicion: '2026-10-01',
+      expedidoPor: 'Laura',
+    });
+
+    it('con uno cargado ofrece cargar otro', async () => {
+      pintar(estado({ cdps: [cargado('c1', 'CDP-7', 1_000_000)], valorTotal: 1_000_000 }));
+      expect(await screen.findByText('Cargar otro CDP')).toBeTruthy();
+    });
+
+    it('lista cada CDP con su corrección y retiro, y dice cuánto suman', async () => {
+      pintar(
+        estado({
+          cdps: [cargado('c1', 'CDP-7', 1_000_000), cargado('c2', 'CDP-8', 500_000)],
+          valorTotal: 1_500_000,
+        }),
+      );
+      expect(await screen.findByText('CDP CDP-7 cargado')).toBeTruthy();
+      expect(screen.getByText('CDP CDP-8 cargado')).toBeTruthy();
+      expect(screen.getAllByText('Corregir los datos')).toHaveLength(2);
+      expect(screen.getAllByText('Retirar')).toHaveLength(2);
+      expect(screen.getByText(/Los 2 CDP suman \$\s1\.500\.000/)).toBeTruthy();
+      // Por debajo del estimado ($2.000.000), con la suma y no con cada uno.
+      expect(screen.getByText(/queda \$\s500\.000 por debajo/)).toBeTruthy();
+    });
+
+    it('al cargar otro, sugiere lo que falta para el estimado y no manda cdpId', async () => {
+      const registrar = vi
+        .spyOn(contratacionService, 'registrarCdpDesdeElEstudioPrevio')
+        .mockResolvedValue(estado() as never);
+      pintar(estado({ cdps: [cargado('c1', 'CDP-7', 1_500_000)], valorTotal: 1_500_000 }));
+
+      fireEvent.click(await screen.findByText('Cargar otro CDP'));
+      expect(screen.getByLabelText('Valor certificado')).toHaveProperty('value', '500000');
+      fireEvent.change(screen.getByLabelText('Número del CDP'), { target: { value: 'CDP-9' } });
+      fireEvent.change(screen.getByLabelText('Rubro presupuestal'), { target: { value: 'A-03' } });
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      fireEvent.change(input, { target: { files: [new File(['%PDF'], 'cdp.pdf', { type: 'application/pdf' })] } });
+      fireEvent.click(screen.getAllByText('Cargar el CDP').at(-1)!.closest('button')!);
+
+      await vi.waitFor(() => expect(registrar).toHaveBeenCalled());
+      expect(registrar.mock.calls[0][1]).toMatchObject({ numero: 'CDP-9', valor: 500_000, cdpId: undefined });
+    });
+
+    it('al corregir uno, manda su cdpId', async () => {
+      const registrar = vi
+        .spyOn(contratacionService, 'registrarCdpDesdeElEstudioPrevio')
+        .mockResolvedValue(estado() as never);
+      pintar(estado({ cdps: [cargado('c1', 'CDP-7', 1_000_000), cargado('c2', 'CDP-8', 500_000)] }));
+
+      fireEvent.click((await screen.findAllByText('Corregir los datos'))[1]);
+      expect(screen.getByLabelText('Número del CDP')).toHaveProperty('value', 'CDP-8');
+      fireEvent.click(screen.getByText('Guardar la corrección').closest('button')!);
+
+      await vi.waitFor(() => expect(registrar).toHaveBeenCalled());
+      expect(registrar.mock.calls[0][1]).toMatchObject({ numero: 'CDP-8', cdpId: 'c2' });
+    });
   });
 
   it('una modalidad sin CDP no muestra nada', async () => {

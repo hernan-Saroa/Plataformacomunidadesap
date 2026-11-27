@@ -114,6 +114,12 @@ export interface CdpDelEstudioPrevio {
    * verificado solo puede venir de antes, cuando el aplicativo lo tramitaba.
    */
   cdp: Cdp | null;
+  /** Todos los CDP en curso: el proceso puede llevar uno o más (152). */
+  cdps?: Cdp[];
+  /** Lo que suman los expedidos. */
+  valorTotal?: number | null;
+  cubreValorEstimado?: boolean;
+  advertencia?: string | null;
   permiteRadicar: boolean;
   motivo: string | null;
   /** Si quien mira puede cargar, corregir o retirar (lo decide el backend). */
@@ -154,12 +160,25 @@ export interface Cdp {
   /** Avisa si el CDP no alcanza a cubrir el valor estimado del proceso. */
   advertencia?: string | null;
   cubreValorEstimado?: boolean;
+  /** Lo que suman todos los CDP expedidos del proceso (152). */
+  valorTotal?: number | null;
 }
 
 export interface EstadoRespaldo {
   /** False en las modalidades que no comprometen gasto. */
   aplica: boolean;
+  /** El primero expedido, para quien todavía lee uno solo. */
   cdp: Cdp | null;
+  /** Todos los CDP en curso del proceso, del primero al último (152). */
+  cdps?: Cdp[];
+  /** Lo que suman los expedidos: es lo que respalda el gasto. */
+  valorTotal?: number | null;
+  cubreValorEstimado?: boolean;
+  advertencia?: string | null;
+  /** La 4.2 sigue en manos del área: se puede agregar otro CDP. */
+  puedeAgregar?: boolean;
+  /** Hay CDP cargados y la 4.2 sigue abierta: se puede enviar. */
+  puedeEnviar?: boolean;
   /** Existe el certificado: la partida quedó apartada para el proceso. */
   expedido: boolean;
   soporteAdjunto: boolean;
