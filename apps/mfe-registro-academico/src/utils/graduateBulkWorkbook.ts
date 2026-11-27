@@ -9,19 +9,31 @@ import {
 } from './graduateBulkValidation';
 import type { ParsedGraduateRow } from './graduateBulkValidation';
 
-const GRADUATE_PREVIEW_LIMIT = 100;
+const GRADUATE_PREVIEW_PAGE_SIZE = 100;
 const WORKSHEET_CHUNK_SIZE = 512;
 
-type GraduatePreviewRow = Omit<ParsedGraduateRow, 'payload'>;
+export type GraduatePreviewRow = Omit<
+  ParsedGraduateRow,
+  'payload' | 'errors' | 'telefonoNormalizado' | 'fieldErrors'
+> & {
+  fieldErrors?: ParsedGraduateRow['fieldErrors'];
+};
 type GraduateImportRow = {
   rowNumber: number;
   payload: NonNullable<ParsedGraduateRow['payload']>;
 };
 
+export type GraduatePreviewPage = {
+  number: number;
+  startIndex: number;
+  totalPages: number;
+  rows: GraduatePreviewRow[];
+};
+
 export type GraduateImportSummary = {
   totalRows: number;
   validCount: number;
-  preview: GraduatePreviewRow[];
+  page: GraduatePreviewPage;
 };
 
 export type GraduateValidationProgress = {
@@ -30,15 +42,39 @@ export type GraduateValidationProgress = {
   totalSheetRows: number;
 };
 
+export type GraduateExportProgress = {
+  preparedRows: number;
+  totalRows: number;
+};
+
 export type GraduateImportRequest =
   | { type: 'validate'; file: File; programOptions: string[] }
+  | { type: 'preview'; pageNumber: number }
+  | { type: 'export' }
   | { type: 'batch'; start: number; size: number };
 
 export type GraduateImportResponse =
   | { type: 'progress'; progress: GraduateValidationProgress }
+  | { type: 'exportProgress'; progress: GraduateExportProgress }
   | { type: 'validated'; summary: GraduateImportSummary }
+  | { type: 'preview'; page: GraduatePreviewPage }
+  | { type: 'export'; file: Blob }
   | { type: 'batch'; rows: GraduateImportRow[] }
   | { type: 'error'; message: string };
+
+const getPreviewPage = (rows: GraduatePreviewRow[], number: number): GraduatePreviewPage => {
+  const totalPages = Math.ceil(rows.length / GRADUATE_PREVIEW_PAGE_SIZE);
+  if (!Number.isInteger(number) || number < 1 || number > totalPages) {
+    throw new Error('La página solicitada está fuera del rango de la vista previa.');
+  }
+  const startIndex = (number - 1) * GRADUATE_PREVIEW_PAGE_SIZE;
+  return {
+    number,
+    startIndex,
+    totalPages,
+    rows: rows.slice(startIndex, startIndex + GRADUATE_PREVIEW_PAGE_SIZE),
+  };
+};
 
 const validateWorkbook = (
   buffer: ArrayBuffer,
@@ -76,7 +112,7 @@ const validateWorkbook = (
   const duplicateKeys = new Set<string>();
   const catalogs = buildCatalogs(programOptions);
   const today = getTodayIso();
-  const preview: GraduatePreviewRow[] = [];
+  const previewRows: GraduatePreviewRow[] = [];
   const validRows: GraduateImportRow[] = [];
   const totalSheetRows = e.r - s.r;
   let totalRows = 0;
@@ -100,12 +136,13 @@ const validateWorkbook = (
 
     for (const row of rows) {
       const rowNumber = row.__rowNum__ + 1;
-      const parsed = buildParsedRow(row, rowNumber, duplicateKeys, catalogs, columns, today);
-      if (parsed.payload) validRows.push({ rowNumber, payload: parsed.payload });
-      if (preview.length < GRADUATE_PREVIEW_LIMIT) {
-        const { payload, ...displayRow } = parsed;
-        preview.push(displayRow);
-      }
+      const {
+        payload, errors, telefonoNormalizado: _telefonoNormalizado, fieldErrors, ...displayRow
+      } = buildParsedRow(row, rowNumber, duplicateKeys, catalogs, columns, today);
+      if (payload) validRows.push({ rowNumber, payload });
+      const previewRow: GraduatePreviewRow = displayRow;
+      if (errors.length) previewRow.fieldErrors = fieldErrors;
+      previewRows.push(previewRow);
     }
     totalRows += rows.length;
     const now = performance.now();
@@ -118,11 +155,12 @@ const validateWorkbook = (
   if (!totalRows) {
     throw new Error('La hoja GRADUADOS no tiene filas de datos.');
   }
-  return { summary: { totalRows, validCount: validRows.length, preview }, validRows };
+  return { previewRows, validRows };
 };
 
 export const createGraduateImportHandler = (send: (response: GraduateImportResponse) => void) => {
   let validRows: GraduateImportRow[] = [];
+  let previewRows: GraduatePreviewRow[] = [];
   return async (request: GraduateImportRequest) => {
     if (request.type === 'batch') {
       send({ type: 'batch', rows: validRows.slice(request.start, request.start + request.size) });
@@ -130,12 +168,29 @@ export const createGraduateImportHandler = (send: (response: GraduateImportRespo
     }
 
     try {
+      if (request.type === 'preview') {
+        send({ type: 'preview', page: getPreviewPage(previewRows, request.pageNumber) });
+        return;
+      }
+      if (request.type === 'export') {
+        if (!previewRows.length) throw new Error('Valide un archivo antes de exportar sus resultados.');
+        const { exportValidationReport } = await import('./graduateBulkReport');
+        const file = await exportValidationReport(previewRows, validRows.length, (progress) =>
+          send({ type: 'exportProgress', progress }),
+        );
+        send({ type: 'export', file });
+        return;
+      }
       const buffer = await request.file.arrayBuffer();
       const validated = validateWorkbook(buffer, request.programOptions, (progress) =>
         send({ type: 'progress', progress }),
       );
       validRows = validated.validRows;
-      send({ type: 'validated', summary: validated.summary });
+      previewRows = validated.previewRows;
+      send({
+        type: 'validated',
+        summary: { totalRows: previewRows.length, validCount: validRows.length, page: getPreviewPage(previewRows, 1) },
+      });
     } catch (error) {
       send({
         type: 'error',

@@ -55,6 +55,26 @@ export const FIELD_LABELS: Record<FieldKey, string> = {
   sede: 'SEDE',
 };
 
+export const GRADUATE_TEMPLATE_COLUMNS = [
+  ['identificacion', 'IDENTIFICACION'],
+  ['estudiante', 'ESTUDIANTE'],
+  ['titulo', 'TITULO'],
+  ['registro', 'REGISTRO'],
+  ['acta', 'ACTA'],
+  ['libro', 'LIBRO'],
+  ['fechaRegistro', 'FECHAREGISTRO'],
+  ['anioGrado', 'AñoGrado'],
+  ['correo', 'CORREO'],
+  ['telefono', 'TELEFONO'],
+  ['territorial', 'TERRITORIAL'],
+  ['sede', 'SEDE'],
+] as const satisfies readonly (readonly [FieldKey, string])[];
+
+export const getGraduateFieldErrors = (fieldErrors?: FieldErrors) =>
+  Object.entries(fieldErrors ?? {}).flatMap(([field, messages]) =>
+    (messages || []).map((message) => ({ label: FIELD_LABELS[field as FieldKey], message })),
+  );
+
 export const NUMERIC_FIELD_RULES: Record<
   'registro' | 'acta' | 'libro',
   { minLength: number; maxLength: number; label: string }

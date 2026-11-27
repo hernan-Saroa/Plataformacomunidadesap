@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
+import { toast } from 'sonner';
 import graduadosService from '../../services/api/graduados.service';
 import type { GraduadoData } from '../../services/api/graduados.service';
 import { BulkGraduatesUploadModal } from './BulkGraduatesUploadModal';
@@ -102,6 +103,13 @@ describe('Carga masiva de Graduados independiente de PTA',()=>{
       Object.values(data[0]),
     ]);
     const file = graduateFile(sheet, ' Graduados ');
+    const postMessage = WorkbookWorker.prototype.postMessage;
+    let finishPreview!: () => void;
+    const workerRequests = vi.spyOn(WorkbookWorker.prototype, 'postMessage')
+      .mockImplementation(function (this: WorkbookWorker, request) {
+        if (request.type === 'preview') finishPreview = () => postMessage.call(this, request);
+        else postMessage.call(this, request);
+      });
     const upload = vi.mocked(graduadosService.graduados.crearMasivo);
     let finishSecondBatch!: (result: Awaited<ReturnType<typeof upload>>) => void;
     upload
@@ -114,14 +122,23 @@ describe('Carga masiva de Graduados independiente de PTA',()=>{
     const submit = await screen.findByRole('button', { name: 'Crear 102 graduados' });
     expect(screen.getAllByRole('row')).toHaveLength(101);
     expect(upload).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Página siguiente' }));
+    expect(await screen.findByText('Cargando página 2…')).toBeTruthy();
     fireEvent.click(submit);
 
+    expect(await screen.findByText('0 de 102 registros procesados')).toBeTruthy();
+    expect(workerRequests.mock.calls.map(([request]) => request.type)).toEqual(['validate', 'preview']);
+    await act(async () => finishPreview());
+
+    expect(await screen.findByText('Registros 101 a 103 de 103')).toBeTruthy();
+    expect(screen.getAllByRole('row')).toHaveLength(4);
     expect(await screen.findByText('100 de 102 registros procesados')).toBeTruthy();
     expect(screen.getByRole('progressbar', { name: 'Creando graduados' }).getAttribute('aria-valuenow')).toBe('98');
     expect((screen.getByRole('button', { name: 'Cerrar' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Descargar plantilla XLSX' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'graduados.xlsx' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Importando…' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Página anterior' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Cancelar validación' })).toBeNull();
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -178,7 +195,7 @@ describe('Carga masiva de Graduados independiente de PTA',()=>{
     expect(props.onOpenChange).not.toHaveBeenCalled();
     act(() => publish({
       type: 'validated',
-      summary: { totalRows: 23, validCount: 23, preview: [] },
+      summary: { totalRows: 23, validCount: 23, page: { number: 1, startIndex: 0, totalPages: 1, rows: [] } },
     }));
     expect(screen.queryByRole('progressbar')).toBeNull();
     expect((screen.getByRole('button', { name: 'Seleccionar archivo XLSX' }) as HTMLButtonElement).disabled).toBe(false);
@@ -245,6 +262,155 @@ describe('Carga masiva de Graduados independiente de PTA',()=>{
     expect(screen.queryByRole('group', { name: 'Desplazar columnas' })).toBeNull();
     expect(graduadosService.graduados.crearMasivo).not.toHaveBeenCalled();
   });
+
+  it('consulta todas las páginas de un archivo con errores y renderiza hasta cien filas', async () => {
+    const file = graduateFile(XLSX.utils.json_to_sheet(Array.from({ length: 203 }, (_, index) => ({
+      ...valid,
+      IDENTIFICACION: String(123450000 + index),
+      TITULO: 'Título fuera del catálogo',
+    }))));
+
+    render(<BulkGraduatesUploadModal open onOpenChange={() => {}} onImported={() => {}} programOptions={[valid.TITULO]} />);
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    expect(await screen.findByText('Registros 1 a 100 de 203')).toBeTruthy();
+    expect(screen.getAllByRole('row')).toHaveLength(101);
+    const table = screen.getByRole('table');
+    const pagination = screen.getByRole('navigation', { name: 'Paginación de la vista previa' });
+    expect(table.compareDocumentPosition(pagination) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const pageInput = screen.getByRole('spinbutton', { name: 'Número de página' });
+    const jump = screen.getByRole('button', { name: 'Ir a la página' }) as HTMLButtonElement;
+
+    fireEvent.change(pageInput, { target: { value: '4' } });
+    expect(jump.disabled).toBe(true);
+    fireEvent.change(pageInput, { target: { value: '3' } });
+    fireEvent.click(jump);
+
+    expect(await screen.findByText('Registros 201 a 203 de 203')).toBeTruthy();
+    expect(screen.getAllByRole('row')).toHaveLength(4);
+    expect(screen.getByText('123450202')).toBeTruthy();
+    expect(screen.getAllByText('No se crea')).toHaveLength(3);
+    expect(screen.queryByText('123450000')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Página siguiente' }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Página anterior' }));
+    expect(await screen.findByText('Registros 101 a 200 de 203')).toBeTruthy();
+    expect(screen.getAllByRole('row')).toHaveLength(101);
+    expect((screen.getByRole('button', { name: 'Crear 0 graduados' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(graduadosService.graduados.crearMasivo).not.toHaveBeenCalled();
+  });
+
+  it('descarga una sola hoja de validación con estados, colores y todas las filas en orden', async () => {
+    const rows = Array.from({ length: 205 }, (_, index) => ({
+      ...valid,
+      IDENTIFICACION: `00${123450000 + index}`,
+      REGISTRO: '00000000000000000042',
+      FECHAREGISTRO: index % 2 ? '30/02/2022' : '15/07/2022',
+      CORREO: index % 2 ? 'sin-arroba' : valid.CORREO,
+      TERRITORIAL: '=1+1',
+    }));
+    const file = graduateFile(XLSX.utils.aoa_to_sheet([
+      Object.keys(valid),
+      [],
+      ...rows.map((row) => Object.values(row)),
+    ]));
+    let finishExport!: () => void;
+    let reportProgress!: (data: GraduateImportResponse) => void;
+    const postMessage = WorkbookWorker.prototype.postMessage;
+    const workerRequests = vi.spyOn(WorkbookWorker.prototype, 'postMessage')
+      .mockImplementation(function (this: WorkbookWorker, request) {
+        if (request.type !== 'export') {
+          postMessage.call(this, request);
+          return;
+        }
+        const receive = this.onmessage;
+        reportProgress = (data) => receive?.({ data });
+        finishExport = () => postMessage.call(this, request);
+      });
+    let downloaded: Blob | undefined;
+    let downloadName = '';
+    const exportError = vi.spyOn(toast, 'error');
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL(blob: Blob) {
+        downloaded = blob;
+        return 'blob:export-results';
+      }
+      static revokeObjectURL() {}
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloadName = this.download;
+    });
+
+    render(<BulkGraduatesUploadModal open onOpenChange={() => {}} onImported={() => {}} programOptions={[valid.TITULO]} />);
+    expect(screen.queryByRole('button', { name: 'Descargar resultados XLSX' })).toBeNull();
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+
+    const download = await screen.findByRole('button', { name: 'Descargar resultados XLSX' });
+    const table = screen.getByRole('table');
+    const pagination = screen.getByRole('navigation', { name: 'Paginación de la vista previa' });
+    const report = screen.getByRole('region', { name: 'Reporte de validación' });
+    expect(table.compareDocumentPosition(download) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(pagination.compareDocumentPosition(report) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(report.contains(download)).toBe(true);
+    expect(screen.getAllByRole('row')).toHaveLength(101);
+    fireEvent.click(download);
+
+    const exporting = await screen.findByRole('button', { name: 'Generando Excel…' }) as HTMLButtonElement;
+    expect(exporting.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Crear 103 graduados' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Página siguiente' }) as HTMLButtonElement).disabled).toBe(true);
+    act(() => reportProgress({ type: 'exportProgress', progress: { preparedRows: 100, totalRows: 205 } }));
+    expect(screen.getByText('100 de 205 registros preparados')).toBeTruthy();
+    await act(async () => finishExport());
+
+    await waitFor(() => {
+      expect(exportError).not.toHaveBeenCalled();
+      expect(downloaded).toBeDefined();
+    }, { timeout: 15_000 });
+    expect(downloadName).toBe('Resultado_Validacion_Graduados_ESAP.xlsx');
+    const bytes = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(downloaded!);
+    });
+    const workbook = XLSX.read(bytes, { type: 'array', cellStyles: true });
+    expect(workbook.SheetNames).toEqual(['VALIDACION']);
+    const sheet = workbook.Sheets.VALIDACION;
+    const reportRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { range: 2 });
+    expect(reportRows).toHaveLength(205);
+    expect(reportRows.map((row) => row['Fila de Excel'])).toEqual(rows.map((_, index) => index + 3));
+    expect(reportRows.filter((row) => row.Estado === 'Válido')).toHaveLength(103);
+    expect(reportRows.filter((row) => row.Estado === 'Con errores')).toHaveLength(102);
+    expect(sheet.A2.v).toBe('Registros: 205');
+    expect(sheet.C2.v).toBe('Válidos: 103');
+    expect(sheet.E2.v).toBe('Con errores: 102');
+    expect(reportRows.at(-1)).toMatchObject({
+      'Fila de Excel': 207,
+      'Identificación': '00123450204',
+      Registro: '00000000000000000042',
+      'Fecha de registro': '15/07/2022',
+      Territorial: '=1+1',
+    });
+    expect(sheet.M208.f).toBeUndefined();
+    expect(reportRows.at(-2)).toMatchObject({
+      'Fila de Excel': 206,
+      'Fecha de registro': '30/02/2022',
+      Observaciones: expect.stringMatching(/FECHAREGISTRO:[\s\S]*CORREO:/),
+    });
+    expect(sheet.B4.s.fgColor.rgb).toBe('DCFCE7');
+    expect(sheet.B5.s.fgColor.rgb).toBe('FEE2E2');
+    expect(sheet.I5.s.fgColor.rgb).toBe('FFF1F2');
+    expect(sheet.O5.s.fgColor.rgb).toBe('FFF1F2');
+    const zip = await JSZip.loadAsync(bytes);
+    const xml = await zip.file('xl/worksheets/sheet1.xml')!.async('string');
+    const sheetDocument = new DOMParser().parseFromString(xml, 'application/xml');
+    expect(sheetDocument.querySelector('autoFilter')?.getAttribute('ref')).toBe('A3:O208');
+    expect(sheetDocument.querySelector('pane')?.getAttribute('ySplit')).toBe('3');
+    expect(workerRequests.mock.calls.map(([request]) => request.type)).toEqual(['validate', 'export']);
+    expect(screen.getAllByRole('row')).toHaveLength(101);
+    expect((screen.getByRole('button', { name: 'Crear 103 graduados' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(graduadosService.graduados.crearMasivo).not.toHaveBeenCalled();
+  }, 20_000);
 
   it('conserva el resultado confirmado cuando una petición posterior se interrumpe', async () => {
     const file = graduateFile(XLSX.utils.json_to_sheet(Array.from({ length: 201 }, (_, index) => ({

@@ -1,13 +1,17 @@
 import workerAsset from './graduateBulkImport.worker?worker&url';
 import type {
+  GraduateExportProgress,
   GraduateImportRequest,
   GraduateImportResponse,
   GraduateValidationProgress,
 } from './graduateBulkWorkbook';
 
-type Result = Extract<GraduateImportResponse, { type: 'validated' | 'batch' }>;
+type Result = Extract<GraduateImportResponse, { type: 'validated' | 'preview' | 'batch' | 'export' }>;
 
-export const createGraduateImportSession = (onProgress: (progress: GraduateValidationProgress) => void) => {
+export const createGraduateImportSession = (
+  onProgress: (progress: GraduateValidationProgress) => void,
+  onExportProgress: (progress: GraduateExportProgress) => void,
+) => {
   const assetUrl = new URL(workerAsset, import.meta.url);
   // El shell de desarrollo sirve los remotos en otros puertos.
   const bootstrapUrl = /^https?:$/.test(assetUrl.protocol) && assetUrl.origin !== window.location.origin
@@ -22,6 +26,7 @@ export const createGraduateImportSession = (onProgress: (progress: GraduateValid
   }
   let pending: { resolve: (result: Result) => void; reject: (error: Error) => void } | undefined;
   let workerFailure: Error | undefined;
+  let queuedRequest = Promise.resolve();
 
   const dispose = (error = new Error('Se canceló la lectura del archivo.')) => {
     if (workerFailure) return;
@@ -35,8 +40,11 @@ export const createGraduateImportSession = (onProgress: (progress: GraduateValid
   worker.onmessage = ({ data }: MessageEvent<GraduateImportResponse>) => {
     if (data.type === 'progress') {
       onProgress(data.progress);
+    } else if (data.type === 'exportProgress') {
+      onExportProgress(data.progress);
     } else if (data.type === 'error') {
-      dispose(new Error(data.message));
+      pending?.reject(new Error(data.message));
+      pending = undefined;
     } else {
       pending?.resolve(data);
       pending = undefined;
@@ -45,7 +53,7 @@ export const createGraduateImportSession = (onProgress: (progress: GraduateValid
   worker.onerror = worker.onmessageerror = () =>
     dispose(new Error('Se interrumpió el procesamiento del archivo. Puede seleccionarlo de nuevo.'));
 
-  const request = (message: GraduateImportRequest) =>
+  const sendRequest = (message: GraduateImportRequest) =>
     new Promise<Result>((resolve, reject) => {
       if (workerFailure) {
         reject(workerFailure);
@@ -60,12 +68,28 @@ export const createGraduateImportSession = (onProgress: (progress: GraduateValid
       }
     });
 
+  const request = (message: GraduateImportRequest) => {
+    const result = queuedRequest.then(() => sendRequest(message));
+    queuedRequest = result.then(() => {}, () => {});
+    return result;
+  };
+
   return {
     dispose,
     async validate(file: File, programOptions: string[]) {
       const result = await request({ type: 'validate', file, programOptions });
       if (result.type !== 'validated') throw new Error('No se pudo validar el archivo.');
       return result.summary;
+    },
+    async getPreviewPage(pageNumber: number) {
+      const result = await request({ type: 'preview', pageNumber });
+      if (result.type !== 'preview') throw new Error('No se pudo consultar la página.');
+      return result.page;
+    },
+    async exportValidationReport() {
+      const result = await request({ type: 'export' });
+      if (result.type !== 'export') throw new Error('No se pudo obtener el archivo de resultados.');
+      return result.file;
     },
     async getBatch(start: number, size: number) {
       const result = await request({ type: 'batch', start, size });

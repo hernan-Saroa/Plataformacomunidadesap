@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, RefObject } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, FormEvent, RefObject } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   AlertCircle,
@@ -23,10 +23,22 @@ import {
   DialogTitle,
 } from '@esap-mfe/shared-ui/dialog';
 import { Badge } from '@esap-mfe/shared-ui/badge';
-import { FIELD_LABELS, NUMERIC_FIELD_RULES, normalizeKey, uniqueSorted } from '../utils/graduateBulkValidation';
-import type { FieldKey, ParsedGraduateRow } from '../utils/graduateBulkValidation';
+import {
+  getGraduateFieldErrors,
+  GRADUATE_TEMPLATE_COLUMNS,
+  NUMERIC_FIELD_RULES,
+  normalizeKey,
+  uniqueSorted,
+} from '../utils/graduateBulkValidation';
+import type { FieldKey } from '../utils/graduateBulkValidation';
 import { createGraduateImportSession } from '../utils/graduateBulkImportSession';
-import type { GraduateImportSummary, GraduateValidationProgress } from '../utils/graduateBulkWorkbook';
+import type {
+  GraduateExportProgress,
+  GraduateImportSummary,
+  GraduatePreviewPage,
+  GraduatePreviewRow,
+  GraduateValidationProgress,
+} from '../utils/graduateBulkWorkbook';
 import styles from './BulkGraduatesUploadModal.module.css';
 import graduadosService, {
   BulkCreateGraduadosResponse,
@@ -42,21 +54,6 @@ type BulkGraduatesUploadModalProps = {
   programsPeriod?: string;
 };
 
-const TEMPLATE_HEADERS = [
-  'IDENTIFICACION',
-  'ESTUDIANTE',
-  'TITULO',
-  'REGISTRO',
-  'ACTA',
-  'LIBRO',
-  'FECHAREGISTRO',
-  'AñoGrado',
-  'CORREO',
-  'TELEFONO',
-  'TERRITORIAL',
-  'SEDE',
-] as const;
-
 const MAX_FILE_SIZE_MB = 20;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 // Límite propio del formato XLSX; no representa un tope funcional de la carga.
@@ -64,16 +61,15 @@ const XLSX_LAST_ROW = 1_048_576;
 // Tamaño de transporte por petición. Todos los lotes se procesan hasta terminar el archivo.
 const BULK_REQUEST_BATCH_SIZE = 100;
 const DISPLAYED_IMPORT_ERRORS = 8;
-const EMPTY_IMPORT_SUMMARY: GraduateImportSummary = { totalRows: 0, validCount: 0, preview: [] };
 type ImportResult = Omit<BulkCreateGraduadosResponse, 'created'>;
-type UploadOperation = 'validation' | 'import';
+type UploadOperation = 'validation' | 'import' | 'export';
 const rowCountFormat = new Intl.NumberFormat('es-CO');
 
 const PREVIEW_COLUMNS: Array<{
   key: FieldKey;
   label: string;
   className: string;
-  getValue: (row: Omit<ParsedGraduateRow, 'payload'>) => string;
+  getValue: (row: GraduatePreviewRow) => string;
 }> = [
   {
     key: 'identificacion',
@@ -234,14 +230,6 @@ const buildParametersRows = (programOptions: string[], programsPeriod?: string) 
   return rows;
 };
 
-const getRowFieldErrors = (row: Omit<ParsedGraduateRow, 'payload'>) =>
-  Object.entries(row.fieldErrors).flatMap(([field, messages]) =>
-    (messages || []).map((message) => ({
-      label: FIELD_LABELS[field as FieldKey],
-      message,
-    })),
-  );
-
 function GraduateUploadProgress({
   title,
   detail,
@@ -295,18 +283,25 @@ export function BulkGraduatesUploadModal({
   programsPeriod,
 }: BulkGraduatesUploadModalProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sessionRef = useRef<ReturnType<typeof createGraduateImportSession> | null>(null);
   const operationRef = useRef<UploadOperation | null>(null);
+  const loadingPageRef = useRef<number | null>(null);
   const [selectedFileName, setSelectedFileName] = useState('');
-  const [{ totalRows, validCount, preview }, setImportSummary] = useState(EMPTY_IMPORT_SUMMARY);
+  const [importSummary, setImportSummary] = useState<GraduateImportSummary | null>(null);
+  const [loadingPage, setLoadingPage] = useState<number | null>(null);
   const [operation, setOperation] = useState<UploadOperation | null>(null);
+  const [exportProgress, setExportProgress] = useState<GraduateExportProgress | null>(null);
   const [validationProgress, setValidationProgress] = useState<GraduateValidationProgress | null>(null);
   const [importProgress, setImportProgress] = useState({ processed: 0, total: 0 });
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
   const isParsing = operation === 'validation';
   const isImporting = operation === 'import';
+  const isExporting = operation === 'export';
   const isBusy = operation !== null;
+  const totalRows = importSummary?.totalRows ?? 0;
+  const validCount = importSummary?.validCount ?? 0;
   const readyToImport = validCount > 0 && !isBusy;
   const catalogsReady = useMemo(
     () => programOptions.some((program) => normalizeKey(program)),
@@ -325,17 +320,26 @@ export function BulkGraduatesUploadModal({
     session?.dispose();
   }, []);
 
+  const clearPreview = useCallback(() => {
+    loadingPageRef.current = null;
+    setLoadingPage(null);
+    setImportSummary(null);
+  }, []);
+
   const resetState = useCallback(() => {
     disposeSession();
     setSelectedFileName('');
-    setImportSummary(EMPTY_IMPORT_SUMMARY);
+    clearPreview();
     setValidationProgress(null);
-    if (operationRef.current === 'validation') updateOperation(null);
+    setExportProgress(null);
+    if (operationRef.current === 'validation' || operationRef.current === 'export') {
+      updateOperation(null);
+    }
     setImportResult(null);
     if (inputRef.current) {
       inputRef.current.value = '';
     }
-  }, [disposeSession, updateOperation]);
+  }, [clearPreview, disposeSession, updateOperation]);
 
   useEffect(() => {
     if (!open) resetState();
@@ -414,7 +418,7 @@ export function BulkGraduatesUploadModal({
       { width: 30 },
       { width: 36 },
     ];
-    graduatesSheet.addRows([Array.from(TEMPLATE_HEADERS), ...exampleRows]);
+    graduatesSheet.addRows([GRADUATE_TEMPLATE_COLUMNS.map(([, title]) => title), ...exampleRows]);
     graduatesSheet.autoFilter = {
       from: 'A1',
       to: `L${exampleRows.length + 1}`,
@@ -552,21 +556,27 @@ export function BulkGraduatesUploadModal({
 
     disposeSession();
     setSelectedFileName(file.name);
-    setImportSummary(EMPTY_IMPORT_SUMMARY);
+    clearPreview();
     setValidationProgress(null);
     setImportResult(null);
     updateOperation('validation');
     let session: ReturnType<typeof createGraduateImportSession> | undefined;
     try {
-      session = createGraduateImportSession((progress) => {
-        if (sessionRef.current === session) setValidationProgress(progress);
-      });
+      session = createGraduateImportSession(
+        (progress) => {
+          if (sessionRef.current === session) setValidationProgress(progress);
+        },
+        (progress) => {
+          if (sessionRef.current === session && operationRef.current === 'export') {
+            setExportProgress(progress);
+          }
+        },
+      );
       sessionRef.current = session;
       const summary = await session.validate(file, programOptions);
       if (sessionRef.current !== session) return;
       setImportSummary(summary);
       updateOperation(null);
-      if (!summary.validCount) disposeSession();
       toast.success('Archivo validado', {
         description: `${summary.totalRows} filas leídas, ${summary.validCount} listas para importar.`,
       });
@@ -595,6 +605,60 @@ export function BulkGraduatesUploadModal({
     }
     void parseFile(file);
   };
+
+  const handlePreviewPageChange = useCallback(async (pageNumber: number) => {
+    const session = sessionRef.current;
+    const currentPage = importSummary?.page;
+    if (!session || !currentPage || operationRef.current || loadingPageRef.current !== null) return;
+    if (
+      !Number.isInteger(pageNumber) || pageNumber < 1 ||
+      pageNumber > currentPage.totalPages || pageNumber === currentPage.number
+    ) return;
+
+    loadingPageRef.current = pageNumber;
+    setLoadingPage(pageNumber);
+    try {
+      const page = await session.getPreviewPage(pageNumber);
+      if (sessionRef.current !== session) return;
+      setImportSummary((current) => current && { ...current, page });
+    } catch (error) {
+      if (sessionRef.current === session) {
+        toast.error('No se pudo mostrar la página', {
+          description: error instanceof Error ? error.message : 'Intente consultar la página de nuevo.',
+        });
+      }
+    } finally {
+      if (sessionRef.current === session) {
+        loadingPageRef.current = null;
+        setLoadingPage(null);
+      }
+    }
+  }, [importSummary?.page]);
+
+  const handleExportPreview = useCallback(async () => {
+    const session = sessionRef.current;
+    if (!session || !totalRows || operationRef.current || loadingPageRef.current !== null) return;
+    setExportProgress(null);
+    updateOperation('export');
+
+    try {
+      const file = await session.exportValidationReport();
+      if (sessionRef.current !== session) return;
+      downloadBlob(file, 'Resultado_Validacion_Graduados_ESAP.xlsx');
+      toast.success('Excel de validación descargado');
+    } catch (error) {
+      if (sessionRef.current === session) {
+        toast.error('No se pudo exportar la validación', {
+          description: error instanceof Error ? error.message : 'Intente descargar el archivo de nuevo.',
+        });
+      }
+    } finally {
+      if (sessionRef.current === session) {
+        setExportProgress(null);
+        updateOperation(null);
+      }
+    }
+  }, [totalRows, updateOperation]);
 
   const handleImport = async () => {
     const session = sessionRef.current;
@@ -687,6 +751,7 @@ export function BulkGraduatesUploadModal({
         </DialogHeader>
 
         <motion.div
+          ref={scrollContainerRef}
           layout
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -801,7 +866,19 @@ export function BulkGraduatesUploadModal({
             ))}
           </div>
 
-          <GraduateImportPreview preview={preview} totalRows={totalRows} />
+          {importSummary && (
+            <GraduateImportPreview
+              page={importSummary.page}
+              totalRows={totalRows}
+              loadingPage={loadingPage}
+              isBusy={isBusy}
+              isExporting={isExporting}
+              exportProgress={exportProgress}
+              scrollContainerRef={scrollContainerRef}
+              onPageChange={handlePreviewPageChange}
+              onExport={handleExportPreview}
+            />
+          )}
 
           <AnimatePresence>
             {importResult && (
@@ -874,7 +951,7 @@ export function BulkGraduatesUploadModal({
             <button
               type="button"
               onClick={isParsing ? handleCancelValidation : () => handleOpenChange(false)}
-              disabled={isImporting}
+              disabled={isImporting || isExporting}
               className={`${styles.secondaryAction} rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2`}
             >
               {isParsing ? 'Cancelar validación' : 'Cerrar'}
@@ -896,126 +973,266 @@ export function BulkGraduatesUploadModal({
 }
 
 const GraduateImportPreview = memo(function GraduateImportPreview({
-  preview,
+  page,
   totalRows,
-}: Pick<GraduateImportSummary, 'preview' | 'totalRows'>) {
+  loadingPage,
+  isBusy,
+  isExporting,
+  exportProgress,
+  scrollContainerRef,
+  onPageChange,
+  onExport,
+}: Pick<GraduateImportSummary, 'page' | 'totalRows'> & {
+  loadingPage: number | null;
+  isBusy: boolean;
+  isExporting: boolean;
+  exportProgress: GraduateExportProgress | null;
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
+  onPageChange: (pageNumber: number) => void;
+  onExport: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const previousPage = useRef(page.number);
+
+  useLayoutEffect(() => {
+    if (previousPage.current === page.number) return;
+    previousPage.current = page.number;
+    const panel = panelRef.current;
+    const container = scrollContainerRef.current;
+    if (!panel || !container) return;
+    const offset = panel.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    if (Math.abs(offset) > 1) {
+      container.scrollTo({ top: container.scrollTop + offset, behavior: 'instant' });
+    }
+  }, [page.number, scrollContainerRef]);
 
   return (
-    <AnimatePresence>
-      {preview.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18 }}
-          className={`${styles.previewPanel} rounded-lg border`}
-          style={{ borderColor: '#E5E7EB' }}
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}>
+      <div ref={panelRef} className={`${styles.previewPanel} rounded-lg border`} style={{ borderColor: '#E5E7EB' }}>
+        <div className={`${styles.previewHeading} border-b bg-slate-50 px-4 py-3`}>
+          <p className="text-sm font-semibold text-slate-900">Previsualización y validaciones</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Revise cada columna antes de crear. Las celdas marcadas en rojo indican exactamente qué dato debe corregirse en el archivo.
+          </p>
+          <GraduatePreviewColumnsNavigation viewportRef={viewportRef} />
+        </div>
+        <div
+          ref={viewportRef}
+          role="region"
+          aria-label="Vista previa de graduados"
+          aria-busy={loadingPage !== null}
+          tabIndex={0}
+          className={styles.previewViewport}
         >
-          <div className={`${styles.previewHeading} border-b bg-slate-50 px-4 py-3`}>
-            <p className="text-sm font-semibold text-slate-900">Previsualización y validaciones</p>
-            <p className="mt-1 text-xs leading-5 text-slate-600">
-              Revise cada columna antes de crear. Las celdas marcadas en rojo indican exactamente qué dato debe corregirse en el archivo.
+          <GraduatePreviewTable rows={page.rows} />
+        </div>
+        {page.totalPages > 1 && (
+          <div className={styles.previewFooter}>
+            <GraduatePreviewPagination
+              page={page}
+              totalRows={totalRows}
+              loadingPage={loadingPage}
+              disabled={isBusy || loadingPage !== null}
+              onPageChange={onPageChange}
+            />
+          </div>
+        )}
+      </div>
+      <section aria-label="Reporte de validación" className={styles.previewExport}>
+        <div className={styles.previewExportInfo}>
+          <span className={styles.previewExportIcon}>
+            <FileSpreadsheet aria-hidden="true" />
+          </span>
+          <div>
+            <p className={styles.previewExportTitle}>Reporte de validación</p>
+            <p role="status" className={styles.previewExportDetail}>
+              {isExporting
+                ? exportProgress && exportProgress.preparedRows < exportProgress.totalRows
+                  ? `${rowCountFormat.format(exportProgress.preparedRows)} de ${rowCountFormat.format(exportProgress.totalRows)} registros preparados`
+                  : 'Preparando el archivo XLSX completo…'
+                : 'Registros válidos y con errores de todo el archivo.'}
             </p>
-            <GraduatePreviewColumnsNavigation viewportRef={viewportRef} />
           </div>
-          <div
-            ref={viewportRef}
-            role="region"
-            aria-label="Vista previa de graduados"
-            tabIndex={0}
-            className={styles.previewViewport}
-          >
-            <table className={`${styles.previewTable} divide-y divide-gray-200 text-xs`}>
-              <thead className={styles.previewTableHead}>
-                <tr>
-                  <th scope="col" className="min-w-[4rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Fila</th>
-                  <th scope="col" className="min-w-[7.5rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Estado</th>
-                  {PREVIEW_COLUMNS.map((column) => (
-                    <th
-                      key={column.key}
-                      scope="col"
-                      className={`${column.className} px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600`}
-                    >
-                      {column.label}
-                    </th>
-                  ))}
-                  <th scope="col" className="min-w-[18rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Observaciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 bg-white">
-                {preview.map((row) => {
-                  const rowFieldErrors = getRowFieldErrors(row);
-                  return (
-                    <tr key={row.rowNumber} className={row.errors.length ? 'bg-red-50/40' : ''}>
-                      <td className="whitespace-nowrap px-2 py-2 text-gray-700">{row.rowNumber}</td>
-                      <td className="whitespace-nowrap px-2 py-2">
-                        {row.errors.length === 0 ? (
-                          <Badge className="border border-green-200 bg-green-50 text-green-700">
-                            <CheckCircle2 className="mr-1 h-3 w-3" />
-                            Se creará
-                          </Badge>
-                        ) : (
-                          <Badge className="border border-red-200 bg-red-50 text-red-700">
-                            <XCircle className="mr-1 h-3 w-3" />
-                            No se crea
-                          </Badge>
-                        )}
-                      </td>
-                      {PREVIEW_COLUMNS.map((column) => {
-                        const fieldError = row.fieldErrors[column.key]?.join(' ');
-                        const hasError = Boolean(fieldError);
-                        return (
-                          <td
-                            key={column.key}
-                            className={`${column.className} px-2 py-2 align-top ${
-                              hasError ? 'bg-red-50 text-red-800' : 'text-gray-700'
-                            }`}
-                            title={fieldError || undefined}
-                          >
-                            <span className="block break-words font-medium">
-                              {column.getValue(row) || 'N/A'}
-                            </span>
-                            {hasError && (
-                              <span className="mt-1 block text-[11px] leading-4 text-red-700">
-                                {fieldError}
-                              </span>
-                            )}
-                          </td>
-                        );
-                      })}
-                      <td className="min-w-[18rem] px-2 py-2 align-top">
-                        {row.errors.length === 0 ? (
-                          <span className="text-xs font-medium text-green-700">Fila válida para importación.</span>
-                        ) : (
-                          <div className="flex items-start gap-2 text-xs leading-5 text-red-700">
-                            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                            <ul className="space-y-1">
-                              {rowFieldErrors.map((error, index) => (
-                                <li key={`${row.rowNumber}-${error.label}-${index}`}>
-                                  <strong>{error.label}:</strong> {error.message}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {totalRows > preview.length && (
-            <div className="border-t bg-gray-50 px-3 py-2 text-xs text-gray-600">
-              Mostrando las primeras {preview.length} filas. El proceso importará todas las filas válidas.
-            </div>
-          )}
-        </motion.div>
-      )}
-    </AnimatePresence>
+        </div>
+        <button
+          type="button"
+          onClick={onExport}
+          disabled={isBusy || loadingPage !== null}
+          aria-busy={isExporting}
+          className={styles.previewExportButton}
+        >
+          {isExporting
+            ? <Loader2 aria-hidden="true" className={styles.progressIcon} />
+            : <Download aria-hidden="true" />}
+          {isExporting ? 'Generando Excel…' : 'Descargar resultados XLSX'}
+        </button>
+      </section>
+    </motion.div>
   );
 });
+
+const GraduatePreviewTable = memo(function GraduatePreviewTable({ rows }: { rows: GraduatePreviewRow[] }) {
+  return (
+    <table className={`${styles.previewTable} divide-y divide-gray-200 text-xs`}>
+      <thead className={styles.previewTableHead}>
+        <tr>
+          <th scope="col" className="min-w-[4rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Fila</th>
+          <th scope="col" className="min-w-[7.5rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Estado</th>
+          {PREVIEW_COLUMNS.map((column) => (
+            <th
+              key={column.key}
+              scope="col"
+              className={`${column.className} px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600`}
+            >
+              {column.label}
+            </th>
+          ))}
+          <th scope="col" className="min-w-[18rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Observaciones</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-100 bg-white">
+        {rows.map((row) => {
+          const rowFieldErrors = getGraduateFieldErrors(row.fieldErrors);
+          const hasRowErrors = rowFieldErrors.length > 0;
+          return (
+            <tr key={row.rowNumber} className={hasRowErrors ? 'bg-red-50/40' : ''}>
+              <td className="whitespace-nowrap px-2 py-2 text-gray-700">{row.rowNumber}</td>
+              <td className="whitespace-nowrap px-2 py-2">
+                {!hasRowErrors ? (
+                  <Badge className="border border-green-200 bg-green-50 text-green-700">
+                    <CheckCircle2 className="mr-1 h-3 w-3" />
+                    Se creará
+                  </Badge>
+                ) : (
+                  <Badge className="border border-red-200 bg-red-50 text-red-700">
+                    <XCircle className="mr-1 h-3 w-3" />
+                    No se crea
+                  </Badge>
+                )}
+              </td>
+              {PREVIEW_COLUMNS.map((column) => {
+                const fieldError = row.fieldErrors?.[column.key]?.join(' ');
+                const hasError = Boolean(fieldError);
+                return (
+                  <td
+                    key={column.key}
+                    className={`${column.className} px-2 py-2 align-top ${
+                      hasError ? 'bg-red-50 text-red-800' : 'text-gray-700'
+                    }`}
+                    title={fieldError || undefined}
+                  >
+                    <span className="block break-words font-medium">
+                      {column.getValue(row) || 'N/A'}
+                    </span>
+                    {hasError && (
+                      <span className="mt-1 block text-[11px] leading-4 text-red-700">
+                        {fieldError}
+                      </span>
+                    )}
+                  </td>
+                );
+              })}
+              <td className="min-w-[18rem] px-2 py-2 align-top">
+                {!hasRowErrors ? (
+                  <span className="text-xs font-medium text-green-700">Fila válida para importación.</span>
+                ) : (
+                  <div className="flex items-start gap-2 text-xs leading-5 text-red-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <ul className="space-y-1">
+                      {rowFieldErrors.map((error, index) => (
+                        <li key={`${row.rowNumber}-${error.label}-${index}`}>
+                          <strong>{error.label}:</strong> {error.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+});
+
+function GraduatePreviewPagination({
+  page,
+  totalRows,
+  loadingPage,
+  disabled,
+  onPageChange,
+}: {
+  page: GraduatePreviewPage;
+  totalRows: number;
+  loadingPage: number | null;
+  disabled: boolean;
+  onPageChange: (pageNumber: number) => void;
+}) {
+  const [pageInput, setPageInput] = useState(String(page.number));
+  useEffect(() => setPageInput(String(page.number)), [page.number]);
+
+  const requestedPage = Number(pageInput);
+  const canJump = Number.isInteger(requestedPage) && requestedPage >= 1 &&
+    requestedPage <= page.totalPages && requestedPage !== page.number;
+
+  const handleJump = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (canJump && !disabled) onPageChange(requestedPage);
+  };
+
+  return (
+    <nav aria-label="Paginación de la vista previa" className={styles.previewPagination}>
+      <div>
+        <p role="status" className={styles.columnNavigationLabel}>
+          {loadingPage !== null
+            ? `Cargando página ${rowCountFormat.format(loadingPage)}…`
+            : `Registros ${rowCountFormat.format(page.startIndex + 1)} a ${rowCountFormat.format(page.startIndex + page.rows.length)} de ${rowCountFormat.format(totalRows)}`}
+        </p>
+        <p className="mt-1 text-xs text-gray-600">La carga incluye todos los registros válidos del archivo.</p>
+      </div>
+      <div className={styles.previewPaginationControls}>
+        <button
+          type="button"
+          aria-label="Página anterior"
+          onClick={() => onPageChange(page.number - 1)}
+          disabled={disabled || page.number === 1}
+        >
+          <ChevronLeft aria-hidden="true" />
+        </button>
+        <form onSubmit={handleJump} className={styles.previewPageForm}>
+          <label>
+            Página
+            <input
+              type="number"
+              aria-label="Número de página"
+              min={1}
+              max={page.totalPages}
+              step={1}
+              inputMode="numeric"
+              value={pageInput}
+              disabled={disabled}
+              onChange={(event) => setPageInput(event.currentTarget.value)}
+            />
+          </label>
+          <span>de {rowCountFormat.format(page.totalPages)}</span>
+          <button type="submit" aria-label="Ir a la página" disabled={disabled || !canJump}>
+            Ir
+          </button>
+        </form>
+        <button
+          type="button"
+          aria-label="Página siguiente"
+          onClick={() => onPageChange(page.number + 1)}
+          disabled={disabled || page.number === page.totalPages}
+        >
+          <ChevronRight aria-hidden="true" />
+        </button>
+      </div>
+    </nav>
+  );
+}
 
 function GraduatePreviewColumnsNavigation({
   viewportRef,
