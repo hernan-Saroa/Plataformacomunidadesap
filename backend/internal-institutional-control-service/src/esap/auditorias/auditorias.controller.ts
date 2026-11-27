@@ -620,6 +620,8 @@ export class AuditoriasController {
       informeEjecutivoGenerado,
       hayControversiasPendientes,
       puedeGenerarInformeFinal: !hayControversiasPendientes && todosCerrados,
+      // Sin hallazgos vigentes no hay plan de mejoramiento que exigir (EFDS-2503)
+      totalHallazgos: hallazgos.filter((h: any) => String(h.estado || '').toLowerCase() !== 'retirado').length,
       conteo: {
         pendiente: hallazgos.filter((h: any) => h.estado === 'notificado').length,
         aceptado: hallazgos.filter((h: any) => h.estado === 'aceptado').length,
