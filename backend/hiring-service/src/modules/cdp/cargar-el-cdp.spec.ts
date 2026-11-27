@@ -19,7 +19,11 @@ describe('CdpService.cargar', () => {
   };
   const dto = { numero: 'CDP-12', valor: 1_500_000, fechaExpedicion: '2026-10-05', rubro: 'A-02' };
 
-  const montar = (existentes: Partial<Cdp>[] = [], cargue: string | null = 'BORRADOR') => {
+  const montar = (
+    existentes: Partial<Cdp>[] = [],
+    cargue: string | null = 'BORRADOR',
+    estudio = 'APROBADO',
+  ) => {
     const cdps = existentes.map(
       (e, i) =>
         ({ id: `cdp-${i + 1}`, procesoId: 'p-1', rubro: null, documentoId: null, ...e }) as unknown as Cdp,
@@ -31,8 +35,14 @@ describe('CdpService.cargar', () => {
 
     const em: any = {
       getRepository: (entidad: unknown) => ({
-        findOne: async () =>
-          entidad === Proceso ? proceso : entidad === ProcesoActividad ? actividad : null,
+        findOne: async (opciones?: any) =>
+          entidad === Proceso
+            ? proceso
+            : entidad === ProcesoActividad
+              ? opciones?.where?.numeral === '3.1'
+                ? { numeral: '3.1', estado: estudio }
+                : actividad
+              : null,
         // Lo que está en curso: lo de antes y lo que se haya guardado aquí.
         find: async () =>
           entidad === Cdp
@@ -167,6 +177,37 @@ describe('CdpService.cargar', () => {
 
     await expect(service.quitar('p-1', 'cdp-1', undefined, acceso)).rejects.toBeInstanceOf(ConflictException);
     expect(cdps[0].estado).toBe('EXPEDIDO');
+  });
+  it('retirada la 4.2, quita un CDP de la 3.1 si el estudio previo ya se aprobó (QA 27/11)', async () => {
+    const { service, cdps } = montar([{ estado: 'EXPEDIDO', origen: 'REGISTRADO_EN_ETAPA_3', numero: 'CDP-1' }]);
+    jest.spyOn(service, 'estadoRespaldo').mockResolvedValue({} as any);
+
+    await service.quitar('p-1', 'cdp-1', undefined, acceso);
+
+    expect(cdps[0].estado).toBe('ANULADO');
+  });
+
+  it('con el estudio previo todavía en manos del área, lo de la 3.1 se corrige allá', async () => {
+    const { service, cdps } = montar(
+      [{ estado: 'EXPEDIDO', origen: 'REGISTRADO_EN_ETAPA_3', numero: 'CDP-1' }],
+      'BORRADOR',
+      'BORRADOR',
+    );
+
+    await expect(service.quitar('p-1', 'cdp-1', undefined, acceso)).rejects.toThrow(/se retira allá/);
+    expect(cdps[0].estado).toBe('EXPEDIDO');
+  });
+
+  it('el estado dice qué CDP se pueden corregir desde la 4.2', async () => {
+    const { service } = montar([
+      { estado: 'EXPEDIDO', origen: 'REGISTRADO_EN_ETAPA_3', numero: 'CDP-1' },
+      { estado: 'EXPEDIDO', origen: 'ETAPA_4', numero: 'CDP-2' },
+    ]);
+
+    const r = await service.estadoRespaldo('p-1', undefined, acceso);
+
+    expect(r.corregibles).toEqual(['cdp-1', 'cdp-2']);
+    expect(r.puedeCorregir).toBe(true);
   });
 });
 

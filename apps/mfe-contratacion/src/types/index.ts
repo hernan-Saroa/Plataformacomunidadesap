@@ -179,6 +179,8 @@ export interface EstadoRespaldo {
   puedeAgregar?: boolean;
   /** Hay CDP cargados y la 4.2 sigue abierta: se puede enviar. */
   puedeEnviar?: boolean;
+  /** Los CDP que se pueden corregir o quitar desde la 4.2 (también los de la 3.1 ya aprobada). */
+  corregibles?: string[];
   /** Existe el certificado: la partida quedó apartada para el proceso. */
   expedido: boolean;
   soporteAdjunto: boolean;

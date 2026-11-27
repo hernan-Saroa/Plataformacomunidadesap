@@ -19,7 +19,11 @@ import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/activida
 import { ETAPA_RECEPCION } from '../../entities/recepcion-ofertas.entity';
 import { ETAPA_LIQUIDACION } from '../../entities/informe-final.entity';
 import { Proceso } from '../../entities/proceso.entity';
-import { EstadoActividad, ProcesoActividad } from '../../entities/proceso-actividad.entity';
+import {
+  EstadoActividad,
+  NUMERAL_ESTUDIO_PREVIO,
+  ProcesoActividad,
+} from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { DocumentoProceso } from '../../entities/documento-proceso.entity';
@@ -435,6 +439,7 @@ export class CdpService {
         puedeAgregar: false,
         puedeEnviar: false,
         puedeCorregir: false,
+        corregibles: [] as string[],
         expedido: false,
         soporteAdjunto: false,
         puedeAbrirse: true,
@@ -453,6 +458,7 @@ export class CdpService {
     const { cubre, advertencia } = cdpCubreElProceso(respaldo.valor, proceso.valorEstimado);
     const abierto = await this.cargueAbierto(manager, procesoId);
     const puedeAgregar = permisos.puedeCargar && abierto;
+    const corregibles = permisos.puedeCargar ? await this.corregiblesEnLa42(manager, procesoId, expedidos) : [];
 
     return {
       aplica: true,
@@ -470,7 +476,9 @@ export class CdpService {
       /** Hay con qué enviar la 4.2 y sigue abierta. */
       puedeEnviar: puedeAgregar && expedido,
       /** Se puede corregir lo cargado: la 4.2 se retiró de aprobación o la devolvieron (BUG-001). */
-      puedeCorregir: puedeAgregar && expedidos.some((c) => c.origen === 'ETAPA_4'),
+      puedeCorregir: corregibles.length > 0,
+      /** Cuáles se pueden corregir o quitar desde aquí (también los de la 3.1 ya aprobada). */
+      corregibles,
       // Se reporta aparte de `expedido` a propósito: la apertura la habilita el
       // certificado, no su PDF. Que falte el adjunto no frena el proceso.
       soporteAdjunto: expedido && expedidos.every((c) => !!c.documentoId),
@@ -628,17 +636,35 @@ export class CdpService {
   }
 
   /**
-   * Si un CDP cargado en la 4.2 se puede corregir o quitar (BUG-001 de QA, 14/11).
+   * Si un CDP se puede corregir o quitar desde la 4.2 (BUG-001 de QA, 14/11).
    *
    * Al retirar la 4.2 de aprobación —o si la devuelven— el CDP seguía cargado
    * sin forma de tocarlo: «Devolver el envío» no servía para corregir nada.
-   * Se corrige solo lo que se cargó en la 4.2 (lo del estudio previo se corrige
-   * allá) y mientras la actividad esté en manos de quien la envió: ni en
-   * revisión ni aprobada.
+   * Solo mientras la actividad esté en manos de quien la envió: ni en revisión
+   * ni aprobada.
+   *
+   * Lo cargado desde el estudio previo se corrige allá mientras la 3.1 siga en
+   * manos del área. Una vez enviada o aprobada, allá ya no se puede tocar, y
+   * sin esto el CDP quedaba sin dónde corregirse: retirada la 4.2, lo único que
+   * se podía hacer era volver a enviarla igual (QA, 27/11).
    */
   private async sePuedeCorregir(em: EntityManager, procesoId: string, cdp: Cdp): Promise<boolean> {
-    if (cdp.estado !== 'EXPEDIDO' || cdp.origen !== 'ETAPA_4') return false;
-    return this.cargueAbierto(em, procesoId);
+    if (cdp.estado !== 'EXPEDIDO') return false;
+    if (!(await this.cargueAbierto(em, procesoId))) return false;
+    if (cdp.origen === 'ETAPA_4') return true;
+    const estudio = await em
+      .getRepository(ProcesoActividad)
+      .findOne({ where: { procesoId, numeral: NUMERAL_ESTUDIO_PREVIO } });
+    return !!estudio && estudio.estado !== 'BORRADOR' && estudio.estado !== 'DEVUELTO';
+  }
+
+  /** Los CDP que la 4.2 deja corregir o quitar ahora mismo. */
+  private async corregiblesEnLa42(em: EntityManager, procesoId: string, cdps: Cdp[]): Promise<string[]> {
+    const ids: string[] = [];
+    for (const cdp of cdps) {
+      if (await this.sePuedeCorregir(em, procesoId, cdp)) ids.push(cdp.id);
+    }
+    return ids;
   }
 
   /**
@@ -665,8 +691,8 @@ export class CdpService {
       const cdp = await this.exigirCdp(em, procesoId, cdpId);
       if (!(await this.sePuedeCorregir(em, procesoId, cdp))) {
         throw new ConflictException(
-          cdp.origen === 'REGISTRADO_EN_ETAPA_3'
-            ? 'Este CDP se cargó desde el estudio previo: se corrige allá'
+          cdp.origen !== 'ETAPA_4' && (await this.cargueAbierto(em, procesoId))
+            ? 'Este CDP se cargó desde el estudio previo y sigue en manos del área: se corrige allá'
             : 'El CDP solo se corrige con la 4.2 retirada de aprobación o devuelta',
         );
       }
@@ -722,8 +748,8 @@ export class CdpService {
       const cdp = await this.exigirCdp(em, procesoId, cdpId);
       if (!(await this.sePuedeCorregir(em, procesoId, cdp))) {
         throw new ConflictException(
-          cdp.origen === 'REGISTRADO_EN_ETAPA_3'
-            ? 'Este CDP se cargó desde el estudio previo: se retira allá'
+          cdp.origen !== 'ETAPA_4' && (await this.cargueAbierto(em, procesoId))
+            ? 'Este CDP se cargó desde el estudio previo y sigue en manos del área: se retira allá'
             : 'El CDP solo se quita con la 4.2 retirada de aprobación o devuelta',
         );
       }
