@@ -23,6 +23,7 @@ import { existsSync, mkdirSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { DocumentosService } from '../documentos/documentos.service';
 import { EtapaDocumento, TipoDocumento } from '../documentos/entities/documento.entity';
+import { informePreliminarYaEnviado } from './informe-preliminar-estado';
 import { AdjuntoCorreo } from '../notificaciones/notificaciones.service';
 import { AuditoriasService } from './auditorias.service';
 import { HallazgosService } from '../hallazgos/hallazgos.service';
@@ -605,9 +606,7 @@ export class AuditoriasController {
       this.hallazgosService.findByAuditoria(id),
       this.auditoriasService.findOne(id),
     ]);
-    // Informe preliminar generado = ningún hallazgo en borrador (incluye 0 hallazgos)
-    const hayEnBorrador = hallazgos.some((h: any) => (h.estado || '').toLowerCase() === 'borrador');
-    const informePreliminarGenerado = !hayEnBorrador;
+    const informePreliminarGenerado = await this.informePreliminarEnviado(id, auditoria, hallazgos);
     const hayControversiasPendientes = await this.hallazgosService.hayControversiasPendientes(id);
     const todosCerrados = hallazgos.length === 0 || hallazgos.every((h: any) =>
       ['aceptado', 'ratificado', 'modificado', 'retirado', 'cerrado'].includes(h.estado),
@@ -911,10 +910,14 @@ export class AuditoriasController {
       urlPlataforma: this.origenPeticion(req),
     });
 
-    // ✅ Actualizar fecha de inicio de comunicación en la auditoría a la fecha de hoy
+    // ✅ Actualizar fecha de inicio de comunicación en la auditoría a la fecha de hoy y dejar
+    // marcado que el informe se subió: sin hallazgos es lo único que dice que ya se envió
     try {
       const hoyStr = new Date().toISOString().split('T')[0];
-      await this.auditoriasService.update(id, { fechaInicioComunicacion: hoyStr });
+      await this.auditoriasService.update(id, {
+        fechaInicioComunicacion: hoyStr,
+        checklistCompletados: { informePreliminarGenerado: true },
+      });
     } catch (err: any) {
       console.error('[AuditoriasController] Error actualizando fechaInicioComunicacion:', err.message);
     }
@@ -978,6 +981,20 @@ export class AuditoriasController {
       console.error('[AuditoriasController] No se pudo guardar el informe preliminar en los documentos:', err.message);
     }
     return [adjunto];
+  }
+
+  /**
+   * El informe preliminar ya se envió: se subió el archivo o (auditorías viejas) los hallazgos
+   * ya salieron de borrador. Sin hallazgos y sin informe ya no aparece como enviado.
+   */
+  private async informePreliminarEnviado(id: string, auditoria: any, hallazgos: any[]): Promise<boolean> {
+    const checklist = auditoria?.checklistCompletados || {};
+    if (checklist.informePreliminarGenerado) return true;
+    const documentos = await this.documentosService.getDocumentosPorEtapa(id, EtapaDocumento.COMUNICACION);
+    return informePreliminarYaEnviado({
+      hayDocumento: documentos.some((d) => d.tipoDocumento === TipoDocumento.INFORME_PRELIMINAR),
+      hallazgos,
+    });
   }
 
   /** Dirección pública desde la que se usa la plataforma (para el botón del correo). */
