@@ -2350,7 +2350,11 @@ function Paso2ClasificacionAlcance({
     (ev: EvaluacionProceso) => ev.proceso?.nombre === formData.titulo || ev.proceso?.nombre === formData.procesoAuditado
   );
   
-  const dependenciaProceso = evaluacionProceso?.proceso?.dependencia || 'No especificada';
+  // Las dependencias marcadas en el paso 1; antes mostraba siempre todas las del proceso
+  const dependenciasMarcadas = (formData.dependenciasAuditadas || []).filter(Boolean);
+  const dependenciaProceso = dependenciasMarcadas.length > 0
+    ? dependenciasMarcadas.join('; ')
+    : evaluacionProceso?.proceso?.dependencia || 'No especificada';
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
@@ -2367,7 +2371,13 @@ function Paso2ClasificacionAlcance({
           <FieldWrapper 
             label="Dependencia Responsable" 
             required
-            helpText={formData.titulo ? "Obtenida automáticamente del proceso seleccionado" : "Seleccione primero un proceso en el Paso 1"}
+            helpText={
+              !formData.titulo
+                ? "Seleccione primero un proceso en el Paso 1"
+                : dependenciasMarcadas.length > 0
+                  ? "Las dependencias marcadas en el Paso 1"
+                  : "Obtenida automáticamente del proceso seleccionado"
+            }
           >
             <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 font-medium">
               {formData.titulo ? (

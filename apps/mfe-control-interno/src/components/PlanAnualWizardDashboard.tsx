@@ -105,6 +105,30 @@ export function esEstadoPlanBorrador(estado?: string | null): boolean {
   return e === 'borrador';
 }
 
+/**
+ * Vigencia que se propone al crear un plan anual (EFDS-2502): el año siguiente al del plan en
+ * ejecución y, si ese año ya tiene plan, el siguiente libre. Sin plan en ejecución, desde el año
+ * actual. Antes proponía el primer año libre contando desde 2020.
+ */
+export function vigenciaPropuestaPlanAnual(
+  planes: Array<{ vigencia?: number | null; estado?: string | null }>,
+  anioActual: number,
+): number {
+  const conPlan = new Set(planes.map((p) => Number(p.vigencia)).filter((v) => !isNaN(v)));
+  const enEjecucion = planes
+    .filter((p) => {
+      const e = String(p.estado ?? '').toLowerCase().replace(/_/g, '-').trim();
+      return e === 'en-ejecucion' || e === 'vigente';
+    })
+    .map((p) => Number(p.vigencia))
+    .filter((v) => !isNaN(v));
+  const desde = enEjecucion.length > 0 ? Math.max(...enEjecucion) + 1 : anioActual;
+  for (let anio = desde; anio <= 2100; anio += 1) {
+    if (!conPlan.has(anio)) return anio;
+  }
+  return desde;
+}
+
 function nombreProfesionalOCIVisible(nombre?: string | null): boolean {
   const n = String(nombre || '').trim();
   if (!n) return false;
@@ -2119,13 +2143,20 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
   const vigenciasDisponibles = Array.from({ length: 2100 - 2020 + 1 }, (_, i) => 2020 + i)
     .filter((y) => !vigenciasBloqueadas.includes(y));
 
+  const vigenciaPropuesta = useMemo(
+    () => vigenciaPropuestaPlanAnual(planesOtros, anioActual),
+    [planesOtros, anioActual],
+  );
+  /** La vigencia ya la fijó algo distinto de la propuesta (plan que se edita, borrador o el usuario). */
+  const vigenciaFijadaRef = useRef(
+    Boolean(planAEditar?.vigencia) || Boolean(draft?.vigencia && !vigenciasBloqueadas.includes(draft.vigencia)),
+  );
+
   const [vigencia, setVigencia] = useState(() => {
     if (planAEditar?.vigencia) return planAEditar.vigencia;
     // Si hay draft, usarlo SOLO si la vigencia sigue disponible
     if (draft?.vigencia && !vigenciasBloqueadas.includes(draft.vigencia)) return draft.vigencia;
-    
-    // Auto-seleccionar el primer año disponible
-    return vigenciasDisponibles[0] || anioActual;
+    return vigenciaPropuesta;
   });
   
   const vigenciaInicial = planAEditar?.vigencia ?? vigencia;
@@ -2356,6 +2387,13 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
     );
   }, [planAEditar?.id, planAEditar?.roles, auditores, cargandoAuditores]);
 
+  // Los planes pueden llegar después de abrir el asistente: mientras nadie haya fijado la
+  // vigencia, se vuelve a proponer con la lista completa (las fechas se ajustan abajo).
+  useEffect(() => {
+    if (vigenciaFijadaRef.current) return;
+    setVigencia((actual) => (actual === vigenciaPropuesta ? actual : vigenciaPropuesta));
+  }, [vigenciaPropuesta]);
+
   // Sincronizar fechas solo cuando el usuario cambia la vigencia (no al abrir edición/creación).
   const vigenciaPrevRef = useRef<number | null>(null);
   const omitirSyncVigenciaInicialRef = useRef(true);
@@ -2514,6 +2552,7 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
   const handleVigenciaChange = (nuevaVigencia: number) => {
     if (planAEditar?.id) return;
     if (nuevaVigencia === vigencia) return;
+    vigenciaFijadaRef.current = true;
 
     if (!wizardHydrationCompletedRef.current) {
       setVigencia(nuevaVigencia);
@@ -2560,6 +2599,7 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
     if (!planAEditar?.id) return;
     const v = planAEditar.vigencia;
     if (v && !isNaN(v)) {
+      vigenciaFijadaRef.current = true;
       setVigencia(v);
       vigenciaPrevRef.current = v;
       omitirSyncVigenciaInicialRef.current = true;
@@ -2688,6 +2728,7 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
 
         if (typeof winner.paso === 'number') setPaso(winner.paso);
         if (typeof winner.vigencia === 'number' && !ocupadas.includes(winner.vigencia)) {
+          vigenciaFijadaRef.current = true;
           setVigencia(winner.vigencia);
         }
         if (typeof winner.fechaInicio === 'string') setFechaInicio(winner.fechaInicio);

@@ -213,6 +213,10 @@ export class UpdateAuditoriaDto {
 
   @IsString()
   @IsOptional()
+  metodologia?: string;
+
+  @IsString()
+  @IsOptional()
   responsableAreaNombre?: string;
 
   @IsString()

@@ -1731,6 +1731,58 @@ describe('[EFDS-1734] RF-INF-005 AC-01 / AC-02 Aprobar y Asignar', () => {
     expect(r.estado).toBe('ASIGNADA');
     expect(r.motivoRechazo).toBeUndefined();
   });
+
+  // EFDS-2437 / RF-INF-012: Clasificación y escalamiento de gran envergadura (Mantenimiento Mayor)
+  it('aprobarYAsignar clasificacionMantenimiento=MAYOR → estado=ESCALADA_GIM + accion=ESCALAMIENTO_GRAN_ENVERGADURA_GIM (RF-INF-012)', async () => {
+    const save = jest.fn().mockImplementation((d) => Promise.resolve({ ...d, updatedAt: new Date() }));
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-MAYOR-1', estado: 'RECIBIDA', idCategoria: 51, asignaciones: [], prioridad: 'MEDIA',
+        }),
+        save,
+      } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return tecElectrico;
+          return null;
+        }),
+      } as any,
+    });
+    const r = await s.aprobarYAsignar(
+      'SOL-MAYOR-1',
+      { tecnicoCodigo: 'TEC-ELC-001', clasificacionMantenimiento: 'MAYOR' },
+      userGestor,
+    );
+    expect(r.estado).toBe('ESCALADA_GIM');
+    expect(r.clasificacionMantenimiento).toBe('MAYOR');
+    expect(r.asignaciones?.[0]?.accion).toBe('ESCALAMIENTO_GRAN_ENVERGADURA_GIM');
+  });
+
+  it('aprobarYAsignar clasificacionMantenimiento=MAYOR con prioridad URGENTE → activa esEmergenciaCritica=true (RF-INF-012/014)', async () => {
+    const save = jest.fn().mockImplementation((d) => Promise.resolve({ ...d, updatedAt: new Date() }));
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-MAYOR-URGENTE-1', estado: 'RECIBIDA', idCategoria: 51, asignaciones: [], prioridad: 'URGENTE',
+        }),
+        save,
+      } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return tecElectrico;
+          return null;
+        }),
+      } as any,
+    });
+    const r = await s.aprobarYAsignar(
+      'SOL-MAYOR-URGENTE-1',
+      { tecnicoCodigo: 'TEC-ELC-001', clasificacionMantenimiento: 'MAYOR' },
+      userGestor,
+    );
+    expect(r.estado).toBe('ESCALADA_GIM');
+    expect(r.esEmergenciaCritica).toBe(true);
+  });
   it('aprobarYAsignar idCategoria=48 (Eléctricas) con técnico distinto a REG_001 → retorna __meta.warning sin bloquear (warning suave)', async () => {
     const tecNoElectrico = {
       idCatalogo: 81, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-GEN-001',

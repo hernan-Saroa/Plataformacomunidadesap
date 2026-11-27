@@ -8,6 +8,7 @@ import { createContext, useContext, useState, useRef, ReactNode, useEffect } fro
 import { toast } from 'sonner';
 import { legalService, ocService } from '../../../../services/api/legal.service';
 import { expedienteConfigService } from '../../services/api/expediente-config.service';
+import { validarEntesControlPM } from './entesControlPM';
 
 // ============ TIPOS ============
 
@@ -884,6 +885,11 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   const avisoAutoguardadoFallidoRef = useRef(false);
   // Último estado guardado de todas las secciones; null mientras no hay ediciones pendientes.
   const ultimoGuardadoRef = useRef<EstadoConfiguraciones | null>(null);
+  // Secciones modificadas desde el último guardado exitoso: evita reenviar las 9 claves
+  // en bloque cuando solo cambió una (ej. Entes de Control PM) y limpia Auditoría.
+  const clavesModificadasRef = useRef<Set<string>>(new Set());
+  // Timer del autoguardado para poder cancelarlo ante guardado manual o Restablecer.
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Avisa una sola vez de que parte de la configuración (Términos e Informes o Ejes
   // Estratégicos) no se pudo leer y que, por seguridad, no se está guardando.
@@ -1236,82 +1242,112 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     };
   };
 
-  const marcarEdicion = () => {
+  const marcarEdicion = (claveSeccion?: string) => {
     capturarUltimoGuardado();
     usuarioEditoRef.current = true;
+    clavesModificadasRef.current.add(claveSeccion ?? '__all__');
     setCambiosPendientes(true);
   };
 
   // Versión expuesta de setCambiosPendientes: marcar cambios sin pasar por un
   // actualizar* también debe poder deshacerse con Restablecer.
   const marcarCambiosPendientes = (valor: boolean) => {
-    if (valor) capturarUltimoGuardado();
+    if (valor) {
+      capturarUltimoGuardado();
+      clavesModificadasRef.current.add('__all__');
+    }
     setCambiosPendientes(valor);
   };
 
   // Actualizar configuraciones
   const actualizarConfiguraciones = (nuevasConfig: ConfiguracionModulo[]) => {
     setConfiguraciones(nuevasConfig);
-    marcarEdicion();
+    marcarEdicion('__modulos__');
   };
 
   // Actualizar ejes estratégicos
   const actualizarEjesEstrategicos = (nuevosEjes: EjeEstrategico[]) => {
     setEjesEstrategicos(nuevosEjes);
-    marcarEdicion();
+    marcarEdicion(CLAVE_EJES_ESTRATEGICOS);
   };
 
   // Actualizar tipos de indicadores
   const actualizarTiposIndicadores = (nuevosIndicadores: TipoIndicador[]) => {
     setTiposIndicadores(nuevosIndicadores);
-    marcarEdicion();
+    marcarEdicion('__all__');
   };
 
   // Actualizar tipos de requerimientos
   // Actualizar tipos de requerimientos
   const actualizarTiposRequerimientos = (nuevosRequerimientos: TipoRequerimiento[]) => {
     setTiposRequerimientos(nuevosRequerimientos);
-    marcarEdicion();
+    marcarEdicion('__all__');
   };
 
   // Actualizar organismos de control
   const actualizarOrganismosControl = (nuevosOrganismos: OrganismoControl[]) => {
     setOrganismosControl(nuevosOrganismos);
-    marcarEdicion();
+    marcarEdicion('__organismos__');
   };
 
   const actualizarEntesControlPM = (nuevosEntes: EnteControlPM[]) => {
     setEntesControlPM(nuevosEntes);
-    marcarEdicion();
+    marcarEdicion(CLAVE_ENTES_CONTROL_PM);
   };
 
   const actualizarCategoriasDocumentos = (nuevasCategorias: CategoriaDocumento[]) => {
     setCategoriasDocumentos(nuevasCategorias);
-    marcarEdicion();
+    marcarEdicion('__all__');
   };
 
   const actualizarDestinatariosInforme = (nuevosDestinatarios: DestinatarioInforme[]) => {
     setDestinatariosInforme(nuevosDestinatarios);
-    marcarEdicion();
+    marcarEdicion('__all__');
   };
 
   const actualizarEntesSolicitantesInforme = (nuevosEntes: EnteSolicitanteInforme[]) => {
     setEntesSolicitantesInforme(nuevosEntes);
-    marcarEdicion();
+    marcarEdicion('__all__');
   };
 
   const actualizarTiposFuenteNormativa = (nuevosTipos: TipoFuenteNormativa[]) => {
     setTiposFuenteNormativa(nuevosTipos);
-    marcarEdicion();
+    marcarEdicion('__all__');
   };
 
   const actualizarRolesResponsablesTermino = (nuevosRoles: ClaveRolResponsableTermino[]) => {
     setRolesResponsablesTermino(nuevosRoles);
-    marcarEdicion();
+    marcarEdicion('__all__');
   };
 
   // Guardar configuraciones
   const guardarConfiguraciones = async (silencioso: boolean = false): Promise<void> => {
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+
+    const modificadas = clavesModificadasRef.current;
+    const guardarTodo = modificadas.size === 0 || modificadas.has('__all__');
+    const guardarModulos = guardarTodo || modificadas.has('__modulos__');
+    const guardarOrganismos = guardarTodo || modificadas.has('__organismos__');
+    const guardarEntesPM = guardarTodo || modificadas.has(CLAVE_ENTES_CONTROL_PM);
+
+    if (guardarEntesPM && !listasNoCargadasRef.current.has(CLAVE_ENTES_CONTROL_PM)) {
+      const errorEntes = validarEntesControlPM(entesControlPM);
+      if (errorEntes) {
+        if (silencioso) {
+          setSavingStatus('idle');
+          return;
+        }
+        setSavingStatus('error');
+        toast.error('Revisa los entes de control antes de guardar', {
+          description: errorEntes,
+        });
+        throw new Error(errorEntes);
+      }
+    }
+
     // El guardado automático ya maneja su propio indicador; el manual lo muestra aquí.
     if (!silencioso) setSavingStatus('saving');
     // Esperar la lectura inicial: hasta que termine no se sabe qué claves son seguras
@@ -1334,8 +1370,13 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       [CLAVE_EJES_ESTRATEGICOS, ejesEstrategicos],
       [CLAVE_ENTES_CONTROL_PM, entesControlPM],
     ];
-    const listasGuardables = listasTerminosInformes.filter(([clave]) => !listasNoCargadasRef.current.has(clave));
-    if (listasGuardables.length < listasTerminosInformes.length) {
+    const listasGuardables = listasTerminosInformes.filter(
+      ([clave]) => !listasNoCargadasRef.current.has(clave) && (guardarTodo || modificadas.has(clave)),
+    );
+    const listasBloqueadas = listasTerminosInformes.filter(
+      ([clave]) => listasNoCargadasRef.current.has(clave) && (guardarTodo || modificadas.has(clave)),
+    );
+    if (listasBloqueadas.length > 0) {
       avisarListasNoCargadas();
     }
 
@@ -1359,27 +1400,28 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       // Detectar cambios de nombre y plazo en tiposProcesos
       const nombreCambios: { nombreAnterior: string; nombreNuevo: string }[] = [];
       const plazoCambios: { nombreAnterior: string; deltaDias: number }[] = [];
-      configuraciones.forEach(modulo => {
-        modulo.tiposProcesos?.forEach(tp => {
-          const anterior = savedTiposRef.current[tp.id];
-          if (anterior === undefined) return;
-          if (anterior.nombre !== tp.nombre) {
-            nombreCambios.push({ nombreAnterior: anterior.nombre, nombreNuevo: tp.nombre });
-          }
-          if (anterior.plazo !== tp.plazo) {
-            // Usar el nombre ANTERIOR para encontrar los expedientes en BD
-            plazoCambios.push({ nombreAnterior: anterior.nombre, deltaDias: tp.plazo - anterior.plazo });
-          }
+      if (guardarModulos) {
+        configuraciones.forEach(modulo => {
+          modulo.tiposProcesos?.forEach(tp => {
+            const anterior = savedTiposRef.current[tp.id];
+            if (anterior === undefined) return;
+            if (anterior.nombre !== tp.nombre) {
+              nombreCambios.push({ nombreAnterior: anterior.nombre, nombreNuevo: tp.nombre });
+            }
+            if (anterior.plazo !== tp.plazo) {
+              // Usar el nombre ANTERIOR para encontrar los expedientes en BD
+              plazoCambios.push({ nombreAnterior: anterior.nombre, deltaDias: tp.plazo - anterior.plazo });
+            }
+          });
         });
-      });
+      }
 
-      // Guardar cada módulo individualmente en el backend, junto con las listas
-      // globales de Términos e Informes (destinatarios, entes solicitantes y
-      // tipos de fuente normativa), que también deben aplicar a todos los usuarios.
+      // Guardar únicamente las secciones modificadas en el backend (evita fallos
+      // colaterales de otras claves y registros espurios en Auditoría).
       await Promise.all([
-        ...configuraciones.map(config =>
-          legalService.saveConfiguration(config.id, config)
-        ),
+        ...(guardarModulos
+          ? configuraciones.map(config => legalService.saveConfiguration(config.id, config))
+          : []),
         ...listasGuardables.map(([clave, valor]) => legalService.saveConfiguration(clave, valor)),
       ]);
 
@@ -1409,26 +1451,31 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       }
 
       // Actualizar snapshot con estado actual
-      const nuevoSnapshot: Record<string, { nombre: string; plazo: number }> = {};
-      configuraciones.forEach(m => m.tiposProcesos?.forEach(tp => { nuevoSnapshot[tp.id] = { nombre: tp.nombre, plazo: tp.plazo }; }));
-      savedTiposRef.current = nuevoSnapshot;
+      if (guardarModulos) {
+        const nuevoSnapshot: Record<string, { nombre: string; plazo: number }> = {};
+        configuraciones.forEach(m => m.tiposProcesos?.forEach(tp => { nuevoSnapshot[tp.id] = { nombre: tp.nombre, plazo: tp.plazo }; }));
+        savedTiposRef.current = nuevoSnapshot;
+      }
 
-      // Sincronizar organismos de control al backend
-      try {
-        await ocService.syncOrganismosControl(
-          organismosControl.map(o => ({
-            ...o,
-            correos: o.correos ?? [],
-          }))
-        );
-      } catch (err) {
-        console.warn('⚠️ No se pudo sincronizar organismos al backend:', err);
+      // Sincronizar organismos de control al backend solo cuando cambiaron
+      if (guardarOrganismos) {
+        try {
+          await ocService.syncOrganismosControl(
+            organismosControl.map(o => ({
+              ...o,
+              correos: o.correos ?? [],
+            }))
+          );
+        } catch (err) {
+          console.warn('⚠️ No se pudo sincronizar organismos al backend:', err);
+        }
       }
 
       // La caché local ya se escribió al inicio de esta función.
       usuarioEditoRef.current = false;
       avisoAutoguardadoFallidoRef.current = false;
       ultimoGuardadoRef.current = null;
+      clavesModificadasRef.current.clear();
       setCambiosPendientes(false);
 
       if (!silencioso) {
@@ -1457,9 +1504,20 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   useEffect(() => {
     if (!cambiosPendientes) return;
 
+    // Si el usuario dejó un ente sin nombre mientras edita, no disparar autoguardado
+    // (evita enviar un 400 al backend y mostrar un error mientras termina de escribir).
+    if (
+      (clavesModificadasRef.current.has(CLAVE_ENTES_CONTROL_PM) || clavesModificadasRef.current.has('__all__')) &&
+      validarEntesControlPM(entesControlPM) !== null
+    ) {
+      setSavingStatus('idle');
+      return;
+    }
+
     setSavingStatus('saving');
 
     const timer = setTimeout(async () => {
+      autosaveTimerRef.current = null;
       try {
         console.log('🔄 Iniciando guardado automático...');
         await guardarConfiguraciones(true);
@@ -1472,15 +1530,22 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         // había llegado al servidor. Ahora se avisa en el momento.
         if (!avisoAutoguardadoFallidoRef.current) {
           avisoAutoguardadoFallidoRef.current = true;
+          const motivo = err instanceof Error && err.message ? `${err.message}. ` : '';
           toast.error('No se pudieron guardar las configuraciones en el servidor', {
-            description: 'Los cambios están solo en este navegador y se perderán al cerrar sesión. Revisa la conexión y pulsa "Guardar".',
+            description: `${motivo}Los cambios siguen en pantalla: revisa la conexión y pulsa "Guardar Cambios".`,
             duration: 8000,
           });
         }
       }
     }, 1500); // 1.5s debounce
+    autosaveTimerRef.current = timer;
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (autosaveTimerRef.current === timer) {
+        autosaveTimerRef.current = null;
+      }
+    };
     // `cambiosPendientes` y `categoriasDocumentos` deben estar aquí: sin ellos el
     // efecto no se re-ejecutaba al editar categorías de documentos (no se
     // autoguardaban) ni al marcar cambios sin que mutara ninguna otra lista.
@@ -1538,9 +1603,14 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       console.warn('⚠️ No se pudo actualizar la caché local de configuraciones:', error);
     }
 
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
     ultimoGuardadoRef.current = null;
     usuarioEditoRef.current = false;
     avisoAutoguardadoFallidoRef.current = false;
+    clavesModificadasRef.current.clear();
     setCambiosPendientes(false);
     setSavingStatus('idle');
     toast.success('Configuraciones restablecidas', {
@@ -1617,6 +1687,10 @@ export function useConfiguracionesSIGL() {
     throw new Error('useConfiguracionesSIGL debe ser usado dentro de ConfiguracionesSIGLProvider');
   }
   return context;
+}
+
+export function useConfiguracionesSIGLOpcional() {
+  return useContext(ConfiguracionesSIGLContext);
 }
 
 // ============ HOOK PARA MÓDULO ESPECÍFICO ============

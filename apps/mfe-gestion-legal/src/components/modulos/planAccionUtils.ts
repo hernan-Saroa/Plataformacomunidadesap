@@ -3,8 +3,28 @@
  * Vive fuera del componente para poder probarla de forma aislada.
  */
 
-export type EjeEstrategico = 'GESTION_INSTITUCIONAL' | 'TALENTO_HUMANO' | 'TRANSPARENCIA' | 'TECNOLOGIA';
+export type EjeEstrategico = string;
 export type EstadoIndicador = 'EN_TIEMPO' | 'EN_RIESGO' | 'VENCIDO' | 'COMPLETADO';
+
+export interface EjeEstrategicoConfig {
+  id: string;
+  nombre: string;
+  icono: string;
+  descripcion?: string;
+  color: string;
+  activo: boolean;
+  orden: number;
+}
+
+export interface EjeVisual {
+  id: string;
+  nombre: string;
+  color: string;
+  bgColor: string;
+  icon: string;
+  descripcion: string;
+  activo: boolean;
+}
 
 export interface RegistroAvanceIndicador {
   id: number | string;
@@ -42,11 +62,142 @@ export interface Indicador {
 export const EJES: EjeEstrategico[] = ['GESTION_INSTITUCIONAL', 'TALENTO_HUMANO', 'TRANSPARENCIA', 'TECNOLOGIA'];
 export const ESTADOS: EstadoIndicador[] = ['EN_TIEMPO', 'EN_RIESGO', 'VENCIDO', 'COMPLETADO'];
 
-export const EJE_NOMBRES: Record<EjeEstrategico, string> = {
+export const EJE_NOMBRES: Record<string, string> = {
   GESTION_INSTITUCIONAL: 'Gestión Institucional',
   TALENTO_HUMANO: 'Talento Humano',
   TRANSPARENCIA: 'Transparencia',
   TECNOLOGIA: 'Tecnología',
+};
+
+export const EJES_VISUALES_DEFAULT: Record<string, EjeVisual> = {
+  GESTION_INSTITUCIONAL: {
+    id: 'GESTION_INSTITUCIONAL',
+    nombre: 'Gestión Institucional',
+    color: '#2962FF',
+    bgColor: '#E3F2FD',
+    icon: '🏛️',
+    descripcion: 'Procesos y acciones relacionadas con la administración y gestión institucional',
+    activo: true,
+  },
+  TALENTO_HUMANO: {
+    id: 'TALENTO_HUMANO',
+    nombre: 'Talento Humano',
+    color: '#F57C00',
+    bgColor: '#FFF3E0',
+    icon: '👥',
+    descripcion: 'Desarrollo, bienestar y gestión del talento humano',
+    activo: true,
+  },
+  TRANSPARENCIA: {
+    id: 'TRANSPARENCIA',
+    nombre: 'Transparencia',
+    color: '#00C853',
+    bgColor: '#E8F5E9',
+    icon: '🔍',
+    descripcion: 'Transparencia, acceso a la información y rendición de cuentas',
+    activo: true,
+  },
+  TECNOLOGIA: {
+    id: 'TECNOLOGIA',
+    nombre: 'Tecnología',
+    color: '#9C27B0',
+    bgColor: '#F3E5F5',
+    icon: '💻',
+    descripcion: 'Innovación tecnológica y transformación digital',
+    activo: true,
+  },
+};
+
+export const EJES_CONFIG_DEFAULT: EjeEstrategicoConfig[] = [
+  { id: 'GESTION_INSTITUCIONAL', nombre: 'Gestión Institucional', icono: '🏛️', descripcion: EJES_VISUALES_DEFAULT.GESTION_INSTITUCIONAL.descripcion, color: '#2962FF', activo: true, orden: 1 },
+  { id: 'TALENTO_HUMANO', nombre: 'Talento Humano', icono: '👥', descripcion: EJES_VISUALES_DEFAULT.TALENTO_HUMANO.descripcion, color: '#F57C00', activo: true, orden: 2 },
+  { id: 'TRANSPARENCIA', nombre: 'Transparencia', icono: '🔍', descripcion: EJES_VISUALES_DEFAULT.TRANSPARENCIA.descripcion, color: '#00C853', activo: true, orden: 3 },
+  { id: 'TECNOLOGIA', nombre: 'Tecnología', icono: '💻', descripcion: EJES_VISUALES_DEFAULT.TECNOLOGIA.descripcion, color: '#9C27B0', activo: true, orden: 4 },
+];
+
+/** Normaliza códigos legados del backend manteniendo intactos los ejes personalizados creados por el usuario. */
+export const mapEjeFromBackend = (eje?: string | null): string => {
+  const limpio = (eje ?? '').trim();
+  switch (limpio) {
+    case 'GESTION': return 'GESTION_INSTITUCIONAL';
+    case 'TALENTO': return 'TALENTO_HUMANO';
+    case 'TRANSPARENCIA': return 'TRANSPARENCIA';
+    case 'TECNOLOGIA': return 'TECNOLOGIA';
+    case '': return 'GESTION_INSTITUCIONAL';
+    default: return limpio;
+  }
+};
+
+/** Convierte al código esperado por el backend preservando ejes personalizados (máx. 50 caracteres). */
+export const mapEjeToBackend = (eje?: string | null): string => {
+  const limpio = (eje ?? '').trim();
+  switch (limpio) {
+    case 'GESTION_INSTITUCIONAL': return 'GESTION';
+    case 'TALENTO_HUMANO': return 'TALENTO';
+    case 'TRANSPARENCIA': return 'TRANSPARENCIA';
+    case 'TECNOLOGIA': return 'TECNOLOGIA';
+    case '': return 'GESTION';
+    default: return limpio.slice(0, 50);
+  }
+};
+
+/** Genera un fondo suave legible para badges/avatares a partir de cualquier color HEX configurado. */
+export const hexToSoftBg = (color?: string): string => {
+  const match = /^#?([0-9a-f]{6})$/i.exec((color ?? '').trim());
+  if (!match) return '#E3F2FD';
+  const hex = match[1];
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, 0.12)`;
+};
+
+/** Devuelve los ejes configurados ordenados (con fallback a los 4 iniciales si no hay configuración cargada). */
+export const obtenerEjesOrdenados = (
+  ejesConfigurados?: EjeEstrategicoConfig[] | null,
+  soloActivos = false,
+): EjeEstrategicoConfig[] => {
+  const base = ejesConfigurados && ejesConfigurados.length > 0
+    ? ejesConfigurados
+    : EJES_CONFIG_DEFAULT;
+  return [...base]
+    .filter(e => !soloActivos || e.activo)
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+};
+
+/** Resuelve nombre, ícono, color y fondo de un eje desde Configuraciones SIGL (con respaldo para ejes legados/eliminados). */
+export const resolverEjeVisual = (
+  ejeId: string,
+  ejesConfigurados?: EjeEstrategicoConfig[] | null,
+): EjeVisual => {
+  const normalizado = mapEjeFromBackend(ejeId);
+  const encontrado = ejesConfigurados?.find(
+    e => e.id === ejeId || e.id === normalizado || mapEjeFromBackend(e.id) === normalizado,
+  );
+  if (encontrado) {
+    const color = encontrado.color?.trim() || '#003DA5';
+    return {
+      id: encontrado.id,
+      nombre: encontrado.nombre?.trim() || encontrado.id,
+      color,
+      bgColor: hexToSoftBg(color),
+      icon: encontrado.icono?.trim() || '🎯',
+      descripcion: encontrado.descripcion?.trim() || '',
+      activo: encontrado.activo,
+    };
+  }
+  if (EJES_VISUALES_DEFAULT[normalizado]) {
+    return EJES_VISUALES_DEFAULT[normalizado];
+  }
+  return {
+    id: normalizado,
+    nombre: normalizado,
+    color: '#475569',
+    bgColor: '#F1F5F9',
+    icon: '🎯',
+    descripcion: '',
+    activo: false,
+  };
 };
 
 export const ESTADO_NOMBRES: Record<EstadoIndicador, string> = {
@@ -157,11 +308,21 @@ export const filtrarIndicadores = (indicadores: Indicador[], f: FiltrosPlanAccio
 };
 
 // ==================== AGRUPACIÓN Y CONSOLIDADOS ====================
-export const agruparPorEje = (indicadores: Indicador[]): Record<EjeEstrategico, Indicador[]> => {
-  const grupos = {
-    GESTION_INSTITUCIONAL: [], TALENTO_HUMANO: [], TRANSPARENCIA: [], TECNOLOGIA: [],
-  } as Record<EjeEstrategico, Indicador[]>;
-  indicadores.forEach(i => { grupos[i.ejeEstrategico]?.push(i); });
+export const agruparPorEje = (
+  indicadores: Indicador[],
+  ejesOrden?: string[],
+): Record<string, Indicador[]> => {
+  const grupos: Record<string, Indicador[]> = {};
+  const iniciales = ejesOrden ?? EJES;
+  iniciales.forEach(eje => {
+    grupos[eje] = [];
+  });
+  indicadores.forEach(i => {
+    if (!grupos[i.ejeEstrategico]) {
+      grupos[i.ejeEstrategico] = [];
+    }
+    grupos[i.ejeEstrategico].push(i);
+  });
   return grupos;
 };
 

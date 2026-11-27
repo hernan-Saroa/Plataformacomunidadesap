@@ -195,4 +195,58 @@ describe('ConfiguracionesSIGLContext · Entes de Control de Planes de Mejoramien
     expect(guardados()).toHaveLength(1);
     expect(guardados()[0][1].map((e: any) => e.id)).toEqual(['CONTRALORIA', 'PROCURADURIA', 'OCI', 'AUDITORIA_EXTERNA']);
   });
+
+  it('al agregar o editar un ente solo guarda sigl-entes-control-pm (un fallo en otra clave no genera error)', async () => {
+    backendConEntes();
+    renderProvider();
+    await waitFor(() => expect(ctx.entesControlPM).toHaveLength(2));
+    vi.mocked(legalService.saveConfiguration).mockClear();
+    vi.mocked(legalService.saveConfiguration).mockImplementation(async (key: string) => {
+      if (key !== CLAVE) throw new Error('Error en otra configuración');
+      return {};
+    });
+
+    await act(async () => {
+      ctx.actualizarEntesControlPM([...ctx.entesControlPM, ente('ente-nuevo', 'Defensoría del Pueblo')]);
+    });
+    await act(async () => {
+      await ctx.guardarConfiguraciones(true);
+    });
+
+    const clavesGuardadas = vi.mocked(legalService.saveConfiguration).mock.calls.map(c => c[0]);
+    expect(clavesGuardadas).toEqual([CLAVE]);
+    expect(ctx.cambiosPendientes).toBe(false);
+  });
+
+  it('no dispara autoguardado al servidor mientras un ente tiene el nombre vacío y guarda al completarlo', async () => {
+    backendConEntes();
+    renderProvider();
+    await waitFor(() => expect(ctx.entesControlPM).toHaveLength(2));
+    vi.mocked(legalService.saveConfiguration).mockClear();
+
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        ctx.actualizarEntesControlPM([...ctx.entesControlPM, ente('ente-tmp', '')]);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(guardados()).toHaveLength(0);
+      expect(ctx.cambiosPendientes).toBe(true);
+      expect(ctx.savingStatus).toBe('idle');
+
+      await act(async () => {
+        ctx.actualizarEntesControlPM([...remotos, ente('ente-tmp', 'Personería Distrital')]);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(guardados()).toHaveLength(1);
+      expect(guardados()[0][1].map((e: any) => e.nombre)).toContain('Personería Distrital');
+      expect(ctx.savingStatus).toBe('saved');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

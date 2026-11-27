@@ -170,6 +170,7 @@ const resumirExtensionSLA = (obj: Record<string, any>): string | null => {
 const HISTORICO_ACCION_STYLE: Record<string, { badge: string; dot: string; colorHex: string; icon: React.ComponentType<any> }> = {
   APROBADA_Y_ASIGNADA: { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-600', colorHex: '#059669', icon: BadgeCheck },
   ASIGNACION_MANTENIMIENTO_MAYOR_ESCALADO: { badge: 'bg-purple-100 text-purple-800 border-purple-200', dot: 'bg-purple-600', colorHex: '#7e22ce', icon: Building2 },
+  ESCALAMIENTO_GRAN_ENVERGADURA_GIM: { badge: 'bg-purple-100 text-purple-900 border-purple-300', dot: 'bg-purple-700', colorHex: '#6b21a8', icon: Building2 },
   RECHAZADA: { badge: 'bg-rose-100 text-rose-800 border-rose-200', dot: 'bg-rose-600', colorHex: '#e11d48', icon: XCircle },
   REDISTRIBUIDA: { badge: 'bg-indigo-100 text-indigo-800 border-indigo-200', dot: 'bg-indigo-600', colorHex: '#4f46e5', icon: Users },
   INICIO_VALORACION: { badge: 'bg-sky-100 text-sky-800 border-sky-200', dot: 'bg-blue-600', colorHex: '#2563eb', icon: ClipboardList },
@@ -204,9 +205,10 @@ const ESTADOS_PRE_APROBACION_UMI: string[] = [
   'PENDIENTE_APROBACION',
 ];
 const ESTADOS_PRE_APROBACION_TI: string[] = [
-  'REMITIDA_TI',
-  'PENDIENTE_APROBACION',
   'RECIBIDA',
+  'PENDIENTE_APROBACION',
+  'EN_ANALISIS',
+  'PENDIENTE_CLASIFICACION',
 ];
 const ESTADOS_FINALES_O_BLOQUEADOS: string[] = [
   'COMPLETADA',
@@ -1707,7 +1709,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const puedeRedistribuir =
     detalle &&
     !esAreaTI &&
-    estadoActual === 'ASIGNADA' &&
+    ['ASIGNADA', 'ESCALADA_GIM'].includes(estadoActual) &&
     tienePerm('infraestructura.solicitud.redistribute');
 
   // Visibilidad caja Motor sugerencia + reasignación manual (EFDS-1734 / 1735 / 1736):
@@ -1727,7 +1729,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const puedeIniciarEjecOValoracion =
     detalle &&
     !esAreaTI &&
-    ['ASIGNADA', 'EN_CAMPO_VALORACION', 'EN_VALORACION'].includes(estadoActual) &&
+    ['ASIGNADA', 'ESCALADA_GIM', 'EN_CAMPO_VALORACION', 'EN_VALORACION'].includes(estadoActual) &&
     (
       tienePerm('infraestructura.solicitud.cierre_tecnico') ||
       tienePerm('infraestructura.solicitud.close_with_evidence') ||
@@ -2236,6 +2238,8 @@ const puedeCerrarTecnicamente = Boolean(
                         ? 'CERRADA POR FALTA DE INSUMOS'
                         : esCerradaSinRespuesta
                         ? 'CERRADA – SIN RESPUESTA'
+                        : String(detalle.estado || '').toUpperCase() === 'ESCALADA_GIM'
+                        ? 'ESCALADA COORDINACIÓN GIM'
                         : (detalle.estado || 'RECIBIDA')}
                     </span>
                   )}
@@ -2743,12 +2747,20 @@ const puedeCerrarTecnicamente = Boolean(
                                       EFDS-1733 · Reglas UMI NO aplican
                                     </span>
                                   </div>
-                                  <p className="text-xs text-slate-700 mt-2 leading-relaxed">
-                                    Las solicitudes clasificadas como <strong className="text-sky-800">TECNOLÓGICA</strong> o con área responsable <strong>Oficina TI</strong> NO siguen el motor de asignación de técnico UMI ni las reglas EFDS-1733. La atención se gestiona directamente por el equipo de Tecnologías con su propio flujo interno; la trazabilidad de la remisión se registra en la sección superior <strong>Trazabilidad de Remisiones</strong>.
-                                  </p>
-                                  <p className="text-[11px] text-slate-600 mt-1.5 leading-relaxed">
-                                    Como gestor UMI puedes <strong>aprobar la confirmación de recepción</strong> de la remisión enviada a TI o <strong>rechazar la remisión</strong> (con motivo) si la solicitud debe volver a la unidad UMI para correcciones.
-                                  </p>
+                                  {estadoActual === 'REMITIDA_TI' ? (
+                                    <p className="text-xs text-sky-900 mt-2 leading-relaxed font-medium">
+                                      La remisión fue <strong>aprobada y confirmada formalmente</strong> hacia la Oficina de Tecnologías (TI). El requerimiento se atiende por su flujo especializado.
+                                    </p>
+                                  ) : (
+                                    <>
+                                      <p className="text-xs text-slate-700 mt-2 leading-relaxed">
+                                        Las solicitudes clasificadas como <strong className="text-sky-800">TECNOLÓGICA</strong> o con área responsable <strong>Oficina TI</strong> NO siguen el motor de asignación de técnico UMI ni las reglas EFDS-1733. La atención se gestiona directamente por el equipo de Tecnologías con su propio flujo interno; la trazabilidad de la remisión se registra en la sección superior <strong>Trazabilidad de Remisiones</strong>.
+                                      </p>
+                                      <p className="text-[11px] text-slate-600 mt-1.5 leading-relaxed">
+                                        Como gestor UMI puedes <strong>aprobar la confirmación de recepción</strong> de la remisión enviada a TI o <strong>rechazar la remisión</strong> (con motivo) si la solicitud debe volver a la unidad UMI para correcciones.
+                                      </p>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -3202,45 +3214,70 @@ const puedeCerrarTecnicamente = Boolean(
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-xs">
-                              {remisiones.map((r, idx) => (
-                                <tr key={r.idRemision || idx} className="hover:bg-slate-50/50">
-                                  <td className="px-4 py-2.5 text-slate-700 whitespace-nowrap font-mono text-[11px]">
-                                    {r.fechaRemision ? formatearFecha(r.fechaRemision) : '—'}
-                                  </td>
-                                  <td className="px-4 py-2.5">
-                                    <span className="inline-flex items-center gap-1.5">
-                                      <span className="inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold uppercase tracking-wide">
-                                        {r.origenArea || 'UMI'}
+                              {remisiones.map((r, idx) => {
+                                const fechaItem = r.fechaRemision || r.fecha || r.fecha_remision;
+                                const origen = r.origenArea || r.origen_area || (detalle?.tipoAtencion === 'TECNOLOGICA' ? 'FORMULARIO' : 'UMI');
+                                const destino = r.destinoArea || r.destino_area || 'TI';
+                                const usuarioNom = r.usuarioNombre || r.usuario_nombre || (origen === 'FORMULARIO' ? detalle?.solicitanteNombre : null);
+                                const usuarioMail = r.usuarioEmail || r.usuario_email || r.usuarioQueRemiteEmail || (origen === 'FORMULARIO' ? (detalle?.usuarioSolicitanteEmail || detalle?.solicitanteEmail) : null);
+                                const usuarioId = r.usuarioId || r.usuario_id || (origen === 'FORMULARIO' ? detalle?.idUsuarioSolicitante : null);
+                                const canal = r.canalRemision || r.canal_remision || 'CORREO_ELECTRONICO_OTIC';
+                                const destinatario = r.destinatarioEmail || r.destinatario_email || r.correoDestinatario || 'desarrollo.ccd@esap.edu.co';
+                                const eventoNotif = r.eventoNotificacion || r.evento_notificacion;
+                                const consecTi = r.consecutivoCruzadoTi || r.consecutivo_cruzado_ti;
+                                const estado = r.estadoRemision || r.estado_remision || 'PENDIENTE_CONFIRMACION_TI';
+
+                                return (
+                                  <tr key={r.idRemision || idx} className="hover:bg-slate-50/50">
+                                    <td className="px-4 py-2.5 text-slate-700 whitespace-nowrap font-mono text-[11px]">
+                                      {fechaItem ? formatearFecha(fechaItem) : '—'}
+                                    </td>
+                                    <td className="px-4 py-2.5">
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <span className="inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold uppercase tracking-wide">
+                                          {origen === 'FORMULARIO' ? 'Radicación' : origen}
+                                        </span>
+                                        <span className="text-slate-400">→</span>
+                                        <span className="inline-block px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200 text-[10px] font-bold uppercase tracking-wide">
+                                          {destino === 'TI' ? 'Oficina TI' : destino}
+                                        </span>
                                       </span>
-                                      <span className="text-slate-400">→</span>
-                                      <span className="inline-block px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200 text-[10px] font-bold uppercase tracking-wide">
-                                        {r.destinoArea || 'TI'}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-slate-700">
+                                      <div className="font-semibold text-slate-800">{usuarioNom || usuarioMail || 'Solicitante'}</div>
+                                      {usuarioMail && (
+                                        <div className="text-[10px] text-slate-500 truncate max-w-[170px]">{usuarioMail}</div>
+                                      )}
+                                      {usuarioId && (
+                                        <div className="text-[9px] text-slate-400 font-mono truncate max-w-[140px]">ID: {usuarioId}</div>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-slate-600 max-w-[280px]">
+                                      <div className="leading-snug line-clamp-2">{r.motivo || '—'}</div>
+                                      <div className="mt-1 space-y-0.5 text-[10px]">
+                                        <div className="text-sky-700 font-medium flex items-center gap-1">
+                                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-500"></span>
+                                          <span>Correo OTIC: <span className="font-semibold">{destinatario}</span></span>
+                                        </div>
+                                        {eventoNotif && (
+                                          <div className="text-slate-400 text-[9px]">Evento: {eventoNotif}</div>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-2.5 text-slate-700 font-mono text-[11px] whitespace-nowrap">
+                                      {consecTi || '—'}
+                                    </td>
+                                    <td className="px-4 py-2.5">
+                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide ${(estado || '').toUpperCase().includes('PENDIENTE')
+                                        ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                        : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                        }`}>
+                                        {estado}
                                       </span>
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-2.5 text-slate-700">
-                                    <div className="font-semibold">{r.usuarioEmail || r.usuarioQueRemiteEmail || 'Sistema'}</div>
-                                    {r.usuarioId && <div className="text-[10px] text-slate-400 font-mono truncate max-w-[140px]">{r.usuarioId}</div>}
-                                  </td>
-                                  <td className="px-4 py-2.5 text-slate-600 max-w-[260px]">
-                                    <div className="leading-snug line-clamp-2">{r.motivo || '—'}</div>
-                                    {r.canalRemision && (
-                                      <div className="text-[10px] text-slate-400 mt-1">Canal: {r.canalRemision}</div>
-                                    )}
-                                  </td>
-                                  <td className="px-4 py-2.5 text-slate-700 font-mono text-[11px] whitespace-nowrap">
-                                    {r.consecutivoCruzadoTi || '—'}
-                                  </td>
-                                  <td className="px-4 py-2.5">
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide ${(r.estadoRemision || '').toUpperCase().includes('PENDIENTE')
-                                      ? 'bg-amber-100 text-amber-800 border-amber-200'
-                                      : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                                      }`}>
-                                      {r.estadoRemision || 'PENDIENTE'}
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -3769,6 +3806,14 @@ const puedeCerrarTecnicamente = Boolean(
                 {detalle && (() => {
                   const areaTI = esAreaTI;
                   if (areaTI) {
+                    if (estadoActual === 'REMITIDA_TI') {
+                      return (
+                        <div className="text-xs font-semibold text-sky-800 bg-sky-50 border border-sky-200 px-3.5 py-2 rounded-xl flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-sky-600 flex-shrink-0" />
+                          <span>Remisión confirmada y en curso con la Oficina TI</span>
+                        </div>
+                      );
+                    }
                     return (
                       <>
                         {puedeAprobarRemisionTI && (

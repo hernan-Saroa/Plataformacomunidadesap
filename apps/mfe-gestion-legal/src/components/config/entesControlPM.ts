@@ -53,3 +53,34 @@ export function agruparPlanesPorEnte<T extends { enteControl: string }>(
   });
   return grupos;
 }
+
+// Genera un id único para un nuevo ente de control, evitando colisiones ante clics rápidos.
+export function generarIdEnteControlPM(
+  existentes: ReadonlyArray<{ id: string }>,
+  ahora: number = Date.now(),
+): string {
+  const usados = new Set(existentes.map(e => e.id));
+  const base = `ente-${ahora}`;
+  if (!usados.has(base)) return base;
+  let sufijo = 1;
+  while (usados.has(`${base}-${sufijo}`)) sufijo += 1;
+  return `${base}-${sufijo}`;
+}
+
+// Valida la lista antes de enviarla al servidor: evita que el autoguardado dispare un 400
+// mientras el usuario borra el texto de un nombre para escribir el nuevo.
+export function validarEntesControlPM(entes: ReadonlyArray<EnteControlPM>): string | null {
+  const ids = new Set<string>();
+  for (const ente of entes) {
+    const id = typeof ente.id === 'string' ? ente.id.trim() : '';
+    const nombre = typeof ente.nombre === 'string' ? ente.nombre.trim() : '';
+    if (!id || !nombre || typeof ente.activo !== 'boolean') {
+      return 'Todos los entes de control deben tener un nombre válido.';
+    }
+    if (ids.has(id)) {
+      return `El identificador de ente "${id}" está repetido.`;
+    }
+    ids.add(id);
+  }
+  return null;
+}

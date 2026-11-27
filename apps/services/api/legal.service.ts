@@ -938,7 +938,7 @@ export class LegalService {
         return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/evidencias`, data);
     }
 
-    // ==================== Bug 5c: HALLAZGOS DEL PLAN ====================
+    // ==================== Bug 5c & Bug 2418: HALLAZGOS / ACCIONES DEL PLAN (PHVA) ====================
     async getHallazgosPlan(planId: string): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento/${planId}/hallazgos`);
     }
@@ -946,36 +946,57 @@ export class LegalService {
     async createHallazgoPlan(planId: string, data: {
         nombre: string;
         descripcion?: string;
+        fasePhva: 'PLANEAR' | 'HACER' | 'VERIFICAR' | 'ACTUAR';
+        estado?: 'PENDIENTE' | 'EJECUTADA';
+        responsable?: string;
+        fechaLimite?: string;
         porcentajeAvance?: number;
         createdBy?: string;
         file?: File;
     }): Promise<any> {
         const fd = new FormData();
         fd.append('nombre', data.nombre);
+        fd.append('fasePhva', data.fasePhva);
         if (data.descripcion) fd.append('descripcion', data.descripcion);
-        fd.append('porcentajeAvance', String(data.porcentajeAvance ?? 0));
+        if (data.estado) fd.append('estado', data.estado);
+        if (data.responsable) fd.append('responsable', data.responsable);
+        if (data.fechaLimite) fd.append('fechaLimite', data.fechaLimite);
+        if (data.porcentajeAvance !== undefined) fd.append('porcentajeAvance', String(data.porcentajeAvance));
         if (data.createdBy) fd.append('createdBy', data.createdBy);
         if (data.file) fd.append('file', data.file);
         return apiClient.upload<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${planId}/hallazgos`, fd);
     }
 
+    async cambiarEstadoHallazgoPlan(
+        hallazgoId: string,
+        estado: 'EJECUTADA' | 'PENDIENTE',
+    ): Promise<any> {
+        return apiClient.patch<any>(
+            `${SERVICE_PREFIX}/planes-mejoramiento/hallazgos/${hallazgoId}/estado`,
+            { estado },
+        );
+    }
+
     async updateHallazgoPlan(hallazgoId: string, data: {
         nombre?: string;
         descripcion?: string;
+        fasePhva?: 'PLANEAR' | 'HACER' | 'VERIFICAR' | 'ACTUAR';
+        estado?: 'PENDIENTE' | 'EJECUTADA';
+        responsable?: string;
+        fechaLimite?: string;
         porcentajeAvance?: number;
         file?: File;
     }): Promise<any> {
-        // Para edición sin archivo usamos PATCH JSON. Si hay archivo, se sube
-        // primero con el endpoint de creación de archivo y se actualiza la URL,
-        // pero por simplicidad: si hay archivo, eliminamos y recreamos (uso típico).
-        // En edición sin archivo:
         if (!data.file) {
             return apiClient.patch<any>(`${SERVICE_PREFIX}/planes-mejoramiento/hallazgos/${hallazgoId}`, data);
         }
-        // Con archivo: usamos fetch directo con PATCH multipart
         const fd = new FormData();
         if (data.nombre !== undefined) fd.append('nombre', data.nombre);
         if (data.descripcion !== undefined) fd.append('descripcion', data.descripcion);
+        if (data.fasePhva !== undefined) fd.append('fasePhva', data.fasePhva);
+        if (data.estado !== undefined) fd.append('estado', data.estado);
+        if (data.responsable !== undefined) fd.append('responsable', data.responsable);
+        if (data.fechaLimite !== undefined) fd.append('fechaLimite', data.fechaLimite);
         if (data.porcentajeAvance !== undefined) fd.append('porcentajeAvance', String(data.porcentajeAvance));
         fd.append('file', data.file);
         const baseUrl = (apiClient as any).baseURL || '';

@@ -941,6 +941,17 @@ function ColumnaKanban({
 
 // ============ COMPONENTE PRINCIPAL ============
 
+/** Nivel de riesgo del formulario a partir de lo guardado ("Alto", "Riesgo Alto", "critico", "Extremo"...). */
+function nivelRiesgoDelFormulario(valor: unknown): 'Bajo' | 'Medio' | 'Alto' | 'Crítico' | undefined {
+  const v = String(valor ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (!v) return undefined;
+  if (v.includes('critico') || v.includes('extremo')) return 'Crítico';
+  if (v.includes('alto')) return 'Alto';
+  if (v.includes('medio') || v.includes('moderado')) return 'Medio';
+  if (v.includes('bajo')) return 'Bajo';
+  return undefined;
+}
+
 export function GestionAuditoriasKanbanSimple() {
   const vigenciaCtx = usePlanAnualVigenciaContextOptional();
   const vigenciaActiva = vigenciaCtx?.vigencia;
@@ -1130,6 +1141,8 @@ export function GestionAuditoriasKanbanSimple() {
         semanasExcluidas: (aud as any).semanasExcluidas || [],
         unidadesAuditables: (aud as any).unidadesAuditables || [],
         dependenciasAuditadas: (aud as any).dependenciasAuditadas || [],
+        procesoAuditado: (aud as any).procesoAuditado || '',
+        metodologia: (aud as any).metodologia || '',
         progreso: aud.progreso,
         hallazgos: aud.hallazgos,
         diasRestantes: aud.diasRestantes,
@@ -3306,6 +3319,9 @@ export function GestionAuditoriasKanbanSimple() {
                 dependenciasAuditadas: data.dependenciasAuditadas ?? [],
                 alcance: data.alcance || data.descripcion,
                 calificacionRiesgo: data.nivelRiesgo,
+                // La tarjeta, el expediente y los informes leen el riesgo de aquí; solo tiene Bajo, Medio y Alto
+                riesgoKanban: data.nivelRiesgo === 'Crítico' ? 'Alto' : data.nivelRiesgo,
+                metodologia: data.metodologia ?? '',
                 // Cronograma 3 etapas: una etapa sin fecha no se envía vacía (el backend pide ISO 8601)
                 fechaInicio: data.fechaInicioPlaneacion || data.fechaInicio,
                 fechaFinPlaneacion: data.fechaFinPlaneacion || undefined,
@@ -3398,7 +3414,12 @@ export function GestionAuditoriasKanbanSimple() {
                 recursos: (auditoriaParaEditar as any).recursos || meta.recursos || [],
                 presupuestoEstimado: (auditoriaParaEditar as any).presupuestoEstimado || meta.presupuestoEstimado || '',
                 productosEsperados: (auditoriaParaEditar as any).productosEsperados || meta.productosEsperados || [],
-                nivelRiesgo: (auditoriaParaEditar.riesgo as any) || meta.calificacionRiesgo || 'Medio',
+                // El nivel se guarda en calificacionRiesgo: leerlo del riesgo de la tarjeta volvía a mostrar "Medio"
+                nivelRiesgo: nivelRiesgoDelFormulario((auditoriaParaEditar as any).calificacionRiesgo)
+                  || nivelRiesgoDelFormulario(meta.calificacionRiesgo)
+                  || nivelRiesgoDelFormulario(auditoriaParaEditar.riesgo)
+                  || 'Medio',
+                metodologia: (auditoriaParaEditar as any).metodologia || '',
                 riesgosIdentificados: (auditoriaParaEditar as any).riesgosIdentificados || meta.riesgosIdentificados || [],
                 controlesAplicar: (auditoriaParaEditar as any).controlesAplicar || meta.controlesAplicar || [],
                 rolDecretoAsociado: (auditoriaParaEditar as any).rolDecretoAsociado || meta.rolDecretoAsociado || '',
