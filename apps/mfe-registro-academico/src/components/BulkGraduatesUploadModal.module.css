@@ -1,0 +1,47 @@
+.dialogContent {
+  width: min(94vw, 76rem);
+  max-height: min(92vh, calc(100dvh - 4rem));
+}
+
+.progressCard {
+  background-color: #f4f8ff;
+}
+
+.progressFill {
+  transform-origin: left;
+}
+
+.secondaryAction:disabled,
+.primaryAction:disabled {
+  cursor: not-allowed;
+  border-color: #e2e8f0;
+  background-color: #f8fafc;
+  color: #64748b;
+}
+
+.primaryAction:disabled {
+  background-color: #e2e8f0;
+  color: #475569;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .progressFill {
+    transition: transform 200ms ease-out;
+  }
+
+  .progressIcon {
+    animation: spin 1s linear infinite;
+  }
+
+  .progressIndeterminate {
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  50% { opacity: 0.45; }
+}
