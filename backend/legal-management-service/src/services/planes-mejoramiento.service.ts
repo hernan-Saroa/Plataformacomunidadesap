@@ -1,9 +1,29 @@
-import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In, IsNull, Not } from 'typeorm';
 import { PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario } from '../entities/planes-mejoramiento.entity';
 import { PlanHallazgo } from '../entities/plan-hallazgo.entity';
 import { Riesgo } from '../entities/riesgo.entity';
+import {
+    calcularAvancePorFasePhva,
+    calcularCumplimientoPlan,
+    calcularPesosAcciones,
+    determinarEstadoPlanPorCumplimiento,
+    esUuidValido,
+    etiquetaFasePhva,
+    normalizarEstadoAccion,
+    normalizarFasePhva,
+} from '../utils/planes-mejoramiento-phva.util';
+
+export interface TrazabilidadCumplimiento {
+    planId: string;
+    planAvanceAnterior: number;
+    planAvanceActual: number;
+    planEstadoAnterior: string;
+    planEstadoActual: string;
+    totalAcciones: number;
+    accionesEjecutadas: number;
+}
 
 @Injectable()
 export class PlanesMejoramientoService implements OnModuleInit {
@@ -28,100 +48,349 @@ export class PlanesMejoramientoService implements OnModuleInit {
             await this.dataSource.query(
                 'ALTER TABLE legal_management.planes_mejoramiento DROP CONSTRAINT IF EXISTS planes_mejoramiento_origen_check;',
             );
+            await this.dataSource.query(`
+                ALTER TABLE legal_management.planes_hallazgos
+                    ADD COLUMN IF NOT EXISTS fase_phva VARCHAR(20) NOT NULL DEFAULT 'PLANEAR',
+                    ADD COLUMN IF NOT EXISTS peso_porcentual NUMERIC(5,2) NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+                    ADD COLUMN IF NOT EXISTS responsable VARCHAR(255),
+                    ADD COLUMN IF NOT EXISTS fecha_limite DATE,
+                    ADD COLUMN IF NOT EXISTS fecha_ejecucion TIMESTAMP WITH TIME ZONE;
+            `);
         } catch (error) {
             this.logger.warn(
-                `No se pudo verificar la eliminación de planes_mejoramiento_origen_check en arranque: ${error instanceof Error ? error.message : String(error)}`,
+                `No se pudo verificar la estructura de planes_mejoramiento en arranque: ${error instanceof Error ? error.message : String(error)}`,
             );
         }
     }
 
-    // ==================== Bug 5c: HALLAZGOS / ACCIONES DE MEJORA ====================
+    // ==================== Bug 5c & Bug 2418: HALLAZGOS / ACCIONES DE MEJORA (PHVA) ====================
+
+    private formatearHallazgo(h: PlanHallazgo) {
+        const estado = normalizarEstadoAccion(h.estado, h.porcentajeAvance);
+        return {
+            ...h,
+            fasePhva: normalizarFasePhva(h.fasePhva) ?? 'PLANEAR',
+            pesoPorcentual: Number(h.pesoPorcentual || 0),
+            estado,
+            porcentajeAvance: estado === 'EJECUTADA' ? 100 : Number(h.porcentajeAvance || 0),
+        };
+    }
+
+    private ordenarHallazgos(hallazgos: PlanHallazgo[]): PlanHallazgo[] {
+        return [...hallazgos].sort((a, b) => {
+            const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            if (ta !== tb) return ta - tb;
+            return String(a.id || '').localeCompare(String(b.id || ''));
+        });
+    }
 
     /**
-     * Recalcula el `avancePorcentaje` del plan a partir de sus hallazgos.
-     * Regla: si NO hay hallazgos, no cambiamos el avance (lo siguen manejando los seguimientos).
-     * Si HAY hallazgos, el avance del plan = promedio del avance de sus hallazgos.
-     * Esto garantiza que el plan no llegue a 100% hasta que TODOS los hallazgos
-     * estén en 100%.
+     * Recalcula los pesos porcentuales de todas las acciones del plan (suma exacta = 100%,
+     * ajuste de decimales en la última acción), actualiza el porcentaje de cumplimiento del plan
+     * y cambia el estado automáticamente a CERRADO (Completado) al alcanzar 100%, o vuelve a
+     * EN_EJECUCION si baja de 100%. Registra un evento en Timeline (`planes_seguimientos`).
      */
-    private async recalcularAvancePlanDesdeHallazgos(planId: string): Promise<void> {
-        const hallazgos = await this.hallazgoRepo.find({ where: { planId } });
-        if (hallazgos.length === 0) return;
-        const suma = hallazgos.reduce((acc, h) => acc + Number(h.porcentajeAvance || 0), 0);
-        const promedio = Math.round(suma / hallazgos.length);
-        const plan = await this.planRepo.findOneBy({ id: planId });
-        if (plan) {
-            plan.avancePorcentaje = promedio;
-            await this.planRepo.save(plan);
+    private async recalcularPesosYCumplimientoPlan(
+        planId: string,
+        opciones?: {
+            descripcionEvento?: (ctx: TrazabilidadCumplimiento & { pesosRecalculados: Map<string, number> }) => string;
+            usuarioId?: string;
+        },
+    ): Promise<{ trazabilidad: TrazabilidadCumplimiento; hallazgos: PlanHallazgo[] }> {
+        const hallazgosOrdenados = this.ordenarHallazgos(
+            await this.hallazgoRepo.find({ where: { planId } }),
+        );
+        const pesos = calcularPesosAcciones(hallazgosOrdenados.length);
+        const pesosRecalculados = new Map<string, number>();
+
+        for (let i = 0; i < hallazgosOrdenados.length; i++) {
+            const h = hallazgosOrdenados[i];
+            h.pesoPorcentual = pesos[i];
+            const estadoNormalizado = normalizarEstadoAccion(h.estado, h.porcentajeAvance);
+            h.estado = estadoNormalizado;
+            h.porcentajeAvance = estadoNormalizado === 'EJECUTADA' ? 100 : 0;
+            pesosRecalculados.set(h.id, pesos[i]);
         }
+
+        if (hallazgosOrdenados.length > 0) {
+            await this.hallazgoRepo.save(hallazgosOrdenados);
+        }
+
+        const plan = await this.planRepo.findOneBy({ id: planId });
+        if (!plan) throw new NotFoundException(`Plan ${planId} no encontrado`);
+
+        const planAvanceAnterior = Number(plan.avancePorcentaje || 0);
+        const planEstadoAnterior = plan.estado || 'ABIERTO';
+
+        const cumplimiento = calcularCumplimientoPlan(hallazgosOrdenados);
+        const nuevoEstado = determinarEstadoPlanPorCumplimiento(planEstadoAnterior, cumplimiento);
+
+        plan.avancePorcentaje = cumplimiento.porcentaje;
+        plan.estado = nuevoEstado;
+        if (nuevoEstado === 'CERRADO' && planEstadoAnterior !== 'CERRADO') {
+            plan.fechaCierreReal = new Date();
+        } else if (nuevoEstado !== 'CERRADO' && planEstadoAnterior === 'CERRADO') {
+            plan.fechaCierreReal = null as any;
+        }
+
+        await this.planRepo.save(plan);
+
+        const trazabilidad: TrazabilidadCumplimiento = {
+            planId,
+            planAvanceAnterior,
+            planAvanceActual: cumplimiento.porcentaje,
+            planEstadoAnterior,
+            planEstadoActual: nuevoEstado,
+            totalAcciones: cumplimiento.total,
+            accionesEjecutadas: cumplimiento.ejecutadas,
+        };
+
+        if (opciones?.descripcionEvento) {
+            const baseDescripcion = opciones.descripcionEvento({ ...trazabilidad, pesosRecalculados });
+            let sufijoEstado = '';
+            if (nuevoEstado === 'CERRADO' && planEstadoAnterior !== 'CERRADO') {
+                sufijoEstado = ' — Plan completado automáticamente (100%).';
+            } else if (nuevoEstado !== 'CERRADO' && planEstadoAnterior === 'CERRADO') {
+                sufijoEstado = ' — Plan reabierto a En Ejecución.';
+            }
+            const seguimiento = this.seguimientoRepo.create({
+                planId,
+                descripcionAvance: `${baseDescripcion}${sufijoEstado}`,
+                porcentajeReportado: cumplimiento.porcentaje,
+                usuarioId: esUuidValido(opciones.usuarioId) ? opciones.usuarioId : undefined,
+            });
+            await this.seguimientoRepo.save(seguimiento);
+        }
+
+        return { trazabilidad, hallazgos: hallazgosOrdenados };
     }
 
     async getHallazgos(planId: string) {
-        return this.hallazgoRepo.find({
-            where: { planId },
-            order: { createdAt: 'ASC' },
-        });
+        const hallazgos = this.ordenarHallazgos(
+            await this.hallazgoRepo.find({ where: { planId } }),
+        );
+
+        // Compatibilidad con registros legados sin peso asignado
+        if (hallazgos.length > 0) {
+            const sumaPesos = hallazgos.reduce((acc, h) => acc + Number(h.pesoPorcentual || 0), 0);
+            if (Math.abs(sumaPesos - 100) > 0.01) {
+                const { hallazgos: normalizados } = await this.recalcularPesosYCumplimientoPlan(planId);
+                return normalizados.map((h) => this.formatearHallazgo(h));
+            }
+        }
+
+        return hallazgos.map((h) => this.formatearHallazgo(h));
     }
 
     async createHallazgo(planId: string, data: {
         nombre: string;
         descripcion?: string;
         porcentajeAvance?: number;
+        fasePhva?: string;
+        estado?: string;
+        responsable?: string;
+        fechaLimite?: string;
         createdBy?: string;
+        usuarioId?: string;
         file?: Express.Multer.File;
     }) {
         await this.findOne(planId);
         if (!data.nombre || !data.nombre.trim()) {
-            throw new NotFoundException('El nombre del hallazgo es obligatorio');
+            throw new BadRequestException('El nombre de la acción es obligatorio');
         }
-        const porcentaje = Math.max(0, Math.min(100, Number(data.porcentajeAvance ?? 0)));
+        const fasePhva = normalizarFasePhva(data.fasePhva);
+        if (!fasePhva) {
+            throw new BadRequestException(
+                'La fase PHVA es obligatoria y debe ser Planear, Hacer, Verificar o Actuar',
+            );
+        }
+
+        const estado = normalizarEstadoAccion(data.estado, data.porcentajeAvance);
+        const porcentaje = estado === 'EJECUTADA' ? 100 : 0;
+        const fechaLimiteLimpia = data.fechaLimite && data.fechaLimite.trim() ? data.fechaLimite.trim() : null;
 
         const hallazgo = this.hallazgoRepo.create({
             planId,
             nombre: data.nombre.trim(),
-            descripcion: data.descripcion?.trim() ?? null as any,
+            descripcion: data.descripcion?.trim() || (null as any),
+            fasePhva,
+            estado,
             porcentajeAvance: porcentaje,
+            pesoPorcentual: 0,
+            responsable: data.responsable?.trim() || null,
+            fechaLimite: fechaLimiteLimpia,
+            fechaEjecucion: estado === 'EJECUTADA' ? new Date() : null,
             createdBy: data.createdBy ?? 'Sistema',
-            archivoUrl: data.file ? `files/${data.file.filename}` : null as any,
-            archivoNombre: data.file?.originalname ?? null as any,
-            archivoMime: data.file?.mimetype ?? null as any,
+            archivoUrl: data.file ? `files/${data.file.filename}` : (null as any),
+            archivoNombre: data.file?.originalname ?? (null as any),
+            archivoMime: data.file?.mimetype ?? (null as any),
         });
         const saved = await this.hallazgoRepo.save(hallazgo);
-        await this.recalcularAvancePlanDesdeHallazgos(planId);
-        return saved;
+
+        const { trazabilidad, hallazgos } = await this.recalcularPesosYCumplimientoPlan(planId, {
+            usuarioId: data.usuarioId,
+            descripcionEvento: (ctx) => {
+                const peso = ctx.pesosRecalculados.get(saved.id) ?? 0;
+                const sufijo = estado === 'EJECUTADA' ? ' (Ejecutada)' : ' (Pendiente)';
+                return `Acción creada [${etiquetaFasePhva(fasePhva)}]: "${saved.nombre}"${sufijo} · Peso asignado: ${peso}% · Cumplimiento del plan: ${ctx.planAvanceAnterior}% → ${ctx.planAvanceActual}%`;
+            },
+        });
+
+        const actualizado = hallazgos.find((h) => h.id === saved.id) ?? saved;
+        return {
+            ...this.formatearHallazgo(actualizado),
+            trazabilidad,
+        };
+    }
+
+    async cambiarEstadoHallazgo(hallazgoId: string, data: {
+        estado?: string;
+        ejecutada?: boolean;
+        usuarioId?: string;
+        usuarioNombre?: string;
+    }) {
+        const hallazgo = await this.hallazgoRepo.findOneBy({ id: hallazgoId });
+        if (!hallazgo) throw new NotFoundException('Acción no encontrada');
+
+        const estadoAnterior = normalizarEstadoAccion(hallazgo.estado, hallazgo.porcentajeAvance);
+        let nuevoEstado: 'PENDIENTE' | 'EJECUTADA';
+        if (typeof data.ejecutada === 'boolean') {
+            nuevoEstado = data.ejecutada ? 'EJECUTADA' : 'PENDIENTE';
+        } else if (data.estado) {
+            const limpio = data.estado.trim().toUpperCase();
+            if (limpio !== 'EJECUTADA' && limpio !== 'PENDIENTE') {
+                throw new BadRequestException('Estado inválido. Use EJECUTADA o PENDIENTE');
+            }
+            nuevoEstado = limpio;
+        } else {
+            nuevoEstado = estadoAnterior === 'EJECUTADA' ? 'PENDIENTE' : 'EJECUTADA';
+        }
+
+        hallazgo.estado = nuevoEstado;
+        hallazgo.porcentajeAvance = nuevoEstado === 'EJECUTADA' ? 100 : 0;
+        hallazgo.fechaEjecucion = nuevoEstado === 'EJECUTADA' ? new Date() : null;
+
+        await this.hallazgoRepo.save(hallazgo);
+
+        const faseEtiqueta = etiquetaFasePhva(hallazgo.fasePhva);
+        const { trazabilidad, hallazgos } = await this.recalcularPesosYCumplimientoPlan(hallazgo.planId, {
+            usuarioId: data.usuarioId,
+            descripcionEvento: (ctx) => {
+                const peso = ctx.pesosRecalculados.get(hallazgo.id) ?? Number(hallazgo.pesoPorcentual || 0);
+                const actor = data.usuarioNombre ? ` por ${data.usuarioNombre}` : '';
+                if (nuevoEstado === 'EJECUTADA') {
+                    return `Acción ejecutada [${faseEtiqueta}]: "${hallazgo.nombre}" (+${peso}%)${actor} · Cumplimiento: ${ctx.planAvanceAnterior}% → ${ctx.planAvanceActual}%`;
+                }
+                return `Acción reabierta [${faseEtiqueta}]: "${hallazgo.nombre}" (-${peso}%)${actor} · Cumplimiento: ${ctx.planAvanceAnterior}% → ${ctx.planAvanceActual}%`;
+            },
+        });
+
+        const actualizado = hallazgos.find((h) => h.id === hallazgo.id) ?? hallazgo;
+        return {
+            ...this.formatearHallazgo(actualizado),
+            trazabilidad,
+        };
     }
 
     async updateHallazgo(hallazgoId: string, data: {
         nombre?: string;
         descripcion?: string;
         porcentajeAvance?: number;
+        fasePhva?: string;
+        estado?: string;
+        responsable?: string;
+        fechaLimite?: string;
+        usuarioId?: string;
+        usuarioNombre?: string;
         file?: Express.Multer.File;
     }) {
         const hallazgo = await this.hallazgoRepo.findOneBy({ id: hallazgoId });
-        if (!hallazgo) throw new NotFoundException('Hallazgo no encontrado');
+        if (!hallazgo) throw new NotFoundException('Acción no encontrada');
 
-        if (data.nombre !== undefined && data.nombre.trim()) hallazgo.nombre = data.nombre.trim();
-        if (data.descripcion !== undefined) hallazgo.descripcion = data.descripcion?.trim() ?? null as any;
-        if (data.porcentajeAvance !== undefined) {
-            hallazgo.porcentajeAvance = Math.max(0, Math.min(100, Number(data.porcentajeAvance)));
+        const estadoAnterior = normalizarEstadoAccion(hallazgo.estado, hallazgo.porcentajeAvance);
+
+        if (data.nombre !== undefined) {
+            if (!data.nombre.trim()) {
+                throw new BadRequestException('El nombre de la acción no puede estar vacío');
+            }
+            hallazgo.nombre = data.nombre.trim();
+        }
+        if (data.descripcion !== undefined) {
+            hallazgo.descripcion = data.descripcion?.trim() || (null as any);
+        }
+        if (data.fasePhva !== undefined) {
+            const fase = normalizarFasePhva(data.fasePhva);
+            if (!fase) {
+                throw new BadRequestException(
+                    'La fase PHVA debe ser Planear, Hacer, Verificar o Actuar',
+                );
+            }
+            hallazgo.fasePhva = fase;
+        }
+        if (data.responsable !== undefined) {
+            hallazgo.responsable = data.responsable?.trim() || null;
+        }
+        if (data.fechaLimite !== undefined) {
+            hallazgo.fechaLimite = data.fechaLimite && data.fechaLimite.trim() ? data.fechaLimite.trim() : null;
+        }
+        if (data.estado !== undefined || data.porcentajeAvance !== undefined) {
+            const nuevoEstado = normalizarEstadoAccion(data.estado, data.porcentajeAvance);
+            hallazgo.estado = nuevoEstado;
+            hallazgo.porcentajeAvance = nuevoEstado === 'EJECUTADA' ? 100 : 0;
+            if (nuevoEstado === 'EJECUTADA' && estadoAnterior !== 'EJECUTADA') {
+                hallazgo.fechaEjecucion = new Date();
+            } else if (nuevoEstado === 'PENDIENTE') {
+                hallazgo.fechaEjecucion = null;
+            }
         }
         if (data.file) {
             hallazgo.archivoUrl = `files/${data.file.filename}`;
             hallazgo.archivoNombre = data.file.originalname;
             hallazgo.archivoMime = data.file.mimetype;
         }
-        const saved = await this.hallazgoRepo.save(hallazgo);
-        await this.recalcularAvancePlanDesdeHallazgos(hallazgo.planId);
-        return saved;
+        await this.hallazgoRepo.save(hallazgo);
+
+        const estadoNuevo = normalizarEstadoAccion(hallazgo.estado, hallazgo.porcentajeAvance);
+        const faseEtiqueta = etiquetaFasePhva(hallazgo.fasePhva);
+        const cambioEstado = estadoNuevo !== estadoAnterior;
+
+        const { trazabilidad, hallazgos } = await this.recalcularPesosYCumplimientoPlan(hallazgo.planId, {
+            usuarioId: data.usuarioId,
+            descripcionEvento: cambioEstado
+                ? (ctx) => {
+                    const peso = ctx.pesosRecalculados.get(hallazgo.id) ?? Number(hallazgo.pesoPorcentual || 0);
+                    if (estadoNuevo === 'EJECUTADA') {
+                        return `Acción ejecutada [${faseEtiqueta}]: "${hallazgo.nombre}" (+${peso}%) · Cumplimiento: ${ctx.planAvanceAnterior}% → ${ctx.planAvanceActual}%`;
+                    }
+                    return `Acción reabierta [${faseEtiqueta}]: "${hallazgo.nombre}" (-${peso}%) · Cumplimiento: ${ctx.planAvanceAnterior}% → ${ctx.planAvanceActual}%`;
+                }
+                : undefined,
+        });
+
+        const actualizado = hallazgos.find((h) => h.id === hallazgo.id) ?? hallazgo;
+        return {
+            ...this.formatearHallazgo(actualizado),
+            trazabilidad,
+        };
     }
 
-    async deleteHallazgo(hallazgoId: string) {
+    async deleteHallazgo(hallazgoId: string, usuarioId?: string, usuarioNombre?: string) {
         const hallazgo = await this.hallazgoRepo.findOneBy({ id: hallazgoId });
-        if (!hallazgo) throw new NotFoundException('Hallazgo no encontrado');
+        if (!hallazgo) throw new NotFoundException('Acción no encontrada');
         const planId = hallazgo.planId;
+        const nombreEliminado = hallazgo.nombre;
+        const faseEtiqueta = etiquetaFasePhva(hallazgo.fasePhva);
         await this.hallazgoRepo.remove(hallazgo);
-        await this.recalcularAvancePlanDesdeHallazgos(planId);
-        return { ok: true };
+        const { trazabilidad } = await this.recalcularPesosYCumplimientoPlan(planId, {
+            usuarioId,
+            descripcionEvento: (ctx) => {
+                const actor = usuarioNombre ? ` por ${usuarioNombre}` : '';
+                return `Acción eliminada [${faseEtiqueta}]: "${nombreEliminado}"${actor} · Pesos recalculados (${ctx.totalAcciones} acciones) · Cumplimiento: ${ctx.planAvanceAnterior}% → ${ctx.planAvanceActual}%`;
+            },
+        });
+        return { ok: true, trazabilidad };
     }
 
     async findAll() {
@@ -159,14 +428,20 @@ export class PlanesMejoramientoService implements OnModuleInit {
 
         return planes.map(p => {
             const respNombre = p.responsableId ? responsableMap.get(p.responsableId) : null;
+            const hallazgosOrdenados = this.ordenarHallazgos(p.hallazgos || []).map((h) => this.formatearHallazgo(h));
+            const seguimientosOrdenados = [...(p.seguimientos || [])]
+                .sort((a, b) => new Date(b.fechaReporte).getTime() - new Date(a.fechaReporte).getTime())
+                .map((s) => ({ ...s, createdAt: s.fechaReporte, porcentajeReportado: Number(s.porcentajeReportado || 0) }));
             return {
                 ...p,
+                avancePorcentaje: Number(p.avancePorcentaje || 0),
+                hallazgos: hallazgosOrdenados,
+                seguimientos: seguimientosOrdenados,
+                avancePorFase: calcularAvancePorFasePhva(hallazgosOrdenados),
                 riesgoTitulo: p.origen === 'RIESGO' ? riskMap.get(p.origenId) : null,
-                responsableNombre: respNombre || 'Sin Asignar'
+                responsableNombre: respNombre || p.responsableNombre || 'Sin Asignar'
             };
         });
-
-        return planes;
     }
 
     async create(data: Partial<PlanMejoramiento>) {
@@ -176,11 +451,29 @@ export class PlanesMejoramientoService implements OnModuleInit {
             if (!exists) throw new NotFoundException(`Riesgo ${data.origenId} no existe`);
         }
 
-        // Generate Code (PM-YYYY-XXX)
-        const count = await this.planRepo.count();
-        const year = new Date().getFullYear();
-        const sequence = String(count + 1).padStart(3, '0');
-        data.codigo = `PM-${year}-${sequence}`;
+        // Generate Code (PM-YYYY-XXX) si no viene uno único
+        if (!data.codigo || !data.codigo.trim()) {
+            const count = await this.planRepo.count();
+            const year = new Date().getFullYear();
+            const sequence = String(count + 1).padStart(3, '0');
+            data.codigo = `PM-${year}-${sequence}`;
+        } else {
+            data.codigo = data.codigo.trim();
+            const existente = await this.planRepo.findOneBy({ codigo: data.codigo });
+            if (existente) {
+                const year = new Date().getFullYear();
+                const suffix = String(Date.now()).slice(-4);
+                data.codigo = `${data.codigo}-${year}-${suffix}`;
+            }
+        }
+
+        // Normalizar estado al conjunto permitido en BD
+        const estadosPermitidos = new Set(['ABIERTO', 'EN_EJECUCION', 'VENCIDO', 'CERRADO']);
+        if (!data.estado || !estadosPermitidos.has(String(data.estado).toUpperCase())) {
+            data.estado = data.estado === 'COMPLETADO' ? 'CERRADO' : 'EN_EJECUCION';
+        } else {
+            data.estado = String(data.estado).toUpperCase();
+        }
 
         const nuevo = this.planRepo.create(data);
         return this.planRepo.save(nuevo);
@@ -207,16 +500,24 @@ export class PlanesMejoramientoService implements OnModuleInit {
             if (risk) riesgoTitulo = risk.nombre;
         }
 
-        // Map seguimientos to include createdAt as fechaReporte
-        const seguimientosConFecha = plan.seguimientos?.map(s => ({
-            ...s,
-            createdAt: s.fechaReporte
-        })) || [];
+        const hallazgosOrdenados = this.ordenarHallazgos(plan.hallazgos || []).map((h) => this.formatearHallazgo(h));
+
+        // Map seguimientos to include createdAt as fechaReporte (más recientes primero)
+        const seguimientosConFecha = [...(plan.seguimientos || [])]
+            .sort((a, b) => new Date(b.fechaReporte).getTime() - new Date(a.fechaReporte).getTime())
+            .map(s => ({
+                ...s,
+                porcentajeReportado: Number(s.porcentajeReportado || 0),
+                createdAt: s.fechaReporte
+            }));
 
         return {
             ...plan,
+            avancePorcentaje: Number(plan.avancePorcentaje || 0),
             responsableNombre,
             riesgoTitulo,
+            hallazgos: hallazgosOrdenados,
+            avancePorFase: calcularAvancePorFasePhva(hallazgosOrdenados),
             seguimientos: seguimientosConFecha
         };
     }

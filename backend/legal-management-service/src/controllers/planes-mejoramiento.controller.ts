@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, NotFoundException, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Req, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -121,7 +121,7 @@ export class PlanesMejoramientoController {
     }
 
     // ============================================================
-    // Bug 5c: Hallazgos / Acciones de Mejora
+    // Bug 5c & Bug 2418: Hallazgos / Acciones de Mejora (PHVA + Pesos + Cumplimiento)
     // ============================================================
     @Get(':id/hallazgos')
     getHallazgos(@Param('id') id: string) {
@@ -141,15 +141,48 @@ export class PlanesMejoramientoController {
     }))
     createHallazgo(
         @Param('id') id: string,
-        @Body() body: { nombre: string; descripcion?: string; porcentajeAvance?: number | string; createdBy?: string },
+        @Body() body: {
+            nombre: string;
+            descripcion?: string;
+            porcentajeAvance?: number | string;
+            fasePhva?: string;
+            estado?: string;
+            responsable?: string;
+            fechaLimite?: string;
+            createdBy?: string;
+        },
         @UploadedFile() file?: Express.Multer.File,
+        @Req() req?: any,
     ) {
+        const usuarioId = req?.user?.publicId || req?.user?.public_id || req?.user?.id || req?.user?.sub;
+        const usuarioNombre = req?.user?.email || req?.user?.username || body.createdBy;
         return this.planesService.createHallazgo(id, {
             nombre: body.nombre,
             descripcion: body.descripcion,
-            porcentajeAvance: body.porcentajeAvance != null ? Number(body.porcentajeAvance) : 0,
-            createdBy: body.createdBy,
+            porcentajeAvance: body.porcentajeAvance != null ? Number(body.porcentajeAvance) : undefined,
+            fasePhva: body.fasePhva,
+            estado: body.estado,
+            responsable: body.responsable,
+            fechaLimite: body.fechaLimite,
+            createdBy: usuarioNombre,
+            usuarioId: typeof usuarioId === 'string' ? usuarioId : undefined,
             file,
+        });
+    }
+
+    @Patch('hallazgos/:hallazgoId/estado')
+    cambiarEstadoHallazgo(
+        @Param('hallazgoId') hallazgoId: string,
+        @Body() body: { estado?: string; ejecutada?: boolean },
+        @Req() req?: any,
+    ) {
+        const usuarioId = req?.user?.publicId || req?.user?.public_id || req?.user?.id || req?.user?.sub;
+        const usuarioNombre = req?.user?.email || req?.user?.username;
+        return this.planesService.cambiarEstadoHallazgo(hallazgoId, {
+            estado: body.estado,
+            ejecutada: body.ejecutada,
+            usuarioId: typeof usuarioId === 'string' ? usuarioId : undefined,
+            usuarioNombre: typeof usuarioNombre === 'string' ? usuarioNombre : undefined,
         });
     }
 
@@ -166,19 +199,42 @@ export class PlanesMejoramientoController {
     }))
     updateHallazgo(
         @Param('hallazgoId') hallazgoId: string,
-        @Body() body: { nombre?: string; descripcion?: string; porcentajeAvance?: number | string },
+        @Body() body: {
+            nombre?: string;
+            descripcion?: string;
+            porcentajeAvance?: number | string;
+            fasePhva?: string;
+            estado?: string;
+            responsable?: string;
+            fechaLimite?: string;
+        },
         @UploadedFile() file?: Express.Multer.File,
+        @Req() req?: any,
     ) {
+        const usuarioId = req?.user?.publicId || req?.user?.public_id || req?.user?.id || req?.user?.sub;
+        const usuarioNombre = req?.user?.email || req?.user?.username;
         return this.planesService.updateHallazgo(hallazgoId, {
             nombre: body.nombre,
             descripcion: body.descripcion,
             porcentajeAvance: body.porcentajeAvance != null ? Number(body.porcentajeAvance) : undefined,
+            fasePhva: body.fasePhva,
+            estado: body.estado,
+            responsable: body.responsable,
+            fechaLimite: body.fechaLimite,
+            usuarioId: typeof usuarioId === 'string' ? usuarioId : undefined,
+            usuarioNombre: typeof usuarioNombre === 'string' ? usuarioNombre : undefined,
             file,
         });
     }
 
     @Delete('hallazgos/:hallazgoId')
-    deleteHallazgo(@Param('hallazgoId') hallazgoId: string) {
-        return this.planesService.deleteHallazgo(hallazgoId);
+    deleteHallazgo(@Param('hallazgoId') hallazgoId: string, @Req() req?: any) {
+        const usuarioId = req?.user?.publicId || req?.user?.public_id || req?.user?.id || req?.user?.sub;
+        const usuarioNombre = req?.user?.email || req?.user?.username;
+        return this.planesService.deleteHallazgo(
+            hallazgoId,
+            typeof usuarioId === 'string' ? usuarioId : undefined,
+            typeof usuarioNombre === 'string' ? usuarioNombre : undefined,
+        );
     }
 }
