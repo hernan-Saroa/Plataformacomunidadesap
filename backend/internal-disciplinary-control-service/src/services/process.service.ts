@@ -2389,6 +2389,8 @@ const documentos = noticia.adjuntos && Array.isArray(noticia.adjuntos)
                 await firstValueFrom(
                   this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
                     modulo: MODULO_NOTIFICACIONES,
+                    // Misma clave que la campana: un solo aviso apaga los dos (EFDS-2406).
+                    evento: tipoNotificacion,
                     to: rad.email,
                     subject: asunto,
                     html,
