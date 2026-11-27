@@ -28,6 +28,24 @@ export class PlanHallazgo {
     @Column({ name: 'porcentaje_avance', type: 'int', default: 0 })
     porcentajeAvance: number;
 
+    @Column({ name: 'fase_phva', type: 'varchar', length: 20, default: 'PLANEAR' })
+    fasePhva: string;
+
+    @Column({ name: 'peso_porcentual', type: 'decimal', precision: 5, scale: 2, default: 0 })
+    pesoPorcentual: number;
+
+    @Column({ name: 'estado', type: 'varchar', length: 20, default: 'PENDIENTE' })
+    estado: string;
+
+    @Column({ name: 'responsable', type: 'varchar', length: 255, nullable: true })
+    responsable: string | null;
+
+    @Column({ name: 'fecha_limite', type: 'date', nullable: true })
+    fechaLimite: string | null;
+
+    @Column({ name: 'fecha_ejecucion', type: 'timestamp with time zone', nullable: true })
+    fechaEjecucion: Date | null;
+
     @Column({ name: 'archivo_url', type: 'text', nullable: true })
     archivoUrl: string;
 
