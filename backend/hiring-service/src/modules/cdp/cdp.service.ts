@@ -7,7 +7,13 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 
-import { Cdp, CdpAntesDeRadicar, EstadoCdp, ESTADOS_CDP_EN_CURSO } from '../../entities/cdp.entity';
+import {
+  Cdp,
+  CdpAntesDeRadicar,
+  EstadoCdp,
+  ESTADOS_CDP_EN_CURSO,
+  respaldoDeLosCdp,
+} from '../../entities/cdp.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/actividad.entity';
 import { ETAPA_RECEPCION } from '../../entities/recepcion-ofertas.entity';
@@ -368,10 +374,34 @@ export class CdpService {
    * una adición tramitada meses después.
    */
   async delProceso(procesoId: string, em?: EntityManager): Promise<Cdp | null> {
+    return (await this.cdpsDelProceso(procesoId, em))[0] ?? null;
+  }
+
+  /**
+   * Los CDP en curso del proceso, del primero que se cargó al último (152).
+   *
+   * Desde la 152 puede haber más de uno. `delProceso` queda para quien solo
+   * necesita saber si hay alguno; lo que respalda el gasto es la suma de los
+   * expedidos (`respaldoDeLosCdp`).
+   */
+  async cdpsDelProceso(procesoId: string, em?: EntityManager): Promise<Cdp[]> {
     const manager = em ?? this.dataSource.manager;
-    return manager.getRepository(Cdp).findOne({
+    return manager.getRepository(Cdp).find({
       where: { procesoId, estado: In(ESTADOS_CDP_EN_CURSO), modificacionId: IsNull() },
+      order: { createdAt: 'ASC' },
     });
+  }
+
+  /**
+   * Si la 4.2 sigue en manos del área: todavía no existe, está en borrador o
+   * la devolvieron. Mientras tanto se pueden agregar, corregir y quitar CDP;
+   * en revisión o aprobada, lo cargado es lo que se decidió y no se toca.
+   */
+  private async cargueAbierto(em: EntityManager, procesoId: string): Promise<boolean> {
+    const cargue = await em
+      .getRepository(ProcesoActividad)
+      .findOne({ where: { procesoId, numeral: NUMERAL_CARGUE_CDP } });
+    return !cargue || cargue.estado === 'BORRADOR' || cargue.estado === 'DEVUELTO';
   }
 
   /**
@@ -398,6 +428,13 @@ export class CdpService {
       return {
         aplica: false,
         cdp: null,
+        cdps: [],
+        valorTotal: null,
+        cubreValorEstimado: true,
+        advertencia: null,
+        puedeAgregar: false,
+        puedeEnviar: false,
+        puedeCorregir: false,
         expedido: false,
         soporteAdjunto: false,
         puedeAbrirse: true,
@@ -406,21 +443,37 @@ export class CdpService {
       };
     }
 
-    const cdp = await this.delProceso(procesoId, em);
-    const expedido = cdp?.estado === 'EXPEDIDO';
+    const cdps = await this.cdpsDelProceso(procesoId, em);
+    const expedidos = cdps.filter((c) => c.estado === 'EXPEDIDO');
+    const expedido = expedidos.length > 0;
+    // El primero expedido, para quien todavía lee uno solo; si no hay, la
+    // solicitud de antes de la 103 que haya quedado.
+    const cdp = expedidos[0] ?? cdps[0] ?? null;
+    const respaldo = respaldoDeLosCdp(cdps);
+    const { cubre, advertencia } = cdpCubreElProceso(respaldo.valor, proceso.valorEstimado);
+    const abierto = await this.cargueAbierto(manager, procesoId);
+    const puedeAgregar = permisos.puedeCargar && abierto;
 
     return {
       aplica: true,
       cdp,
-      /** Existe el certificado: la partida quedó apartada para el proceso. */
+      /** Todos los CDP en curso del proceso (152), del primero al último. */
+      cdps,
+      /** Lo que suman los expedidos: es lo que respalda el gasto. */
+      valorTotal: respaldo.valor,
+      cubreValorEstimado: cubre,
+      advertencia,
+      /** Existe al menos un certificado: la partida quedó apartada para el proceso. */
       expedido,
+      /** La 4.2 sigue en manos del área: se puede agregar otro CDP. */
+      puedeAgregar,
+      /** Hay con qué enviar la 4.2 y sigue abierta. */
+      puedeEnviar: puedeAgregar && expedido,
       /** Se puede corregir lo cargado: la 4.2 se retiró de aprobación o la devolvieron (BUG-001). */
-      puedeCorregir:
-        permisos.puedeCargar && !!cdp && (await this.sePuedeCorregir(manager, procesoId, cdp)),
+      puedeCorregir: puedeAgregar && expedidos.some((c) => c.origen === 'ETAPA_4'),
       // Se reporta aparte de `expedido` a propósito: la apertura la habilita el
-      // certificado, no su PDF. Que falte el adjunto deja abierta la actividad
-      // 4.4, pero no frena el proceso.
-      soporteAdjunto: cdp?.documentoId !== null && cdp?.documentoId !== undefined,
+      // certificado, no su PDF. Que falte el adjunto no frena el proceso.
+      soporteAdjunto: expedido && expedidos.every((c) => !!c.documentoId),
       /** La pregunta que de verdad hace quien consume esto. */
       puedeAbrirse: expedido,
       motivo: expedido
@@ -447,14 +500,19 @@ export class CdpService {
   // ------------------------------------------------------ cargue (4.2) ---
 
   /**
-   * Actividad 4.2: el área carga el CDP que la Financiera expidió por fuera.
+   * Actividad 4.2: el área carga un CDP que la Financiera expidió por fuera.
    *
    * Desde la 103 el aplicativo no tramita el CDP: nadie lo solicita ni lo
    * verifica aquí. El certificado ya existe cuando llega, así que queda EXPEDIDO
-   * de una vez, con el soporte, y la 4.2 se cierra en la misma transacción.
+   * de una vez, con el soporte.
+   *
+   * Desde la 152 el proceso puede llevar uno o más: mientras la 4.2 siga en
+   * manos del área se agregan los que hagan falta. Con `enviar` (lo de siempre,
+   * y el valor por omisión) la 4.2 se cierra en la misma transacción; sin él,
+   * el CDP queda cargado y la 4.2 se envía después con `enviarCargue`.
    *
    * Si el proceso arrastra una solicitud de antes de la 103 —SOLICITADO o
-   * VERIFICADO—, cargar la completa en vez de chocar contra ella: es el mismo
+   * VERIFICADO—, cargar la completa en vez de crear otro al lado: es el mismo
    * CDP, que la Financiera expidió por fuera.
    *
    * El soporte lo exige el endpoint. Aquí puede faltar porque las pruebas de
@@ -472,15 +530,17 @@ export class CdpService {
         throw new BadRequestException('Esta modalidad no requiere CDP: la entidad no compromete gasto');
       }
 
-      const pendiente = await this.delProceso(procesoId, em);
-      if (pendiente?.estado === 'EXPEDIDO') {
+      const enCurso = await this.cdpsDelProceso(procesoId, em);
+      if (!(await this.cargueAbierto(em, procesoId))) {
         throw new ConflictException(
-          pendiente.origen === 'REGISTRADO_EN_ETAPA_3'
-            ? 'El CDP ya se cargó desde el estudio previo'
-            : 'El proceso ya tiene el CDP cargado',
+          enCurso.some((c) => c.origen === 'REGISTRADO_EN_ETAPA_3')
+            ? 'El CDP ya se cargó desde el estudio previo y la 4.2 quedó atendida con él'
+            : 'La 4.2 ya se envió: retírala de aprobación para agregar otro CDP',
         );
       }
+      this.exigirNumeroNuevo(enCurso, dto.numero);
 
+      const pendiente = enCurso.find((c) => c.estado !== 'EXPEDIDO') ?? null;
       let cdp: Cdp;
       if (pendiente) {
         if (pendiente.estado === 'SOLICITADO') await this.transicionar(pendiente, 'VERIFICADO');
@@ -501,16 +561,8 @@ export class CdpService {
         ? await this.guardarSoporte(em, procesoId, soporte.archivo, soporte.hash, acceso)
         : null;
 
-      cdp.numero = dto.numero.trim();
-      cdp.valor = dto.valor;
-      cdp.rubro = dto.rubro.trim();
-      cdp.fechaExpedicion = dto.fechaExpedicion;
-      cdp.vigenciaFiscal = dto.vigenciaFiscal ?? Number(dto.fechaExpedicion.slice(0, 4));
-      // Quién lo cargó, que no es quien lo expidió: el certificado lo firmó la
-      // Financiera por fuera, y este nombre es a quién pedirle cuentas del dato.
-      cdp.expedidoPor = acceso.userName;
+      this.ponerDatos(cdp, dto, acceso);
       if (documento) cdp.documentoId = documento.id;
-      cdp.updatedAt = new Date();
       const guardado = await em.save(cdp);
 
       if (proceso.etapa < ETAPA_CDP) {
@@ -518,20 +570,23 @@ export class CdpService {
         await em.save(proceso);
       }
 
-      await this.cerrarActividad(
-        em,
-        procesoId,
-        NUMERAL_CARGUE_CDP,
-        proceso.modalidad ?? null,
-        acceso,
-        dto.firma,
-      );
+      if (dto.enviar !== false) {
+        await this.cerrarActividad(
+          em,
+          procesoId,
+          NUMERAL_CARGUE_CDP,
+          proceso.modalidad ?? null,
+          acceso,
+          dto.firma,
+        );
+      }
       await this.traza(em, procesoId, guardado.id, 'EXPEDIR', acceso, {
         cargado: true,
         numero: guardado.numero,
         valor: guardado.valor,
         rubro: guardado.rubro,
         fechaExpedicion: guardado.fechaExpedicion,
+        enviado: dto.enviar !== false,
       });
       if (documento && soporte) {
         await this.traza(em, procesoId, guardado.id, 'ADJUNTAR', acceso, {
@@ -540,12 +595,40 @@ export class CdpService {
         });
       }
 
-      return { ...this.conAdvertencia(guardado, proceso), documento };
+      return { ...(await this.conAdvertencia(em, guardado, proceso)), documento };
     });
   }
 
   /**
-   * Si lo cargado en la 4.2 se puede corregir (BUG-001 de QA, 14/11).
+   * Envía la 4.2 con los CDP que ya se cargaron (152).
+   *
+   * Es el paso que separa «cargar uno más» de «ya están todos»: la 4.2 pasa
+   * por el mismo cierre de siempre, con su revisión y su firma si las pide.
+   */
+  async enviarCargue(procesoId: string, firma: FirmaOtpDto | undefined, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId);
+      if (!(await this.cargueAbierto(em, procesoId))) {
+        throw new ConflictException('La 4.2 ya se envió');
+      }
+      const cdps = await this.cdpsDelProceso(procesoId, em);
+      if (!cdps.some((c) => c.estado === 'EXPEDIDO')) {
+        throw new ConflictException('Carga al menos un CDP antes de enviar la 4.2');
+      }
+
+      await this.cerrarActividad(em, procesoId, NUMERAL_CARGUE_CDP, proceso.modalidad ?? null, acceso, firma);
+      const respaldo = respaldoDeLosCdp(cdps);
+      await this.traza(em, procesoId, procesoId, 'ENVIAR', acceso, {
+        actividad: NUMERAL_CARGUE_CDP,
+        cdps: cdps.map((c) => c.numero),
+        valorTotal: respaldo.valor,
+      });
+      return this.estadoRespaldo(procesoId, em, acceso);
+    });
+  }
+
+  /**
+   * Si un CDP cargado en la 4.2 se puede corregir o quitar (BUG-001 de QA, 14/11).
    *
    * Al retirar la 4.2 de aprobación —o si la devuelven— el CDP seguía cargado
    * sin forma de tocarlo: «Devolver el envío» no servía para corregir nada.
@@ -555,30 +638,31 @@ export class CdpService {
    */
   private async sePuedeCorregir(em: EntityManager, procesoId: string, cdp: Cdp): Promise<boolean> {
     if (cdp.estado !== 'EXPEDIDO' || cdp.origen !== 'ETAPA_4') return false;
-    const cargue = await em
-      .getRepository(ProcesoActividad)
-      .findOne({ where: { procesoId, numeral: NUMERAL_CARGUE_CDP } });
-    return !!cargue && (cargue.estado === 'BORRADOR' || cargue.estado === 'DEVUELTO');
+    return this.cargueAbierto(em, procesoId);
   }
 
   /**
-   * Corrige el CDP cargado en la 4.2 y lo vuelve a enviar (BUG-001).
+   * Corrige un CDP cargado en la 4.2.
    *
    * Los datos se reemplazan y, si llega un certificado nuevo, pasa a ser el
    * soporte; el anterior queda en el expediente, de donde se puede retirar.
    * La traza guarda lo que había antes, para que la corrección no borre lo que
-   * se envió la primera vez. Corregir es volver a enviar: la actividad pasa por
-   * el mismo cierre que al cargar, con su revisión y su firma si las pide.
+   * se envió la primera vez. Con `enviar` (por omisión) corregir es volver a
+   * enviar: la actividad pasa por el mismo cierre que al cargar.
+   *
+   * Sin `cdpId` se corrige el primero que se cargó: así llamaban antes de la
+   * 152, cuando no podía haber otro.
    */
   async corregir(
     procesoId: string,
     dto: CargarCdpDto,
     soporte: { archivo: ArchivoCargado; hash: string } | null,
     acceso: HiringAccess,
+    cdpId?: string,
   ) {
     return this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
-      const cdp = await this.exigirCdp(em, procesoId);
+      const cdp = await this.exigirCdp(em, procesoId, cdpId);
       if (!(await this.sePuedeCorregir(em, procesoId, cdp))) {
         throw new ConflictException(
           cdp.origen === 'REGISTRADO_EN_ETAPA_3'
@@ -586,6 +670,7 @@ export class CdpService {
             : 'El CDP solo se corrige con la 4.2 retirada de aprobación o devuelta',
         );
       }
+      this.exigirNumeroNuevo(await this.cdpsDelProceso(procesoId, em), dto.numero, cdp.id);
 
       const antes = {
         numero: cdp.numero,
@@ -599,24 +684,20 @@ export class CdpService {
         ? await this.guardarSoporte(em, procesoId, soporte.archivo, soporte.hash, acceso)
         : null;
 
-      cdp.numero = dto.numero.trim();
-      cdp.valor = dto.valor;
-      cdp.rubro = dto.rubro.trim();
-      cdp.fechaExpedicion = dto.fechaExpedicion;
-      cdp.vigenciaFiscal = dto.vigenciaFiscal ?? Number(dto.fechaExpedicion.slice(0, 4));
-      cdp.expedidoPor = acceso.userName;
+      this.ponerDatos(cdp, dto, acceso);
       if (documento) cdp.documentoId = documento.id;
-      cdp.updatedAt = new Date();
       const guardado = await em.save(cdp);
 
-      await this.cerrarActividad(
-        em,
-        procesoId,
-        NUMERAL_CARGUE_CDP,
-        proceso.modalidad ?? null,
-        acceso,
-        dto.firma,
-      );
+      if (dto.enviar !== false) {
+        await this.cerrarActividad(
+          em,
+          procesoId,
+          NUMERAL_CARGUE_CDP,
+          proceso.modalidad ?? null,
+          acceso,
+          dto.firma,
+        );
+      }
       await this.traza(em, procesoId, guardado.id, 'RECTIFICAR', acceso, {
         antes,
         numero: guardado.numero,
@@ -626,7 +707,35 @@ export class CdpService {
         documento: documento?.id ?? null,
       });
 
-      return { ...this.conAdvertencia(guardado, proceso), documento };
+      return { ...(await this.conAdvertencia(em, guardado, proceso)), documento };
+    });
+  }
+
+  /**
+   * Quita un CDP cargado en la 4.2 mientras la 4.2 sigue abierta (152).
+   *
+   * Para el que se cargó de más o por error. Anula, no borra: el expediente
+   * conserva que se cargó. Si era el único, la 4.2 queda esperando otro.
+   */
+  async quitar(procesoId: string, cdpId: string, motivo: string | undefined, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const cdp = await this.exigirCdp(em, procesoId, cdpId);
+      if (!(await this.sePuedeCorregir(em, procesoId, cdp))) {
+        throw new ConflictException(
+          cdp.origen === 'REGISTRADO_EN_ETAPA_3'
+            ? 'Este CDP se cargó desde el estudio previo: se retira allá'
+            : 'El CDP solo se quita con la 4.2 retirada de aprobación o devuelta',
+        );
+      }
+
+      await this.transicionar(cdp, 'ANULADO');
+      cdp.observaciones = motivo?.trim() || cdp.observaciones;
+      await em.save(cdp);
+      await this.traza(em, procesoId, cdp.id, 'ANULAR', acceso, {
+        numero: cdp.numero,
+        motivo: motivo?.trim() || null,
+      });
+      return this.estadoRespaldo(procesoId, em, acceso);
     });
   }
 
@@ -637,17 +746,22 @@ export class CdpService {
    * llegaron a la 4.4, y para un CDP cargado sin él: desde la 096 el soporte va
    * con el certificado. No cierra ninguna actividad —la 4.2 ya está cerrada—.
    *
-   * Se exige el CDP expedido: el soporte prueba lo que el registro afirma.
+   * Se exige el CDP expedido: el soporte prueba lo que el registro afirma. Sin
+   * `cdpId`, el primero expedido que no tenga soporte.
    */
   async adjuntarSoporte(
     procesoId: string,
     archivo: ArchivoCargado,
     hash: string,
     acceso: HiringAccess,
+    cdpId?: string,
   ) {
     return this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
-      const cdp = await this.exigirCdp(em, procesoId);
+      const sinSoporte = cdpId
+        ? null
+        : (await this.cdpsDelProceso(procesoId, em)).find((c) => c.estado === 'EXPEDIDO' && !c.documentoId);
+      const cdp = sinSoporte ?? (await this.exigirCdp(em, procesoId, cdpId));
 
       if (cdp.estado !== 'EXPEDIDO') {
         throw new ConflictException(
@@ -657,8 +771,8 @@ export class CdpService {
 
       const documento = await this.guardarSoporte(em, procesoId, archivo, hash, acceso);
 
-      // El vínculo va en el dato y no por convención de numeral: si mañana se
-      // anula este CDP y se expide otro, cada uno conserva su propio soporte.
+      // El vínculo va en el dato y no por convención de numeral: cada CDP
+      // conserva su propio soporte.
       cdp.documentoId = documento.id;
       cdp.updatedAt = new Date();
       await em.save(cdp);
@@ -668,8 +782,41 @@ export class CdpService {
         nombre: archivo.originalname,
       });
 
-      return { ...this.conAdvertencia(cdp, proceso), documento };
+      return { ...(await this.conAdvertencia(em, cdp, proceso)), documento };
     });
+  }
+
+  /** Los datos del certificado, iguales en la 3.1 y en la 4.2. */
+  private ponerDatos(
+    cdp: Cdp,
+    dto: { numero: string; valor: number; rubro: string; fechaExpedicion: string; vigenciaFiscal?: number },
+    acceso: HiringAccess,
+  ) {
+    cdp.numero = dto.numero.trim();
+    cdp.valor = dto.valor;
+    cdp.rubro = dto.rubro.trim();
+    cdp.fechaExpedicion = dto.fechaExpedicion;
+    cdp.vigenciaFiscal = dto.vigenciaFiscal ?? Number(dto.fechaExpedicion.slice(0, 4));
+    // Quién lo cargó, que no es quien lo expidió: el certificado lo firmó la
+    // Financiera por fuera, y este nombre es a quién pedirle cuentas del dato.
+    cdp.expedidoPor = acceso.userName;
+    cdp.updatedAt = new Date();
+  }
+
+  /**
+   * Un mismo certificado no se carga dos veces en el proceso (152).
+   *
+   * Con un solo CDP no hacía falta; con varios, teclear dos veces el mismo
+   * número duplicaría el respaldo. La base tiene la misma regla.
+   */
+  private exigirNumeroNuevo(enCurso: Cdp[], numero: string, salvo?: string) {
+    const clave = numero.trim().toUpperCase();
+    const repetido = enCurso.find(
+      (c) => c.id !== salvo && c.estado === 'EXPEDIDO' && c.numero?.trim().toUpperCase() === clave,
+    );
+    if (repetido) {
+      throw new ConflictException(`El CDP ${repetido.numero} ya está cargado en este proceso`);
+    }
   }
 
   private async guardarSoporte(
@@ -724,18 +871,26 @@ export class CdpService {
 
     const aplica = await this.aplicaCdp(proceso.modalidad, manager);
     const obligatorio = aplica && (await this.exigeCdpAntesDeRadicar(proceso.modalidad, manager));
-    const enCurso = aplica ? await this.delProceso(procesoId, manager) : null;
+    const cdps = aplica ? await this.cdpsDelProceso(procesoId, manager) : [];
+    const respaldo = respaldoDeLosCdp(cdps);
+    const { cubre, advertencia } = cdpCubreElProceso(respaldo.valor, proceso.valorEstimado);
 
     const { permite, motivo } = cdpPermiteRadicar({
       aplica,
       obligatorio,
-      cargado: enCurso?.estado === 'EXPEDIDO',
+      cargado: respaldo.cantidad > 0,
     });
 
     return {
       aplica,
       obligatorio,
-      cdp: enCurso ? this.conAdvertencia(enCurso, proceso) : null,
+      /** El primero, para quien todavía lee uno solo. */
+      cdp: cdps[0] ?? null,
+      /** Todos los CDP en curso (152): se pueden cargar uno o más. */
+      cdps,
+      valorTotal: respaldo.valor,
+      cubreValorEstimado: cubre,
+      advertencia,
       /** Si con lo que hay se puede enviar el estudio previo a revisión. */
       permiteRadicar: permite,
       motivo,
@@ -752,12 +907,12 @@ export class CdpService {
   async exigirGestionAntesDeRadicar(em: EntityManager, proceso: Proceso) {
     const aplica = await this.aplicaCdp(proceso.modalidad, em);
     const obligatorio = aplica && (await this.exigeCdpAntesDeRadicar(proceso.modalidad, em));
-    const enCurso = obligatorio ? await this.delProceso(proceso.id, em) : null;
+    const cdps = obligatorio ? await this.cdpsDelProceso(proceso.id, em) : [];
 
     const { permite, motivo } = cdpPermiteRadicar({
       aplica,
       obligatorio,
-      cargado: enCurso?.estado === 'EXPEDIDO',
+      cargado: cdps.some((c) => c.estado === 'EXPEDIDO'),
     });
     if (!permite) {
       throw new UnprocessableEntityException({ message: motivo, cdpPendiente: true });
@@ -765,15 +920,16 @@ export class CdpService {
   }
 
   /**
-   * El área carga desde el estudio previo el CDP que ya tiene.
+   * El área carga desde el estudio previo un CDP que ya tiene.
    *
    * Queda EXPEDIDO de una vez: la Financiera lo expidió por fuera, y desde la
    * 103 el aplicativo no lo tramita. La 4.2 se da por atendida al cerrarse la
    * etapa 3, no aquí: mientras el estudio previo esté en manos del área, el
    * registro todavía se corrige.
    *
-   * Si ya hay uno registrado por el área, esto lo corrige: mismo registro, sin
-   * duplicar. El soporte es obligatorio al registrar y opcional al corregir.
+   * Desde la 152 se cargan uno o más: sin `cdpId` se agrega otro, con él se
+   * corrige ese (solo si lo cargó el área desde aquí). El soporte es
+   * obligatorio al agregar y opcional al corregir.
    */
   async registrarDesdeElEstudioPrevio(
     em: EntityManager,
@@ -784,38 +940,43 @@ export class CdpService {
     acceso: HiringAccess,
   ) {
     const proceso = await this.exigirProceso(em, procesoId);
-    const actual = await this.delProceso(procesoId, em);
-    const corrige = actual?.origen === 'REGISTRADO_EN_ETAPA_3';
+    if (!(await this.aplicaCdp(proceso.modalidad, em))) {
+      throw new BadRequestException('Esta modalidad no requiere CDP: la entidad no compromete gasto');
+    }
+    const enCurso = await this.cdpsDelProceso(procesoId, em);
 
-    if (!corrige) await this.exigirQueNoTengaCdp(em, proceso);
+    const actual = dto.cdpId ? await this.exigirCdp(em, procesoId, dto.cdpId) : null;
+    if (actual && actual.origen !== 'REGISTRADO_EN_ETAPA_3') {
+      throw new ConflictException('Este CDP no se cargó desde el estudio previo: se corrige en la 4.2');
+    }
+    const corrige = !!actual;
+    if (!corrige && enCurso.some((c) => c.estado !== 'EXPEDIDO')) {
+      throw new ConflictException(
+        'Quedó una solicitud de CDP de antes, sin atender: retírala antes de cargar el certificado',
+      );
+    }
     if (!corrige && !archivo) {
       throw new BadRequestException('Adjunta el certificado: es la evidencia del CDP en el expediente');
     }
+    this.exigirNumeroNuevo(enCurso, dto.numero, actual?.id);
 
     const cdp =
-      corrige && actual
-        ? actual
-        : em.create(Cdp, {
-            procesoId,
-            estado: 'EXPEDIDO' as const,
-            origen: 'REGISTRADO_EN_ETAPA_3' as const,
-            solicitadoPor: acceso.userName,
-            solicitadoAt: new Date(),
-          });
+      actual ??
+      em.create(Cdp, {
+        procesoId,
+        estado: 'EXPEDIDO' as const,
+        origen: 'REGISTRADO_EN_ETAPA_3' as const,
+        solicitadoPor: acceso.userName,
+        solicitadoAt: new Date(),
+      });
 
     if (archivo && hash) {
       const documento = await this.guardarSoporte(em, procesoId, archivo, hash, acceso);
       cdp.documentoId = documento.id;
     }
-    cdp.numero = dto.numero.trim();
-    cdp.valor = dto.valor;
-    cdp.rubro = dto.rubro.trim();
-    cdp.fechaExpedicion = dto.fechaExpedicion;
-    cdp.vigenciaFiscal = dto.vigenciaFiscal ?? Number(dto.fechaExpedicion.slice(0, 4));
-    // Quién lo transcribió, que no es quien lo expidió: `origen` dice que lo
-    // registró el área, y este nombre a quién pedirle cuentas del dato.
-    cdp.expedidoPor = acceso.userName;
-    cdp.updatedAt = new Date();
+    // `expedidoPor` es quién lo transcribió, que no es quien lo expidió:
+    // `origen` dice que lo registró el área.
+    this.ponerDatos(cdp, dto, acceso);
     const guardado = await em.save(cdp);
 
     await this.traza(em, procesoId, guardado.id, corrige ? 'GUARDAR' : 'EXPEDIR', acceso, {
@@ -827,20 +988,27 @@ export class CdpService {
       ...(archivo ? { soporte: archivo.originalname } : {}),
     });
 
-    return this.conAdvertencia(guardado, proceso);
+    return this.conAdvertencia(em, guardado, proceso);
   }
 
   /**
-   * El área retira el CDP que cargó desde el estudio previo.
+   * El área retira un CDP que cargó desde el estudio previo.
    *
    * Para corregir un cargue equivocado. También retira una solicitud hecha
    * desde el estudio previo antes de la 103 que nadie llegó a atender: desde
    * entonces nadie la va a atender, y el área la reemplaza cargando el CDP.
+   * Sin `cdpId`, el primero (como antes de la 152, cuando había uno solo).
    *
    * Anula, no borra: el expediente conserva que se cargó o se pidió.
    */
-  async retirarDesdeElEstudioPrevio(em: EntityManager, procesoId: string, motivo: string | undefined, acceso: HiringAccess) {
-    const cdp = await this.exigirCdp(em, procesoId);
+  async retirarDesdeElEstudioPrevio(
+    em: EntityManager,
+    procesoId: string,
+    motivo: string | undefined,
+    acceso: HiringAccess,
+    cdpId?: string,
+  ) {
+    const cdp = await this.exigirCdp(em, procesoId, cdpId);
 
     const esSuSolicitud = cdp.origen === 'SOLICITADO_EN_ETAPA_3' && cdp.estado !== 'EXPEDIDO';
     const esSuRegistro = cdp.origen === 'REGISTRADO_EN_ETAPA_3';
@@ -855,6 +1023,7 @@ export class CdpService {
     await this.traza(em, procesoId, cdp.id, 'ANULAR', acceso, {
       desdeElEstudioPrevio: true,
       origen: cdp.origen,
+      numero: cdp.numero,
       motivo: motivo?.trim() || null,
     });
     return { id: cdp.id, estado: cdp.estado };
@@ -913,21 +1082,6 @@ export class CdpService {
     await repo.save(fila);
 
     return (await this.exigenciasAntesDeRadicar()).find((e) => e.modalidad === modalidad);
-  }
-
-  /** Un solo CDP en curso por proceso, y solo si la modalidad lo lleva. */
-  private async exigirQueNoTengaCdp(em: EntityManager, proceso: Proceso) {
-    if (!(await this.aplicaCdp(proceso.modalidad, em))) {
-      throw new BadRequestException('Esta modalidad no requiere CDP: la entidad no compromete gasto');
-    }
-    const enCurso = await this.delProceso(proceso.id, em);
-    if (enCurso) {
-      throw new ConflictException(
-        enCurso.origen === 'REGISTRADO_EN_ETAPA_3'
-          ? 'El proceso ya tiene registrado un CDP'
-          : `El proceso ya tiene un CDP ${enCurso.estado.toLowerCase()}`,
-      );
-    }
   }
 
   // ------------------------------------------------------ apertura (5.7) ---
@@ -1077,8 +1231,16 @@ export class CdpService {
     return proceso;
   }
 
-  private async exigirCdp(em: EntityManager, procesoId: string): Promise<Cdp> {
-    const cdp = await this.delProceso(procesoId, em);
+  /**
+   * Un CDP en curso del proceso: el de `cdpId` si llega, o el primero.
+   *
+   * Con `cdpId` se exige que sea de este proceso y no de una adición: el id
+   * llega de la pantalla, y sin el filtro se podría tocar el de otro.
+   */
+  private async exigirCdp(em: EntityManager, procesoId: string, cdpId?: string): Promise<Cdp> {
+    const cdp = cdpId
+      ? ((await this.cdpsDelProceso(procesoId, em)).find((c) => c.id === cdpId) ?? null)
+      : await this.delProceso(procesoId, em);
     if (!cdp) {
       throw new NotFoundException(
         'El proceso no tiene una solicitud de CDP en curso',
@@ -1123,8 +1285,9 @@ export class CdpService {
       await em.save(proceso);
     }
 
-    const cdp = await this.delProceso(procesoId, em);
-    if (cdp?.estado !== 'EXPEDIDO') return;
+    const cdps = await this.cdpsDelProceso(procesoId, em);
+    const expedidos = cdps.filter((c) => c.estado === 'EXPEDIDO');
+    if (expedidos.length === 0) return;
 
     const cargue = await em.getRepository(ProcesoActividad).findOne({
       where: { procesoId, numeral: NUMERAL_CARGUE_CDP },
@@ -1137,12 +1300,14 @@ export class CdpService {
       ...acceso,
       userName: AUTOR_AUTOMATICO,
     });
-    await this.traza(em, procesoId, cdp.id, 'EXPEDIR', acceso, {
-      automatica: true,
-      yaCargado: true,
-      origen: cdp.origen,
-      atendidas: [NUMERAL_CARGUE_CDP],
-    });
+    for (const cdp of expedidos) {
+      await this.traza(em, procesoId, cdp.id, 'EXPEDIR', acceso, {
+        automatica: true,
+        yaCargado: true,
+        origen: cdp.origen,
+        atendidas: [NUMERAL_CARGUE_CDP],
+      });
+    }
   }
 
   /**
@@ -1210,10 +1375,16 @@ export class CdpService {
     await this.cierre.resolverCierre(em, procesoId, numeral, modalidad, acceso, firma);
   }
 
-  /** El CDP con el aviso de si alcanza a cubrir el valor estimado. */
-  private conAdvertencia(cdp: Cdp, proceso: Proceso) {
-    const { cubre, advertencia } = cdpCubreElProceso(cdp.valor, proceso.valorEstimado);
-    return { ...cdp, cubreValorEstimado: cubre, advertencia };
+  /**
+   * El CDP con el aviso de si el respaldo alcanza a cubrir el valor estimado.
+   *
+   * Desde la 152 se compara la suma de los expedidos y no el certificado
+   * suelto: con dos CDP, cada uno por la mitad, los dos «se quedaban cortos».
+   */
+  private async conAdvertencia(em: EntityManager, cdp: Cdp, proceso: Proceso) {
+    const respaldo = respaldoDeLosCdp(await this.cdpsDelProceso(proceso.id, em));
+    const { cubre, advertencia } = cdpCubreElProceso(respaldo.valor ?? cdp.valor, proceso.valorEstimado);
+    return { ...cdp, valorTotal: respaldo.valor, cubreValorEstimado: cubre, advertencia };
   }
 
   private traza(

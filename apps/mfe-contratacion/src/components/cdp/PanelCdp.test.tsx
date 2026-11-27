@@ -176,20 +176,28 @@ describe('PanelCdp · ya cargado', () => {
     expect(await screen.findByRole('button', { name: /Adjuntar soporte/ })).toBeInTheDocument();
   });
 
-  it('en revisión o aprobado no ofrece corregir', async () => {
+  it('en revisión o aprobado no ofrece corregir ni agregar', async () => {
     pintar(respaldo({ cdp: cdp(), expedido: true, soporteAdjunto: true, puedeAbrirse: true }));
 
     await screen.findByText('CDP CDP-12 cargado');
-    expect(screen.queryByRole('button', { name: /Corregir el CDP/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Corregir/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Agregar otro CDP/ })).toBeNull();
   });
 
   it('retirado o devuelto, deja corregir los datos sin exigir otro certificado (BUG-001)', async () => {
     const corregir = vi.spyOn(contratacionService, 'corregirCdp').mockResolvedValue({} as never);
     pintar(
-      respaldo({ cdp: cdp(), expedido: true, soporteAdjunto: true, puedeAbrirse: true, puedeCorregir: true }),
+      respaldo({
+        cdp: cdp(),
+        expedido: true,
+        soporteAdjunto: true,
+        puedeAbrirse: true,
+        puedeCorregir: true,
+        puedeAgregar: true,
+      }),
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: /Corregir el CDP/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Corregir/ }));
     // Vuelven los datos de antes, para tocar solo lo que está mal.
     expect(screen.getByLabelText('Número del CDP')).toHaveValue('CDP-12');
     fireEvent.change(screen.getByLabelText('Número del CDP'), { target: { value: 'CDP-13' } });
@@ -199,9 +207,10 @@ describe('PanelCdp · ya cargado', () => {
     fireEvent.click(within(dialogo).getByRole('button', { name: /Guardar y volver a enviar/ }));
 
     await vi.waitFor(() => expect(corregir).toHaveBeenCalled());
-    const [procesoId, datos, archivo] = corregir.mock.calls[0];
+    const [procesoId, cdpId, datos, archivo] = corregir.mock.calls[0];
     expect(procesoId).toBe('p-1');
-    expect(datos).toMatchObject({ numero: 'CDP-13', valor: 2_000_000, rubro: 'A-02' });
+    expect(cdpId).toBe('cdp-1');
+    expect(datos).toMatchObject({ numero: 'CDP-13', valor: 2_000_000, rubro: 'A-02', enviar: true });
     expect(archivo).toBeNull();
   });
 
@@ -209,20 +218,113 @@ describe('PanelCdp · ya cargado', () => {
     const expedido = { cdp: cdp(), expedido: true, soporteAdjunto: true, puedeAbrirse: true };
     const leer = vi
       .spyOn(contratacionService, 'respaldoCdp')
-      .mockResolvedValueOnce(respaldo({ ...expedido, puedeCorregir: false }) as never)
-      .mockResolvedValueOnce(respaldo({ ...expedido, puedeCorregir: true }) as never);
+      .mockResolvedValueOnce(respaldo({ ...expedido, puedeCorregir: false, puedeAgregar: false }) as never)
+      .mockResolvedValueOnce(respaldo({ ...expedido, puedeCorregir: true, puedeAgregar: true }) as never);
 
     const { rerender } = render(
       <PanelCdp numeral="4.2" procesoId="p-1" valorEstimado={2_000_000} recargarToken={0} />,
     );
     await screen.findByText('CDP CDP-12 cargado');
-    expect(screen.queryByRole('button', { name: /Corregir el CDP/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Corregir/ })).toBeNull();
 
     // «Retirar de aprobación» vive fuera del panel y avisa subiendo el token.
     rerender(<PanelCdp numeral="4.2" procesoId="p-1" valorEstimado={2_000_000} recargarToken={1} />);
 
-    expect(await screen.findByRole('button', { name: /Corregir el CDP/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /^Corregir/ })).toBeInTheDocument();
     expect(leer).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * Desde la 152 el proceso puede llevar uno o más CDP: mientras la 4.2 siga en
+ * manos del área se agregan, se corrigen o se quitan, y se envía al final.
+ */
+describe('PanelCdp · uno o más CDP (152)', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  const abierta = (cdps: unknown[], cambios: Record<string, unknown> = {}) =>
+    respaldo({
+      cdp: cdps[0],
+      cdps,
+      expedido: true,
+      soporteAdjunto: true,
+      puedeAbrirse: true,
+      puedeAgregar: true,
+      puedeEnviar: true,
+      puedeCorregir: true,
+      ...cambios,
+    });
+
+  it('«Cargar y agregar otro» carga sin enviar la 4.2', async () => {
+    const cargar = vi.spyOn(contratacionService, 'cargarCdp').mockResolvedValue({} as never);
+    pintar(respaldo());
+    fireEvent.change(await screen.findByLabelText('Rubro presupuestal'), { target: { value: 'A-02' } });
+    fireEvent.change(screen.getByLabelText('Número del CDP'), { target: { value: 'CDP-12' } });
+    fireEvent.change(screen.getByLabelText('Valor certificado'), { target: { value: '1000000' } });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['%PDF'], 'cdp.pdf', { type: 'application/pdf' })] } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Cargar y agregar otro/ }));
+    const dialogo = await screen.findByRole('dialog');
+    fireEvent.click(within(dialogo).getByRole('button', { name: /Cargar y agregar otro/ }));
+
+    await vi.waitFor(() => expect(cargar).toHaveBeenCalled());
+    expect(cargar.mock.calls[0][1]).toMatchObject({ numero: 'CDP-12', enviar: false });
+  });
+
+  it('lista los CDP cargados con lo que suman frente al estimado', async () => {
+    pintar(
+      abierta([cdp(), cdp({ id: 'cdp-2', numero: 'CDP-13', valor: 500_000, rubro: 'A-03' })], {
+        valorTotal: 2_500_000,
+      }),
+    );
+
+    expect(await screen.findByText('2 CDP cargados')).toBeInTheDocument();
+    expect(screen.getByText('CDP CDP-12')).toBeInTheDocument();
+    expect(screen.getByText('CDP CDP-13')).toBeInTheDocument();
+    expect(screen.getByText(/Suman \$\s2\.500\.000/)).toBeInTheDocument();
+    expect(screen.getByText(/queda \$\s500\.000 por encima/)).toBeInTheDocument();
+  });
+
+  it('con la 4.2 abierta ofrece agregar otro y enviarla', async () => {
+    const enviar = vi.spyOn(contratacionService, 'enviarCargueCdp').mockResolvedValue({} as never);
+    pintar(abierta([cdp()]));
+
+    expect(await screen.findByRole('button', { name: /Agregar otro CDP/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Enviar la actividad/ }));
+    const dialogo = await screen.findByRole('dialog');
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Enviar' }));
+
+    await vi.waitFor(() => expect(enviar).toHaveBeenCalledWith('p-1', undefined));
+  });
+
+  it('al agregar otro, el formulario compara con la suma de los demás', async () => {
+    pintar(abierta([cdp({ valor: 1_500_000 })]));
+
+    fireEvent.click(await screen.findByRole('button', { name: /Agregar otro CDP/ }));
+    fireEvent.change(screen.getByLabelText('Valor certificado'), { target: { value: '500000' } });
+
+    expect(screen.getByText(/Con los demás CDP, el respaldo suma \$\s2\.000\.000 y coincide/)).toBeInTheDocument();
+  });
+
+  it('quita uno de los CDP con su id', async () => {
+    const quitar = vi.spyOn(contratacionService, 'quitarCdp').mockResolvedValue({} as never);
+    pintar(abierta([cdp(), cdp({ id: 'cdp-2', numero: 'CDP-13' })]));
+
+    const botones = await screen.findAllByRole('button', { name: /Quitar/ });
+    fireEvent.click(botones[1]);
+    const dialogo = await screen.findByRole('dialog');
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Quitar' }));
+
+    await vi.waitFor(() => expect(quitar).toHaveBeenCalled());
+    expect(quitar.mock.calls[0][1]).toBe('cdp-2');
+  });
+
+  it('lo cargado desde el estudio previo no se corrige ni se quita aquí', async () => {
+    pintar(abierta([cdp({ origen: 'REGISTRADO_EN_ETAPA_3' }), cdp({ id: 'cdp-2', numero: 'CDP-13' })]));
+
+    await screen.findByText('2 CDP cargados');
+    expect(screen.getAllByRole('button', { name: /Quitar/ })).toHaveLength(1);
   });
 });
 

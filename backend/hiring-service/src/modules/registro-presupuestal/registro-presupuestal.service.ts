@@ -7,7 +7,7 @@ import {
 import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import { alMenos, Contrato, EstadoContrato } from '../../entities/contrato.entity';
-import { Cdp } from '../../entities/cdp.entity';
+import { Cdp, respaldoDeLosCdp } from '../../entities/cdp.entity';
 import { EstadoRp, RegistroPresupuestal } from '../../entities/registro-presupuestal.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -81,17 +81,25 @@ const normalizarRubro = (rubro: string) => rubro.replace(/\s+/g, '').toUpperCase
  */
 export function contradiceElCdp(
   rp: { valor: number; rubro: string | null },
-  cdp: { numero: string | null; valor: number | null; rubro: string | null },
+  cdp: { numero: string | null; valor: number | null; rubro: string | null; rubros?: string[] },
 ): string | null {
-  const nombre = cdp.numero ? `el CDP ${cdp.numero}` : 'el CDP del proceso';
+  // Desde la 152 el proceso puede llevar varios CDP: el valor es la suma y el
+  // RP puede ir contra cualquiera de sus rubros.
+  const varios = (cdp.rubros?.length ?? 0) > 1 || (cdp.numero?.includes(',') ?? false);
+  const nombre = cdp.numero
+    ? `${varios ? 'los CDP' : 'el CDP'} ${cdp.numero}`
+    : 'el CDP del proceso';
   if (cdp.valor != null && rp.valor > cdp.valor) {
     return (
       `El RP ($ ${rp.valor.toLocaleString('es-CO')}) supera lo que certificó ${nombre} ` +
       `($ ${cdp.valor.toLocaleString('es-CO')})`
     );
   }
-  if (rp.rubro && cdp.rubro && normalizarRubro(rp.rubro) !== normalizarRubro(cdp.rubro)) {
-    return `El RP va contra el rubro ${rp.rubro}, pero ${nombre} certificó el ${cdp.rubro}`;
+  const rubros = cdp.rubros && cdp.rubros.length > 0 ? cdp.rubros : cdp.rubro ? [cdp.rubro] : [];
+  if (rp.rubro && rubros.length > 0 && !rubros.some((r) => normalizarRubro(r) === normalizarRubro(rp.rubro!))) {
+    return rubros.length > 1
+      ? `El RP va contra el rubro ${rp.rubro}, pero ${nombre} certificaron ${rubros.join(', ')}`
+      : `El RP va contra el rubro ${rp.rubro}, pero ${nombre} certificó el ${rubros[0]}`;
   }
   return null;
 }
@@ -508,15 +516,17 @@ export class RegistroPresupuestalService {
    * adiciones traen su propio CDP y su propio RP.
    */
   private async exigirCdpExpedido(em: EntityManager, procesoId: string) {
-    const cdp = await em.getRepository(Cdp).findOne({
+    // Desde la 152 pueden ser varios: el RP se compara contra lo que suman.
+    const cdps = await em.getRepository(Cdp).find({
       where: { procesoId, estado: 'EXPEDIDO', modificacionId: IsNull() },
     });
-    if (!cdp) {
+    if (cdps.length === 0) {
       throw new ConflictException(
         'El proceso no tiene CDP expedido: el RP compromete lo que el CDP certificó (4.2)',
       );
     }
-    return { numero: cdp.numero, valor: cdp.valor != null ? Number(cdp.valor) : null, rubro: cdp.rubro };
+    const { numero, valor, rubro, rubros } = respaldoDeLosCdp(cdps);
+    return { numero, valor, rubro, rubros };
   }
 
   private async exigirRp(contratoId: string, em?: EntityManager) {

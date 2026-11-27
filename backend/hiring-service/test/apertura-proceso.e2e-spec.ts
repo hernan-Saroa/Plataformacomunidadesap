@@ -306,6 +306,62 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
     });
   });
 
+  describe('Uno o más CDP por proceso (152)', () => {
+    const cargar = (procesoId: string, numero: string, valor: number, enviar = false) =>
+      cdp.cargar(
+        procesoId,
+        { rubro: `A-${numero}`, numero, valor, fechaExpedicion: datos.resolucionFecha, enviar },
+        null,
+        financiero,
+      );
+
+    it('carga dos CDP sin enviar, los suma y envía la 4.2 después', async () => {
+      const proceso = await crear();
+      await cargar(proceso.id, 'CDP-A', 600_000);
+      await cargar(proceso.id, 'CDP-B', 400_000);
+
+      const respaldo = await cdp.estadoRespaldo(proceso.id, undefined, financiero);
+      expect(respaldo.cdps.map((c) => c.numero)).toEqual(['CDP-A', 'CDP-B']);
+      expect(respaldo.valorTotal).toBe(1_000_000);
+      expect(respaldo.cubreValorEstimado).toBe(true);
+      expect(respaldo.puedeAbrirse).toBe(true);
+
+      const [antes] = await dataSource.query(
+        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '4.2'`,
+        [proceso.id],
+      );
+      expect(antes.estado).toBe('BORRADOR');
+
+      await cdp.enviarCargue(proceso.id, undefined, financiero);
+      const [despues] = await dataSource.query(
+        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '4.2'`,
+        [proceso.id],
+      );
+      expect(despues.estado).not.toBe('BORRADOR');
+
+      // Enviada, ya no se agrega otro.
+      await expect(cargar(proceso.id, 'CDP-C', 1)).rejects.toThrow(/ya se envió/);
+    });
+
+    it('no carga dos veces el mismo número en el proceso', async () => {
+      const proceso = await crear();
+      await cargar(proceso.id, 'CDP-D', 500_000);
+
+      await expect(cargar(proceso.id, ' cdp-d ', 500_000)).rejects.toThrow(/ya está cargado/);
+    });
+
+    it('quitar uno deja el respaldo con los demás', async () => {
+      const proceso = await crear();
+      const primero = await cargar(proceso.id, 'CDP-E', 700_000);
+      await cargar(proceso.id, 'CDP-F', 300_000);
+
+      const respaldo = await cdp.quitar(proceso.id, primero.id, 'Sobraba', financiero);
+
+      expect(respaldo.cdps.map((c) => c.numero)).toEqual(['CDP-F']);
+      expect(respaldo.valorTotal).toBe(300_000);
+    });
+  });
+
   // ------------------------------------------------- aplicabilidad general --
 
   it('la contratación directa no adelanta la apertura', async () => {

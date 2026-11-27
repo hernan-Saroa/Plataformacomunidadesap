@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FilePlus2, Landmark, Pencil, Undo2, X } from 'lucide-react';
+import { AlertTriangle, FilePlus2, Landmark, Pencil, Plus, Undo2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -31,14 +31,14 @@ function aNumero(texto: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** Cómo va el CDP, dicho para quien redacta el estudio previo. */
+/** Cómo va un CDP, dicho para quien redacta el estudio previo. */
 function situacion(cdp: Cdp): { titulo: string; detalle: string; tono: 'ok' | 'aviso' } {
   if (cdp.estado === 'EXPEDIDO') {
     return {
       titulo: `CDP ${cdp.numero} cargado`,
       detalle: `Por ${pesos(cdp.valor)} del ${cdp.fechaExpedicion}${
         cdp.rubro ? `, contra el rubro ${cdp.rubro}` : ''
-      }. Lo cargó ${cdp.expedidoPor ?? 'el área'}. Al aprobarse el estudio previo, la etapa 4 se da por atendida con este certificado.`,
+      }. Lo cargó ${cdp.expedidoPor ?? 'el área'}.`,
       tono: 'ok',
     };
   }
@@ -53,17 +53,18 @@ function situacion(cdp: Cdp): { titulo: string; detalle: string; tono: 'ok' | 'a
 }
 
 /**
- * El CDP desde el estudio previo (migraciones 100 y 103).
+ * El CDP desde el estudio previo (migraciones 100, 103 y 152).
  *
  * Va aparte del formulario a propósito: el CDP es de otra dirección y tiene su
  * propio trámite, que desde la 103 va por fuera del aplicativo. Aquí el área
- * solo carga el certificado que ya tiene; si no lo carga aquí, lo carga en la
- * 4.2 cuando se apruebe el estudio previo.
+ * solo carga los certificados que ya tiene —desde la 152, uno o más—; si no los
+ * carga aquí, los carga en la 4.2 cuando se apruebe el estudio previo.
  */
 export function CdpDelEstudioPrevio({ procesoId, valorEstimado, onEstado }: Props) {
   const dialogo = useDialogo();
   const [estado, setEstado] = useState<EstadoCdpDelEstudio | null>(null);
-  const [cargando, setCargando] = useState(false);
+  /** Abierto el formulario: para agregar uno (`null`) o para corregir ese CDP. */
+  const [formulario, setFormulario] = useState<{ cdp: Cdp | null } | null>(null);
   const [trabajando, setTrabajando] = useState(false);
 
   const [valorTexto, setValorTexto] = useState('');
@@ -86,26 +87,31 @@ export function CdpDelEstudioPrevio({ procesoId, valorEstimado, onEstado }: Prop
 
   if (!estado || !estado.aplica) return null;
 
-  const cdp = estado.cdp;
-  const corrigiendo = cargando && cdp?.origen === 'REGISTRADO_EN_ETAPA_3';
+  const cdps = estado.cdps ?? (estado.cdp ? [estado.cdp] : []);
+  const expedidos = cdps.filter((c) => c.estado === 'EXPEDIDO');
+  const sumaDe = (salvo?: string) =>
+    expedidos.filter((c) => c.id !== salvo).reduce((suma, c) => suma + Number(c.valor ?? 0), 0);
+  const total = estado.valorTotal ?? sumaDe();
+  const corrigiendo = formulario?.cdp ?? null;
+  // Una solicitud de antes de la 103 se retira antes de cargar el certificado.
+  const hayPendiente = cdps.some((c) => c.estado !== 'EXPEDIDO');
 
-  const abrir = () => {
-    const base = cdp?.origen === 'REGISTRADO_EN_ETAPA_3' ? cdp : null;
-    setValorTexto(
-      base?.valor ? String(base.valor) : valorEstimado ? String(Math.round(valorEstimado)) : '',
-    );
+  const abrir = (base: Cdp | null) => {
+    const otros = sumaDe(base?.id);
+    const sugerido = valorEstimado ? Math.max(Math.round(valorEstimado) - otros, 0) : 0;
+    setValorTexto(base?.valor ? String(base.valor) : sugerido > 0 ? String(sugerido) : '');
     setRubro(base?.rubro ?? '');
     setNumero(base?.numero ?? '');
     setFecha(base?.fechaExpedicion ?? new Date().toISOString().slice(0, 10));
     setSoporte(null);
-    setCargando(true);
+    setFormulario({ cdp: base });
   };
 
   const ejecutar = async (accion: () => Promise<EstadoCdpDelEstudio>, exito: string) => {
     setTrabajando(true);
     try {
       poner(await accion());
-      setCargando(false);
+      setFormulario(null);
       toast.success(exito);
     } catch (err: any) {
       toast.error('No se pudo completar la acción', { description: err.message });
@@ -115,24 +121,31 @@ export function CdpDelEstudioPrevio({ procesoId, valorEstimado, onEstado }: Prop
   };
 
   const valor = aNumero(valorTexto);
-  const frente = cargando ? frenteAlEstimado(valor, valorEstimado) : null;
+  const frente = formulario ? frenteAlEstimado(valor, valorEstimado, sumaDe(corrigiendo?.id)) : null;
   const registroCompleto =
-    !!numero.trim() && valor !== null && !!rubro.trim() && !!fecha && (corrigiendo || !!soporte);
+    !!numero.trim() && valor !== null && !!rubro.trim() && !!fecha && (!!corrigiendo || !!soporte);
 
   const registrar = () =>
     ejecutar(
       () =>
         contratacionService.registrarCdpDesdeElEstudioPrevio(
           procesoId,
-          { numero: numero.trim(), valor: valor!, rubro: rubro.trim(), fechaExpedicion: fecha },
+          {
+            numero: numero.trim(),
+            valor: valor!,
+            rubro: rubro.trim(),
+            fechaExpedicion: fecha,
+            cdpId: corrigiendo?.id,
+          },
           soporte,
         ),
       corrigiendo ? 'CDP corregido' : 'CDP cargado',
     );
 
-  const retirar = async () => {
+  const retirar = async (cdp: Cdp) => {
     const motivo = await dialogo.pedirMotivo({
-      titulo: cdp?.origen === 'REGISTRADO_EN_ETAPA_3' ? 'Retirar el CDP cargado' : 'Retirar la solicitud de CDP',
+      titulo:
+        cdp.origen === 'REGISTRADO_EN_ETAPA_3' ? `Retirar el CDP ${cdp.numero}` : 'Retirar la solicitud de CDP',
       descripcion:
         'Queda anulado en el expediente, con tu nombre y el motivo. Después puedes cargarlo otra vez.',
       confirmar: 'Retirar',
@@ -142,16 +155,17 @@ export function CdpDelEstudioPrevio({ procesoId, valorEstimado, onEstado }: Prop
     });
     if (motivo === null) return;
     ejecutar(
-      () => contratacionService.retirarCdpDesdeElEstudioPrevio(procesoId, motivo || undefined),
+      () => contratacionService.retirarCdpDesdeElEstudioPrevio(procesoId, cdp.id, motivo || undefined),
       'CDP retirado',
     );
   };
 
-  const puedeRetirar =
+  const puedeRetirar = (cdp: Cdp) =>
     estado.puedeGestionar &&
-    !!cdp &&
     (cdp.origen === 'REGISTRADO_EN_ETAPA_3' ||
       (cdp.origen === 'SOLICITADO_EN_ETAPA_3' && cdp.estado !== 'EXPEDIDO'));
+
+  const frenteTotal = expedidos.length > 1 ? frenteAlEstimado(total, valorEstimado) : null;
 
   return (
     <section
@@ -170,48 +184,77 @@ export function CdpDelEstudioPrevio({ procesoId, valorEstimado, onEstado }: Prop
         </span>
       </div>
 
-      {cdp ? (
-        (() => {
-          const s = situacion(cdp);
-          return (
-            <Aviso tono={s.tono} titulo={s.titulo}>
-              {s.detalle}
-            </Aviso>
-          );
-        })()
+      {cdps.length > 0 ? (
+        <>
+          {cdps.map((cdp) => {
+            const s = situacion(cdp);
+            const enEdicion = corrigiendo?.id === cdp.id;
+            return (
+              <div key={cdp.id} className="space-y-1.5">
+                <Aviso tono={s.tono} titulo={s.titulo}>
+                  {s.detalle}
+                </Aviso>
+                {estado.puedeGestionar && !formulario && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {cdp.origen === 'REGISTRADO_EN_ETAPA_3' && !enEdicion && (
+                      <Boton disabled={trabajando} onClick={() => abrir(cdp)} icono={<Pencil className="w-3.5 h-3.5" />}>
+                        Corregir los datos
+                      </Boton>
+                    )}
+                    {puedeRetirar(cdp) && (
+                      <BotonSecundario
+                        disabled={trabajando}
+                        onClick={() => retirar(cdp)}
+                        icono={<Undo2 className="w-3.5 h-3.5" />}
+                      >
+                        Retirar
+                      </BotonSecundario>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {expedidos.length > 0 && (
+            <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
+              {expedidos.length > 1 ? `Los ${expedidos.length} CDP suman ${pesos(total)}. ` : ''}
+              Al aprobarse el estudio previo, la etapa 4 se da por atendida con{' '}
+              {expedidos.length > 1 ? 'estos certificados' : 'este certificado'}.
+            </p>
+          )}
+          {frenteTotal?.tono === 'aviso' && (
+            <p className="text-[11px] font-bold text-amber-700 m-0 flex items-start gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+              {frenteTotal.texto}
+            </p>
+          )}
+        </>
       ) : (
         <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
           {estado.obligatorio
-            ? 'Esta modalidad exige el CDP cargado antes de enviar el estudio previo. Se solicita y se expide por fuera del aplicativo; aquí se carga el certificado.'
-            : 'Si ya tienes el CDP, puedes cargarlo ahora. Si no, lo cargas en la etapa 4, cuando se apruebe el estudio previo.'}
+            ? 'Esta modalidad exige el CDP cargado antes de enviar el estudio previo. Se solicita y se expide por fuera del aplicativo; aquí se cargan los certificados (uno o más).'
+            : 'Si ya tienes el CDP, puedes cargarlo ahora; si el proceso lleva más de uno, cárgalos uno a uno. Si no, los cargas en la etapa 4, cuando se apruebe el estudio previo.'}
         </p>
       )}
 
-      {estado.puedeGestionar && !cargando && (
+      {estado.puedeGestionar && !formulario && !hayPendiente && (
         <div className="flex items-center gap-2 flex-wrap">
-          {!cdp && (
-            <Boton disabled={trabajando} onClick={abrir} icono={<FilePlus2 className="w-3.5 h-3.5" />}>
-              Cargar el CDP
-            </Boton>
-          )}
-          {cdp?.origen === 'REGISTRADO_EN_ETAPA_3' && (
-            <Boton disabled={trabajando} onClick={abrir} icono={<Pencil className="w-3.5 h-3.5" />}>
-              Corregir los datos
-            </Boton>
-          )}
-          {puedeRetirar && (
-            <BotonSecundario disabled={trabajando} onClick={retirar} icono={<Undo2 className="w-3.5 h-3.5" />}>
-              Retirar
-            </BotonSecundario>
-          )}
+          <Boton
+            disabled={trabajando}
+            onClick={() => abrir(null)}
+            icono={expedidos.length > 0 ? <Plus className="w-3.5 h-3.5" /> : <FilePlus2 className="w-3.5 h-3.5" />}
+          >
+            {expedidos.length > 0 ? 'Cargar otro CDP' : 'Cargar el CDP'}
+          </Boton>
         </div>
       )}
 
-      {cargando && (
+      {formulario && (
         <div className="space-y-2 pt-2 border-t border-gray-200">
           <p className="text-[11.5px] text-slate-600 m-0">
-            Transcribe el certificado tal como lo expidió la Dirección Financiera y adjúntalo. Al
-            aprobarse el estudio previo, la etapa 4 queda atendida con él.
+            {corrigiendo
+              ? `Corrige los datos del CDP ${corrigiendo.numero}.`
+              : 'Transcribe el certificado tal como lo expidió la Dirección Financiera y adjúntalo. Al aprobarse el estudio previo, la etapa 4 queda atendida con los CDP cargados.'}
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
             <input
@@ -270,7 +313,7 @@ export function CdpDelEstudioPrevio({ procesoId, valorEstimado, onEstado }: Prop
             >
               {corrigiendo ? 'Guardar la corrección' : 'Cargar el CDP'}
             </Boton>
-            <BotonSecundario disabled={trabajando} onClick={() => setCargando(false)} icono={<X className="w-3.5 h-3.5" />}>
+            <BotonSecundario disabled={trabajando} onClick={() => setFormulario(null)} icono={<X className="w-3.5 h-3.5" />}>
               Cancelar
             </BotonSecundario>
           </div>

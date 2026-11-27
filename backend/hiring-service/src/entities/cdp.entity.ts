@@ -148,3 +148,30 @@ export class CdpAntesDeRadicar {
   @Column({ name: 'updated_at', type: 'timestamptz', default: () => 'now()' })
   updatedAt: Date;
 }
+
+/**
+ * El respaldo que suman los CDP expedidos del proceso (migración 152).
+ *
+ * Desde la 152 un proceso puede tener más de un CDP —uno por rubro, por
+ * ejemplo—, y lo que respalda el gasto es la suma: la apertura, la
+ * adjudicación y el RP se comparan contra esto y no contra un certificado
+ * suelto. Función pura y exportada para poder fijarla sin base de datos.
+ *
+ * `rubro` solo sale cuando todos comparten uno: es el que se puede dar por
+ * omisión al RP sin adivinar.
+ */
+export function respaldoDeLosCdp(
+  cdps: Pick<Cdp, 'estado' | 'numero' | 'valor' | 'rubro'>[],
+): { numero: string | null; valor: number | null; rubro: string | null; rubros: string[]; cantidad: number } {
+  const expedidos = cdps.filter((c) => c.estado === 'EXPEDIDO');
+  const numeros = expedidos.map((c) => c.numero).filter((n): n is string => !!n);
+  const conValor = expedidos.filter((c) => c.valor !== null && c.valor !== undefined);
+  const rubros = [...new Set(expedidos.map((c) => c.rubro?.trim()).filter((r): r is string => !!r))];
+  return {
+    numero: numeros.length > 0 ? numeros.join(', ') : null,
+    valor: conValor.length > 0 ? conValor.reduce((suma, c) => suma + Number(c.valor), 0) : null,
+    rubro: rubros.length === 1 ? rubros[0] : null,
+    rubros,
+    cantidad: expedidos.length,
+  };
+}

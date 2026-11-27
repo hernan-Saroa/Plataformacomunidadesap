@@ -81,7 +81,7 @@ describe('CdpService · gestión desde el estudio previo', () => {
     const service = new CdpService(dataSource, cierre as any, {} as any);
 
     jest.spyOn(service, 'aplicaCdp').mockResolvedValue(true);
-    jest.spyOn(service, 'delProceso').mockResolvedValue(cdp);
+    jest.spyOn(service, 'cdpsDelProceso').mockResolvedValue(cdp ? [cdp] : []);
     jest.spyOn(service, 'exigeCdpAntesDeRadicar').mockResolvedValue(opciones.obligatorio ?? false);
     jest.spyOn(service, 'instanciarEtapa4').mockResolvedValue([]);
     jest.spyOn(service as any, 'etapa3Cerrada').mockResolvedValue(true);
@@ -115,16 +115,52 @@ describe('CdpService · gestión desde el estudio previo', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('si ya lo registró el área, lo corrige sin crear otro y sin exigir de nuevo el soporte', async () => {
+    it('con el cdpId de uno que registró el área, lo corrige sin crear otro y sin exigir de nuevo el soporte', async () => {
       const { service, em, cdp, trazas } = montar({
         cdp: { estado: 'EXPEDIDO', origen: 'REGISTRADO_EN_ETAPA_3', numero: 'CDP-6', documentoId: 'doc-0' },
       });
 
-      const r = await service.registrarDesdeElEstudioPrevio(em, 'p-1', registro, null, null, acceso);
+      const r = await service.registrarDesdeElEstudioPrevio(
+        em,
+        'p-1',
+        { ...registro, cdpId: 'cdp-1' },
+        null,
+        null,
+        acceso,
+      );
 
       expect(r.id).toBe('cdp-1');
       expect(cdp).toMatchObject({ numero: 'CDP-7', documentoId: 'doc-0' });
       expect(trazas[0].accion).toBe('GUARDAR');
+    });
+
+    it('sin cdpId agrega otro CDP al lado del que ya había (152)', async () => {
+      const { service, em, cdp } = montar({
+        cdp: { estado: 'EXPEDIDO', origen: 'REGISTRADO_EN_ETAPA_3', numero: 'CDP-6', valor: 1_000_000 },
+      });
+
+      const r = await service.registrarDesdeElEstudioPrevio(em, 'p-1', registro, archivo, 'hash', acceso);
+
+      expect(r.id).toBe('nuevo');
+      expect(r).toMatchObject({ numero: 'CDP-7', origen: 'REGISTRADO_EN_ETAPA_3' });
+      // El primero sigue intacto.
+      expect(cdp).toMatchObject({ numero: 'CDP-6', estado: 'EXPEDIDO' });
+    });
+
+    it('no carga dos veces el mismo número', async () => {
+      const { service, em } = montar({
+        cdp: { estado: 'EXPEDIDO', origen: 'REGISTRADO_EN_ETAPA_3', numero: 'cdp-7 ' },
+      });
+      await expect(
+        service.registrarDesdeElEstudioPrevio(em, 'p-1', registro, archivo, 'hash', acceso),
+      ).rejects.toThrow(/ya está cargado/);
+    });
+
+    it('lo cargado en la 4.2 no se corrige desde el estudio previo', async () => {
+      const { service, em } = montar({ cdp: { estado: 'EXPEDIDO', origen: 'ETAPA_4', numero: 'CDP-6' } });
+      await expect(
+        service.registrarDesdeElEstudioPrevio(em, 'p-1', { ...registro, cdpId: 'cdp-1' }, null, null, acceso),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('no pisa una solicitud de antes de la 103: primero se retira', async () => {

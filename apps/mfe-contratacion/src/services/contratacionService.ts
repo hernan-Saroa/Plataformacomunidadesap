@@ -449,6 +449,8 @@ export const contratacionService = {
       valor: number;
       fechaExpedicion: string;
       firma?: EvidenciaFirmaOtp;
+      /** En falso queda cargado sin enviar la 4.2, para agregar otros (152). */
+      enviar?: boolean;
     },
     archivo: File,
   ) => {
@@ -458,19 +460,25 @@ export const contratacionService = {
     cuerpo.append('numero', datos.numero);
     cuerpo.append('valor', String(datos.valor));
     cuerpo.append('fechaExpedicion', datos.fechaExpedicion);
+    if (datos.enviar !== undefined) cuerpo.append('enviar', String(datos.enviar));
     if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/cargue`, { method: 'POST', body: cuerpo });
   },
 
-  /** Corrige el CDP de la 4.2 retirada o devuelta y la vuelve a enviar (BUG-001). El certificado es opcional. */
+  /**
+   * Corrige uno de los CDP de la 4.2 abierta (BUG-001, 152). El certificado es
+   * opcional; con `enviar` en falso no vuelve a enviar la 4.2.
+   */
   corregirCdp: (
     procesoId: string,
+    cdpId: string,
     datos: {
       rubro: string;
       numero: string;
       valor: number;
       fechaExpedicion: string;
       firma?: EvidenciaFirmaOtp;
+      enviar?: boolean;
     },
     archivo: File | null,
   ) => {
@@ -480,23 +488,42 @@ export const contratacionService = {
     cuerpo.append('numero', datos.numero);
     cuerpo.append('valor', String(datos.valor));
     cuerpo.append('fechaExpedicion', datos.fechaExpedicion);
+    if (datos.enviar !== undefined) cuerpo.append('enviar', String(datos.enviar));
     if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
-    return pedir<Cdp>(`/procesos/${procesoId}/cdp/cargue`, { method: 'PUT', body: cuerpo });
+    return pedir<Cdp>(`/procesos/${procesoId}/cdp/cargue/${cdpId}`, { method: 'PUT', body: cuerpo });
   },
+
+  /** Quita uno de los CDP de la 4.2 abierta (152). */
+  quitarCdp: (procesoId: string, cdpId: string, motivo?: string) =>
+    pedir<EstadoRespaldo>(`/procesos/${procesoId}/cdp/cargue/${cdpId}/retiro`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  /** Envía la 4.2 con los CDP que ya se cargaron (152). */
+  enviarCargueCdp: (procesoId: string, firma?: EvidenciaFirmaOtp) =>
+    pedir<EstadoRespaldo>(`/procesos/${procesoId}/cdp/envio`, {
+      method: 'POST',
+      body: JSON.stringify({ firma }),
+    }),
 
   // ---------------------------------- el CDP desde el estudio previo (100) --
 
   cdpDelEstudioPrevio: (procesoId: string) =>
     pedir<CdpDelEstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cdp`),
 
-  /** Carga (o corrige) el CDP desde el estudio previo. El soporte es obligatorio al cargarlo. */
+  /**
+   * Carga un CDP desde el estudio previo, o corrige el de `cdpId` (152). El
+   * soporte es obligatorio al cargarlo.
+   */
   registrarCdpDesdeElEstudioPrevio: (
     procesoId: string,
-    datos: { numero: string; valor: number; rubro: string; fechaExpedicion: string },
+    datos: { numero: string; valor: number; rubro: string; fechaExpedicion: string; cdpId?: string },
     archivo: File | null,
   ) => {
     const cuerpo = new FormData();
     if (archivo) cuerpo.append('file', archivo);
+    if (datos.cdpId) cuerpo.append('cdpId', datos.cdpId);
     cuerpo.append('numero', datos.numero);
     cuerpo.append('valor', String(datos.valor));
     cuerpo.append('rubro', datos.rubro);
@@ -507,10 +534,10 @@ export const contratacionService = {
     });
   },
 
-  retirarCdpDesdeElEstudioPrevio: (procesoId: string, motivo?: string) =>
+  retirarCdpDesdeElEstudioPrevio: (procesoId: string, cdpId: string, motivo?: string) =>
     pedir<CdpDelEstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cdp/retiro`, {
       method: 'POST',
-      body: JSON.stringify({ motivo }),
+      body: JSON.stringify({ motivo, cdpId }),
     }),
 
   cdpAntesDeRadicar: () => pedir<CdpAntesDeRadicar[]>('/configuracion/cdp-antes-de-radicar'),
@@ -528,9 +555,10 @@ export const contratacionService = {
     }),
 
   /** Soporte de un CDP que quedó cargado sin él. */
-  adjuntarCdp: (procesoId: string, archivo: File) => {
+  adjuntarCdp: (procesoId: string, archivo: File, cdpId?: string) => {
     const cuerpo = new FormData();
     cuerpo.append('file', archivo);
+    if (cdpId) cuerpo.append('cdpId', cdpId);
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/documento`, { method: 'POST', body: cuerpo });
   },
 

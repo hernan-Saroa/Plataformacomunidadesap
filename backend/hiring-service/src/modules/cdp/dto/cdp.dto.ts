@@ -8,6 +8,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
   ValidateNested,
@@ -57,6 +58,33 @@ export class CargarCdpDto {
   @ValidateNested()
   @Type(() => FirmaOtpDto)
   firma?: FirmaOtpDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Si con este CDP se envía la 4.2 (por omisión, sí). En falso queda cargado y se pueden agregar otros antes de enviarla (152).',
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value === 'false' ? false : value === 'true' ? true : value))
+  @IsBoolean()
+  enviar?: boolean;
+}
+
+/** Envía la 4.2 con los CDP ya cargados (152). */
+export class EnviarCargueCdpDto {
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
+}
+
+/** Quita un CDP cargado en la 4.2 mientras sigue abierta (152). */
+export class QuitarCdpDto {
+  @ApiPropertyOptional({ description: 'Por qué se quita' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  motivo?: string;
 }
 
 /**
@@ -95,6 +123,13 @@ export class RegistrarCdpExistenteDto {
   @IsInt()
   @Min(2000)
   vigenciaFiscal?: number;
+
+  @ApiPropertyOptional({
+    description: 'El CDP que se corrige. Sin él se agrega otro: el proceso puede llevar uno o más (152).',
+  })
+  @IsOptional()
+  @IsUUID()
+  cdpId?: string;
 }
 
 /** Configuración: si una modalidad exige el CDP antes de radicar el estudio previo. */
