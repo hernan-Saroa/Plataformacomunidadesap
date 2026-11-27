@@ -1,9 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, RefObject } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Download,
   FileSpreadsheet,
   Info,
@@ -674,7 +676,7 @@ export function BulkGraduatesUploadModal({
         }}
         className={`${styles.dialogContent} flex max-h-[92vh] flex-col overflow-hidden`}
       >
-        <DialogHeader>
+        <DialogHeader className={styles.dialogHeader}>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5" style={{ color: '#003DA5' }} />
             Carga masiva de graduados
@@ -897,45 +899,48 @@ const GraduateImportPreview = memo(function GraduateImportPreview({
   preview,
   totalRows,
 }: Pick<GraduateImportSummary, 'preview' | 'totalRows'>) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+
   return (
     <AnimatePresence>
       {preview.length > 0 && (
         <motion.div
-          layout
-          initial={{ opacity: 0, y: 10, height: 0, scale: 0.985 }}
-          animate={{ opacity: 1, y: 0, height: 'auto', scale: 1 }}
-          exit={{ opacity: 0, y: 8, height: 0, scale: 0.985 }}
-          transition={{
-            opacity: { duration: 0.18, ease: 'easeOut' },
-            y: { duration: 0.24, ease: 'easeOut' },
-            scale: { duration: 0.24, ease: 'easeOut' },
-            height: { duration: 0.34, ease: [0.22, 1, 0.36, 1] },
-            layout: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
-          }}
-          className="overflow-hidden rounded-lg border"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+          className={`${styles.previewPanel} rounded-lg border`}
           style={{ borderColor: '#E5E7EB' }}
         >
-          <div className="border-b bg-slate-50 px-4 py-3">
+          <div className={`${styles.previewHeading} border-b bg-slate-50 px-4 py-3`}>
             <p className="text-sm font-semibold text-slate-900">Previsualización y validaciones</p>
             <p className="mt-1 text-xs leading-5 text-slate-600">
               Revise cada columna antes de crear. Las celdas marcadas en rojo indican exactamente qué dato debe corregirse en el archivo.
             </p>
+            <GraduatePreviewColumnsNavigation viewportRef={viewportRef} />
           </div>
-          <div className="max-h-[22rem] overflow-auto">
-            <table className="min-w-[92rem] divide-y divide-gray-200 text-xs">
-              <thead className="sticky top-0 z-10 bg-gray-50">
+          <div
+            ref={viewportRef}
+            role="region"
+            aria-label="Vista previa de graduados"
+            tabIndex={0}
+            className={styles.previewViewport}
+          >
+            <table className={`${styles.previewTable} divide-y divide-gray-200 text-xs`}>
+              <thead className={styles.previewTableHead}>
                 <tr>
-                  <th className="min-w-[4rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Fila</th>
-                  <th className="min-w-[7.5rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Estado</th>
+                  <th scope="col" className="min-w-[4rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Fila</th>
+                  <th scope="col" className="min-w-[7.5rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Estado</th>
                   {PREVIEW_COLUMNS.map((column) => (
                     <th
                       key={column.key}
+                      scope="col"
                       className={`${column.className} px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600`}
                     >
                       {column.label}
                     </th>
                   ))}
-                  <th className="min-w-[18rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Observaciones</th>
+                  <th scope="col" className="min-w-[18rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Observaciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
@@ -1011,3 +1016,84 @@ const GraduateImportPreview = memo(function GraduateImportPreview({
     </AnimatePresence>
   );
 });
+
+function GraduatePreviewColumnsNavigation({
+  viewportRef,
+}: {
+  viewportRef: RefObject<HTMLDivElement | null>;
+}) {
+  const [{ canGoBack, canGoForward }, setNavigation] = useState({
+    canGoBack: false,
+    canGoForward: false,
+  });
+
+  const updatePosition = useCallback(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const maximum = viewport.scrollWidth - viewport.clientWidth;
+    const offset = Math.round(viewport.scrollLeft);
+    const canGoBack = maximum > 0 && offset > 0;
+    const canGoForward = offset < maximum;
+    setNavigation((current) =>
+      current.canGoBack === canGoBack && current.canGoForward === canGoForward
+        ? current
+        : { canGoBack, canGoForward },
+    );
+  }, [viewportRef]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    updatePosition();
+    viewport.addEventListener('scroll', updatePosition, { passive: true });
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updatePosition) : null;
+    if (observer) {
+      observer.observe(viewport);
+      if (viewport.firstElementChild) observer.observe(viewport.firstElementChild);
+    } else {
+      window.addEventListener('resize', updatePosition);
+    }
+    return () => {
+      viewport.removeEventListener('scroll', updatePosition);
+      observer?.disconnect();
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [updatePosition, viewportRef]);
+
+  const scrollColumns = (direction: -1 | 1) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const maximum = viewport.scrollWidth - viewport.clientWidth;
+    const nextOffset = viewport.scrollLeft + direction * viewport.clientWidth * 0.8;
+    viewport.scrollLeft = Math.max(0, Math.min(maximum, nextOffset));
+    updatePosition();
+  };
+
+  if (!canGoBack && !canGoForward) return null;
+
+  return (
+    <div className={styles.columnNavigation}>
+      <p className={styles.columnNavigationLabel}>
+        Desliza la tabla o usa las flechas para ver más columnas.
+      </p>
+      <div className={styles.columnNavigationControls} role="group" aria-label="Desplazar columnas">
+        <button
+          type="button"
+          aria-label="Ver columnas anteriores"
+          onClick={() => scrollColumns(-1)}
+          disabled={!canGoBack}
+        >
+          <ChevronLeft aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          aria-label="Ver más columnas"
+          onClick={() => scrollColumns(1)}
+          disabled={!canGoForward}
+        >
+          <ChevronRight aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  );
+}

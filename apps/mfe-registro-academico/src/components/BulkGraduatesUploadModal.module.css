@@ -3,6 +3,106 @@
   max-height: min(92vh, calc(100dvh - 4rem));
 }
 
+@media (max-width: 640px) {
+  .dialogHeader {
+    padding-inline-end: 28px;
+  }
+}
+
+.previewPanel {
+  min-width: 0;
+}
+
+.previewHeading {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.previewViewport {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scroll-behavior: auto;
+}
+
+.previewViewport:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+
+.previewTable {
+  width: 100%;
+  min-width: 92rem;
+}
+
+.previewTableHead {
+  background-color: #f8fafc;
+}
+
+.columnNavigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.65rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.columnNavigationLabel {
+  color: #475569;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.columnNavigationControls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.columnNavigationControls button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid #dbeafe;
+  border-radius: 0.45rem;
+  background-color: white;
+  color: #003da5;
+}
+
+.columnNavigationControls button:hover:not(:disabled) {
+  background-color: #eff6ff;
+}
+
+.columnNavigationControls button:disabled {
+  cursor: not-allowed;
+  border-color: #e2e8f0;
+  background-color: #f1f5f9;
+  color: #94a3b8;
+}
+
+.columnNavigationControls svg {
+  width: 16px;
+  height: 16px;
+}
+
+.columnNavigationControls button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .columnNavigationControls button {
+    width: 36px;
+    height: 36px;
+  }
+}
+
 .progressCard {
   background-color: #f4f8ff;
 }

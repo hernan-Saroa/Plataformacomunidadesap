@@ -206,6 +206,46 @@ describe('Carga masiva de Graduados independiente de PTA',()=>{
     ]);
   });
 
+  it('sincroniza el control superior de columnas con la tabla y lo oculta si caben todas', async () => {
+    render(<BulkGraduatesUploadModal open onOpenChange={() => {}} onImported={() => {}} programOptions={[valid.TITULO]} />);
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [graduateFile(XLSX.utils.json_to_sheet([valid]))] },
+    });
+    const viewport = await screen.findByRole('region', { name: 'Vista previa de graduados' });
+    expect(screen.queryByRole('group', { name: 'Desplazar columnas' })).toBeNull();
+
+    let width = 400;
+    Object.defineProperties(viewport, {
+      clientWidth: { get: () => width },
+      scrollWidth: { value: 1000 },
+    });
+    fireEvent.scroll(viewport);
+
+    expect(screen.getByText('Desliza la tabla o usa las flechas para ver más columnas.')).toBeTruthy();
+    const previous = screen.getByRole('button', { name: 'Ver columnas anteriores' }) as HTMLButtonElement;
+    const next = screen.getByRole('button', { name: 'Ver más columnas' }) as HTMLButtonElement;
+    expect(previous.disabled).toBe(true);
+    fireEvent.click(next);
+    expect(viewport.scrollLeft).toBe(320);
+    expect(previous.disabled).toBe(false);
+
+    fireEvent.click(next);
+    expect(viewport.scrollLeft).toBe(600);
+    expect(next.disabled).toBe(true);
+
+    viewport.scrollLeft = 150;
+    fireEvent.scroll(viewport);
+    expect(next.disabled).toBe(false);
+    fireEvent.click(previous);
+    expect(viewport.scrollLeft).toBe(0);
+    expect(previous.disabled).toBe(true);
+
+    width = 1000;
+    fireEvent(window, new Event('resize'));
+    expect(screen.queryByRole('group', { name: 'Desplazar columnas' })).toBeNull();
+    expect(graduadosService.graduados.crearMasivo).not.toHaveBeenCalled();
+  });
+
   it('conserva el resultado confirmado cuando una petición posterior se interrumpe', async () => {
     const file = graduateFile(XLSX.utils.json_to_sheet(Array.from({ length: 201 }, (_, index) => ({
       ...valid,
